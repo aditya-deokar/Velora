@@ -1,6 +1,6 @@
 # Product
 
-Flute turns a developer's existing application components into cinematic 3D motion through their own coding agent. Developers work in source, keep their existing providers/data/styles and refine a live preview. There is no screenshot upload, product login or visual builder requirement.
+Velora turns a developer's existing application components into cinematic 3D motion through their own coding agent. Developers work in source, keep their existing providers/data/styles and refine a live preview. There is no screenshot upload, product login or visual builder requirement.
 
 ## Browser experience
 
@@ -8,7 +8,7 @@ The real product uses one minimal preview shell: black scene space, generous pad
 
 The repository's browser entry opens this real interface in an empty state until real application content is supplied. It does not claim a connection or populate a pretend dashboard. The user explicitly requested deleting all demo and practice applications; their source, galleries, videos and publishing scripts are retired. Automated tests remain separate and do not ship as product pages.
 
-An installed `ProjectPreview` gives an initial view of the unmodified host. Agents author dedicated scene routes using the shared `ScenePreview` and existing `Surface` primitives. The installed `flute guide` explains the current API and cinematic principles. The developer's existing Claude/GPT coding-agent subscription runs that agent; Flute does not own provider authentication or AI infrastructure.
+An installed `ProjectPreview` gives an initial view of the unmodified host. Agents author dedicated scene routes using the shared `ScenePreview` and existing `Surface` primitives. The installed `velora guide` explains the current API and cinematic principles. The developer's existing Claude/GPT coding-agent subscription runs that agent; Velora does not own provider authentication or AI infrastructure.
 
 ## Visual language
 
@@ -30,12 +30,12 @@ Scene playback fills the full viewport with proportional cover scaling and edge 
 
 The user explicitly authorized a new separate local project to review multiple scenes after retiring the old demos. `local-project/` is that installed-package host, not product data or a bundled gallery. The product entry remains empty for an unconnected project. Its local test scenes never ship inside the library.
 
-Scene tiles show small cached snapshots of their actual scenes. The coding agent creates or refreshes them using `flute snapshot`; unavailable snapshots fall back to scene numbers. Snapshot generation captures local rendered content, and the list displays ordinary images to keep scrolling inexpensive.
+Scene tiles show small cached snapshots of their actual scenes. The coding agent creates or refreshes them using `velora snapshot`; unavailable snapshots fall back to scene numbers. Snapshot generation captures local rendered content, and the list displays ordinary images to keep scrolling inexpensive.
 
 ## Local open-source MVP
 
-Velora by [Aditya Deokar](https://github.com/aditya-deokar) is an MIT-licensed local package. The final slice combines safe installation, a discoverable FLUTE.md coding-agent handoff, the version-matched conceptual guide and tested source example, one-project scene library, live revision, snapshots and MP4 export. Users bring their existing repository-capable coding agent; no product login, provider subscription connection, multi-project selector or hosted infrastructure is required.
+Velora by [Aditya Deokar](https://github.com/aditya-deokar) is an MIT-licensed local package. The final slice combines safe installation, a discoverable VELORA.md coding-agent handoff, the version-matched conceptual guide and tested source example, one-project scene library, live revision, snapshots and MP4 export. Users bring their existing repository-capable coding agent; no product login, provider subscription connection, multi-project selector or hosted infrastructure is required.
 
-React DOM integration is framework-independent (18.2+ and 19). Next.js App/Pages Router and standard Vite have automatic connections; other wrappers, including Electron renderers, use the same explicit portable React connection. No framework migration is required. Non-DOM React Native is outside this renderer. Public npm distribution is now authorized: viewers must be able to install the library through a normal npm command and use the same agent guide and studio. Public version `@webprodigies/flute@0.1.0` is published under `webprodigies`, with source at `webprodigies-org/flute`. On 2026-09-15, a fresh registry installation passed setup, the installed guide, studio, live revisions, snapshots, MP4 export and production exclusion. Viewers install with `npm install @webprodigies/flute` and run `npx flute init` inside a supported existing project. The guide teaches cinematic relationships and shared APIs, leaving composition and artistic overrides to the creator. The executable example proves wiring rather than imposing a common design. Future plans remain deferred and are not part of this MVP.
+React DOM integration is framework-independent (18.2+ and 19). Next.js App/Pages Router and standard Vite have automatic connections; other wrappers, including Electron renderers, use the same explicit portable React connection. No framework migration is required. Non-DOM React Native is outside this renderer. Public npm distribution is now authorized: viewers must be able to install the library through a normal npm command and use the same agent guide and studio. Public source is at `aditya-deokar/Velora`. Viewers install with `npm install @webprodigies/flute` and run `npx velora init` inside a supported existing project. The guide teaches cinematic relationships and shared APIs, leaving composition and artistic overrides to the creator. The executable example proves wiring rather than imposing a common design. Future plans remain deferred and are not part of this MVP.
 
 Maintainer verification runs locally. GitHub only builds and publishes a new package version pushed to `main`; unchanged versions skip, and routine code/documentation pushes do not run test jobs. A version bump is required to update the immutable npm release. GitHub stores no new diagnostic artifacts for this workflow.

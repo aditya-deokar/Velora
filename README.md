@@ -8,10 +8,10 @@ Open source under the [MIT license](LICENSE). Runs locally, with your existing c
 
 **React DOM 18.2+ or 19**, with **Node 22.12+** for the CLI. The renderer is independent of your router and build tool. Setup has automatic connections for Next.js App/Pages Router and standard Vite projects; other React hosts use the same portable wrapper without changing frameworks.
 
-From your existing app's directory, **create a separate Git branch before installing**. Flute adds integration and scene files to your codebase; a branch keeps those changes separate while you create and review your animations. Commit or stash any existing work first:
+From your existing app's directory, **create a separate Git branch before installing**. Velora adds integration and scene files to your codebase; a branch keeps those changes separate while you create and review your animations. Commit or stash any existing work first:
 
 ```sh
-git switch -c flute-scenes
+git switch -c velora-scenes
 npm install @webprodigies/flute
 npx flute init
 npm run dev
@@ -23,19 +23,19 @@ Keep your existing dev server if it is already running. Use the URL it prints:
 npx flute open --url http://127.0.0.1:5173
 ```
 
-In Next.js, open `/flute` on your existing dev server (usually port 3000). Setup adds this development-only route without rewriting your app/layout/providers. In Vite, setup connects the existing root. Both create `FLUTE.md`. Repeating setup is safe; conflicting user-owned files get a repair message. Normal app routes and production builds remain ordinary. One installed app owns one scene catalog.
+In Next.js, open `/flute` on your existing dev server (usually port 3000). Setup adds this development-only route without rewriting your app/layout/providers. In Vite, setup connects the existing root. Both create `VELORA.md` (or `FLUTE.md`). Repeating setup is safe; conflicting user-owned files get a repair message. Normal app routes and production builds remain ordinary. One installed app owns one scene catalog.
 
 ## Other React hosts (including Electron renderers)
 
 Run `npx flute init --adapter react`. Setup creates a framework-independent wrapper and tells your agent how to connect it. It deliberately does not guess or replace your application root:
 
 ```jsx
-import { FluteProjectPreview } from "./flute/ProjectPreview";
+import { VeloraProjectPreview } from "./velora/ProjectPreview";
 
 <ExistingProviders>
-  <FluteProjectPreview enabled={yourDevelopmentFlag}>
+  <VeloraProjectPreview enabled={yourDevelopmentFlag}>
     <ExistingApp />
-  </FluteProjectPreview>
+  </VeloraProjectPreview>
 </ExistingProviders>
 ```
 
@@ -47,15 +47,15 @@ The underlying `ProjectPreview` export accepts `projectId`, `enabled`, optional 
 
 ## Give your coding agent this prompt
 
-> Read FLUTE.md and run `npx flute guide --json`. Inspect this app's real dashboard page and create a cinematic Flute scene from its existing components. Choose intentional close perspective, camera travel and depth of field. Preserve the app's design and providers. Verify it in the browser, save a snapshot, and give me the scene URL.
+> Read VELORA.md and run `npx flute guide --json`. Inspect this app's real dashboard page and create a cinematic Velora scene from its existing components. Choose intentional close perspective, camera travel and depth of field. Preserve the app's design and providers. Verify it in the browser, save a snapshot, and give me the scene URL.
 
-Replace “dashboard” with the page you want. Claude Code, Codex CLI or another repository-capable agent can use the same installed guide; Flute does not run or authenticate the agent for you.
+Replace “dashboard” with the page you want. Claude Code, Codex CLI or another repository-capable agent can use the same installed guide; Velora does not run or authenticate the agent for you.
 
 The guide explains concepts, tradeoffs, exact APIs and a tested file-pair example. It leaves the composition to the creator. Ask your agent to revise the source when you want a different shot.
 
 ## Scenes and studio
 
-The agent creates `src/flute/scenes/my-shot.scene.json` and matching `my-shot.tsx` or `my-shot.jsx` (one component per recipe). JSON owns the scene definition; the component imports actual host UI and returns stable `Surface` elements. The shared studio supplies the camera renderer, playback and capture—no separate scene editor or duplicated renderer.
+The agent creates `src/velora/scenes/my-shot.scene.json` and matching `my-shot.tsx` or `my-shot.jsx` (one component per recipe). JSON owns the scene definition; the component imports actual host UI and returns stable `Surface` elements. The shared studio supplies the camera renderer, playback and capture—no separate scene editor or duplicated renderer.
 
 Outside Vite, run `npx flute sync` after adding/removing scene pairs. Existing file edits use your host’s hot reload. Open the scene library, select a scene, play or seek, and revise its source through your running dev server.
 
@@ -83,7 +83,7 @@ npx flute export --url 'http://127.0.0.1:5173/?flute-preview=1&flute-scene=my-sh
 
 30, 60 and 120 FPS are supported. Export samples the live scene deterministically and excludes studio controls. Choose a new output filename; existing files are not overwritten. Keep the host server running. Camera depth of field uses performant DOM blur approximation, not ray-traced bokeh.
 
-## Work on Flute
+## Work on Velora
 
 ```sh
 npm ci
@@ -95,7 +95,7 @@ npm run dev
 
 The separate `local-project/` exercises installation with real scenes; it is not shipped in the package. The unconnected product opens with an honest empty scene list.
 
-Read [architecture](docs/architecture.md) for canonical code owners and [product](docs/product.md) for scope. The installed `flute guide` is the authoritative authoring reference. Build and boundary checks reject architectural drift.
+Read [architecture](docs/architecture.md) for canonical code owners and [product](docs/product.md) for scope. The installed `velora guide` (or `flute guide`) is the authoritative authoring reference. Build and boundary checks reject architectural drift.
 
 ## Maintainer release
 
