@@ -171,7 +171,7 @@ describe("trusted project commands", () => {
     const root = await fixture({ installed: false });
     const result = await run(root);
     failure(result, "package-unavailable");
-    expect(JSON.stringify(result)).toContain("npm install @webprodigies/flute");
+    expect(JSON.stringify(result)).toContain("npm install velora");
     expect(await readdir(root)).not.toContain(".flute");
     expect(await readFile(path.join(root, "src/main.tsx"), "utf8")).toBe(original);
   });
@@ -340,7 +340,7 @@ describe("installed coding-agent handoff", () => {
     expect(first.handoff).toMatchObject({ path: "FLUTE.md", guideCommand: "npx flute guide --json", guideVersion: RESOURCES["authoring-guide"]().version });
     expect(first.handoff!.prompt).toContain("<page route or component path>");
     const text = await readFile(path.join(root, "FLUTE.md"), "utf8");
-    for (const pointer of [FLUTE_BRAND.title, FLUTE_BRAND.url, "npx flute guide --json", "capabilities.api", "@webprodigies/flute/preview", "src/flute/scenes"])
+    for (const pointer of [FLUTE_BRAND.title, FLUTE_BRAND.url, "npx flute guide --json", "capabilities.api", "velora/preview", "src/velora/scenes"])
       expect(text).toContain(pointer);
     expect(text).not.toContain(RESOURCES["authoring-guide"]().concepts[0].mechanism);
     const repeat = success(await run(root));

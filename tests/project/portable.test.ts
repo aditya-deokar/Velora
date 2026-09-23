@@ -34,7 +34,7 @@ describe("portable host connections",()=>{
   expect((await readdir(path.join(root,".flute"))).sort()).toEqual(["integration.json","project.json"]);
   const wrapper=await readFile(path.join(root,"src/flute/ProjectPreview.jsx"),"utf8");
   expect(wrapper).not.toMatch(/import\.meta|process\.|next\//);
-  expect(wrapper).toContain('from "@webprodigies/flute/preview"');
+  expect(wrapper).toContain('from "velora/preview"');
  });
  it.each(["18.2.0","18.3.1","19.0.0","19.1.0","19.2.0"])("uses supported installed React %s without installing Vite",async react=>{
   const root=await host("custom",react);success(await run(root));expect(await readdir(root)).not.toContain("vite.config.ts");

@@ -1,5 +1,5 @@
 {
-  "name": "@webprodigies/flute",
+  "name": "velora",
   "version": "0.1.2",
   "type": "module",
   "scripts": {
@@ -82,6 +82,7 @@
     "react-dom": ">=18.2.0 <20"
   },
   "bin": {
+    "velora": "./dist/cli/flute.js",
     "flute": "./dist/cli/flute.js"
   },
   "engines": {
