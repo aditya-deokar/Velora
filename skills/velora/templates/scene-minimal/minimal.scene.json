@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "id": "minimal",
+  "title": "Minimal scene",
+  "definition": {
+    "width": 1280,
+    "height": 720,
+    "scene": {
+      "camera": { "perspective": 1400 },
+      "focus": { "distance": 1400, "fStop": 8, "focalLength": 50, "maxBlur": 6 },
+      "nodes": [{ "id": "main" }]
+    },
+    "motion": {
+      "durationMs": 2000,
+      "tracks": []
+    }
+  }
+}

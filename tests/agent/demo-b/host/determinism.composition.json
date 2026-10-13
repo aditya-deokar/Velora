@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "id": "determinism",
+  "title": "Demo B determinism proof",
+  "width": 320,
+  "height": 200,
+  "fps": 30,
+  "seed": 42,
+  "scenes": [
+    { "id": "s1", "recipe": "proc-stage", "startMs": 0, "durationMs": 1000 },
+    {
+      "id": "s2",
+      "recipe": "proc-stage",
+      "startMs": 1500,
+      "durationMs": 1000,
+      "transition": { "type": "focus-pull", "durationMs": 400 }
+    }
+  ],
+  "assets": []
+}

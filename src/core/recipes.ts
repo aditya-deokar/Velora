@@ -1,10 +1,11 @@
 import { z } from "zod";
 import {OpenPreviewSchema} from "./project";
 import { PreviewDefinitionSchema, presentPreview } from "./preview";
+import { motionDuration } from "./motion";
 import type { SceneIssue } from "./scene";
 
 /** SOURCE OF TRUTH: SceneRecipeSchema, loadSceneRecipes, SCENE_RECIPE_DIRECTORY,
- * ListScenesSchema, LoadSceneSchema, OpenSceneSchema, SnapshotSceneSchema, SceneSnapshotSchema.
+ * ListScenesSchema, LoadSceneSchema, OpenSceneSchema, SnapshotSceneSchema, SceneSnapshotSchema, sceneMetadata.
  * WHAT: versioned JSON recipes and deterministic local scene catalog validation.
  * WHY: CLI and browser reopen identical metadata without executing component source.
  * WHERE: project/recipes supplies scoped files; the browser supplies JSON and binding paths.
@@ -38,7 +39,22 @@ export const SceneRecipeSchema = z.strictObject({
 });
 export type SceneRecipe = z.output<typeof SceneRecipeSchema>;
 const BoundRecipeSchema = SceneRecipeSchema.extend({ source: z.string(), binding: z.string() });
-type BoundRecipe = z.output<typeof BoundRecipeSchema>;
+export type BoundRecipe = z.output<typeof BoundRecipeSchema>;
+// Agent-planning metadata derived from an already validated recipe: playback
+// duration, surface count, dimensions and snapshot freshness. Pure; no I/O.
+export function sceneMetadata(recipe: BoundRecipe): {
+  durationMs: number; nodeCount: number; width: number; height: number;
+  hasSnapshot: boolean; snapshotTimeMs?: number;
+} {
+  return {
+    durationMs: motionDuration(recipe.definition.motion ?? { durationMs: 0, tracks: [] }),
+    nodeCount: recipe.definition.scene.nodes.length,
+    width: recipe.definition.width,
+    height: recipe.definition.height,
+    hasSnapshot: recipe.snapshot !== undefined,
+    ...(recipe.snapshot ? { snapshotTimeMs: recipe.snapshot.timeMs } : {}),
+  };
+}
 export type SceneCatalog = { scenes: BoundRecipe[]; selected?: BoundRecipe; issues: SceneIssue[] };
 const CatalogInputSchema = z.strictObject({
   sources: z.array(z.unknown()).max(1024),

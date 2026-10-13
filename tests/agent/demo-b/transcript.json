@@ -1,0 +1,17 @@
+{
+  "demo": "demo-b",
+  "composition": "determinism.composition.json",
+  "canvas": { "width": 320, "height": 200, "fps": 30, "seed": 42, "durationMs": 2500 },
+  "setup": ["copy host/ to a temp dir", "npm install", "install packed velora tarball"],
+  "steps": [
+    { "skill": "velora-init", "cmd": ["init", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-composition", "cmd": ["inspect", "--composition", "determinism.composition.json", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-debug", "cmd": ["validate", "--composition", "determinism.composition.json", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-transitions", "cmd": ["transitions", "describe", "--type", "focus-pull", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-render", "cmd": ["frames", "--composition", "determinism.composition.json", "--out", "stills", "--at", "1100,1300", "--url", "http://127.0.0.1:1", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-verify", "cmd": ["check", "--frames", "stills", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-export", "cmd": ["render", "--composition", "determinism.composition.json", "--out", "run1.mp4", "--json"], "expect": { "code": 0 }, "replayable": false, "requires": ["dev-server", "chromium", "ffmpeg"], "note": "recorded evidence: 75 frames seed 42; replay needs a live dev server" },
+    { "skill": "velora-export", "cmd": ["render", "--composition", "determinism.composition.json", "--out", "run2.mp4", "--no-cache", "--json"], "expect": { "code": 0 }, "replayable": false, "requires": ["dev-server", "chromium", "ffmpeg"], "note": "independent re-capture; manifests diffed identical with compare-renders.mjs" },
+    { "skill": "velora-verify", "cmd": ["check", "--video", "run1.mp4", "--manifest", "run1.manifest.json", "--json"], "expect": { "code": 0 }, "replayable": false, "requires": ["run1.mp4"], "note": "recorded evidence: all suites green; dim-content finding in issue-fix-log.md" }
+  ]
+}

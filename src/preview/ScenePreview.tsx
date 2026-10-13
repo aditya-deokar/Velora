@@ -26,6 +26,9 @@ export type ScenePreviewProps = {
   onBack?: () => void;
   revision?: unknown;
   hot?: PreviewHot;
+  /** Optional timeline descriptor: rescales the single cursor's span and adds
+   * segment-boundary jumps. No second clock; undefined keeps scene behavior. */
+  timeline?: { durationMs: number; boundaries: number[] };
 };
 const timeLabel = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2,"0")}`;
 function Glyph({kind}: {kind: "play" | "pause" | "restart" | "export"}) {
@@ -75,8 +78,8 @@ function ExportMenu({disabled, panelHost}: {disabled: boolean; panelHost: HTMLDi
     </details>;
 }
 
-export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, revision, hot}: ScenePreviewProps) {
-  const session = usePreviewSession(input, revision);
+export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, revision, hot, timeline}: ScenePreviewProps) {
+  const session = usePreviewSession(input, revision, timeline);
   const connection = usePreviewConnection(hot, session.pause);
   const [renderError, setRenderError] = useState("");
   const [size, setSize] = useState({width: 0, height: 0});

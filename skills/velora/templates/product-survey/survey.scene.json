@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "id": "survey",
+  "title": "Product survey",
+  "definition": {
+    "width": 1400,
+    "height": 980,
+    "scene": {
+      "camera": { "perspective": 1400, "rotateY": -24, "rotateX": 10 },
+      "focus": { "distance": 1400, "fStop": 5.6, "focalLength": 100, "maxBlur": 6 },
+      "nodes": [{ "id": "page" }]
+    },
+    "motion": {
+      "durationMs": 6000,
+      "tracks": [
+        {
+          "target": { "kind": "camera" },
+          "property": "y",
+          "keyframes": [
+            { "timeMs": 0, "value": -100 },
+            { "timeMs": 6000, "value": 100 }
+          ]
+        }
+      ]
+    }
+  }
+}

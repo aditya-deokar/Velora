@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "id": "tour-c",
+  "title": "Tour closing title",
+  "definition": {
+    "width": 320,
+    "height": 200,
+    "scene": {
+      "camera": { "perspective": 1400 },
+      "focus": { "distance": 1400, "fStop": 8, "focalLength": 50, "maxBlur": 6 },
+      "nodes": [{ "id": "cta" }]
+    },
+    "motion": {
+      "durationMs": 1500,
+      "tracks": [
+        {
+          "target": { "kind": "surface", "id": "cta" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0, "easing": "linear" },
+            { "timeMs": 400, "value": 1 }
+          ]
+        }
+      ]
+    }
+  }
+}

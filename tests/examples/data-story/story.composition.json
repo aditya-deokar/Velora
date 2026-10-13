@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "story",
+  "title": "Dashboard data story",
+  "width": 320,
+  "height": 200,
+  "fps": 30,
+  "seed": 99,
+  "scenes": [
+    { "id": "s1", "recipe": "growth", "startMs": 0, "durationMs": 1500 },
+    {
+      "id": "s2",
+      "recipe": "growth",
+      "startMs": 2000,
+      "durationMs": 1500,
+      "transition": { "type": "focus-pull", "durationMs": 400 }
+    }
+  ],
+  "assets": [],
+  "captions": { "file": "subs.srt", "burnIn": false }
+}

@@ -83,14 +83,18 @@ describe("agent onboarding CLI", () => {
     expect(human.stderr).toContain("conflict (FLUTE.md): Move or rename");
     expect(human.stdout).toBe("");
     const json = await runCli(["init", "--json"], context, execute);
-    expect(JSON.parse(json.stderr)).toEqual(failure);
+    expect(JSON.parse(json.stderr)).toMatchObject(failure);
+    expect(JSON.parse(json.stderr)).toMatchObject({ command: "init" });
+    expect(JSON.parse(json.stderr).issues[0].hint).toEqual(expect.any(String));
   });
   it("prints brand on the human guide while returning the canonical guide as JSON", async () => {
     const human = await runCli(["guide"], context);
     expect(human.stdout).toContain(FLUTE_BRAND.title);
     expect(human.stdout).toContain(FLUTE_BRAND.url);
     const json = await runCli(["guide", "--json"], context);
-    expect(JSON.parse(json.stdout)).toEqual(RESOURCES["authoring-guide"]());
+    expect(JSON.parse(json.stdout)).toMatchObject(RESOURCES["authoring-guide"]());
+    expect(JSON.parse(json.stdout)).toMatchObject({ command: "guide" });
+    expect(JSON.parse(json.stdout).commands.length).toBeGreaterThan(0);
   });
 });
 

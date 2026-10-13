@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { FLUTE_BRAND } from "./branding";
+import { CLI_COMMANDS, CommandIndexSchema } from "./cli-schema";
 import { SceneRecipeSchema, SCENE_RECIPE_DIRECTORY } from "./recipes";
 import { CameraSchema, FocusSchema, SceneSchema, TransformSchema, SCENE_BACKGROUND } from "./scene";
 import { MotionSchema, MotionTrackSchema, MotionKeyframeSchema, motionDuration } from "./motion";
@@ -20,6 +21,8 @@ export const AuthoringGuideSchema = z.strictObject({
   version:z.literal(2), purpose:z.string(), creativeFreedom:z.string(), stageBackdrop:z.literal(SCENE_BACKGROUND),
   concepts:z.array(ConceptSchema), workflow:z.array(z.string()),
   capabilities:z.record(z.string(),z.unknown()),
+  cliVersion:z.string().min(1).optional(),
+  commands:z.array(CommandIndexSchema).optional(),
 });
 export type AuthoringGuide = z.infer<typeof AuthoringGuideSchema>;
 const concepts: z.infer<typeof ConceptSchema>[] = [
@@ -90,10 +93,12 @@ const concepts: z.infer<typeof ConceptSchema>[] = [
  pitfalls:"Do not assume an agent will discover guidance without being directed to it: start with flute guide. reviewAuthoring validates the supplied scene/motion metadata and returns advisory checks, not a visual quality score or proof of actual DOM registration. No builder, template loader or autonomous AI service is provided here.",
  verify:"Run host types/build, inspect Scene diagnostics and actual registered IDs, scrub several frames, test interaction/reduced motion/mobile and measure playback. Register capture before exporting; use a fresh relative MP4 output path. Compare exported frames with preview and confirm duration/cadence. Record unresolved limits honestly."},
 ];
-export function getAuthoringGuide(): AuthoringGuide {
+export function getAuthoringGuide(input?: { cliVersion?: string }): AuthoringGuide {
   const {items: _items,...cascadeDefaults}=CascadeSchema.parse({items:[{id:"subject"}]});
   return AuthoringGuideSchema.parse({
     version:2,
+    cliVersion: input?.cliVersion ?? "development",
+    commands: [...CLI_COMMANDS],
     stageBackdrop:SCENE_BACKGROUND,
     purpose:"Compose cinematic 3D motion from a requested application's existing live UI. Teach a spatial language, not a prescribed design.",
     creativeFreedom:"Concepts explain effects and tradeoffs. The stage is always a black void; the host UI keeps its original theme. No fixed camera angle, path, layout, focus target, layer count or entrance pattern is mandatory. User direction overrides artistic defaults. Technical schema/identity constraints still apply. For multiple scenes choose different compositional ideas, not just different labels or durations.",

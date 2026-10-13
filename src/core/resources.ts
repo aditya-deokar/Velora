@@ -1,7 +1,7 @@
 import {SnapshotSceneSchema,loadSceneRecipes,ListScenesSchema,LoadSceneSchema,OpenSceneSchema} from "./recipes";
 import { presentPreview } from "./preview";
 import { getAuthoringGuide, reviewAuthoring } from "./authoring";
-import { ExportVideoSchema } from "./export";
+import { CheckRenderSchema, ExportVideoSchema, FrameRenderSchema, FramesRenderSchema, ShotRenderSchema, VideoRenderSchema } from "./export";
 import { InitProjectSchema, SyncProjectSchema, LoadProjectSchema, ValidateProjectSchema, OpenPreviewSchema } from "./project";
 import { evaluateScene } from "./spatial";
 import { evaluateMotion } from "./motion";
@@ -22,6 +22,11 @@ export const RESOURCES = Object.freeze({
   "authoring-guide": getAuthoringGuide,
   "review-authoring": reviewAuthoring,
   "export-video": ExportVideoSchema,
+  "render-frame": FrameRenderSchema,
+  "render-video": VideoRenderSchema,
+  "render-frames": FramesRenderSchema,
+  "render-shot": ShotRenderSchema,
+  "render-check": CheckRenderSchema,
   "init-project": InitProjectSchema,
   "sync-project": SyncProjectSchema,
   "load-project": LoadProjectSchema,

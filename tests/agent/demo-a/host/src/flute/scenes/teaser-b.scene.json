@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": "teaser-b",
+  "title": "Teaser kinetic title",
+  "definition": {
+    "width": 320,
+    "height": 200,
+    "scene": {
+      "camera": { "perspective": 1400 },
+      "focus": { "distance": 1400, "fStop": 8, "focalLength": 50, "maxBlur": 6 },
+      "nodes": [{ "id": "title-a" }, { "id": "title-b" }]
+    },
+    "motion": {
+      "durationMs": 2000,
+      "tracks": [
+        {
+          "target": { "kind": "surface", "id": "title-a" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0, "easing": "linear" },
+            { "timeMs": 400, "value": 1 }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "title-b" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0 },
+            { "timeMs": 180, "value": 0 },
+            { "timeMs": 1180, "value": 1 }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -3,6 +3,7 @@ import {readFile, mkdir, appendFile} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import path from 'node:path';
+import {NPM_SHELL} from './npm-cmd.mjs';
 
 // SOURCE OF TRUTH: public-distribution, package identity and release artifact.
 // WHAT: decide whether a version needs publication, then validate its exact artifact.
@@ -10,7 +11,9 @@ import path from 'node:path';
 // Tests run locally; GitHub only builds/publishes new versions from main.
 // WHERE: package scripts and .github/workflows/publish.yml; runtime policy stays in RESOURCES.
 export function validateIdentity(manifest, {repository, tag, publishing = false} = {}) {
-  assert.match(manifest.name, /^@[a-z0-9-]+\/[a-z0-9-]+$/);
+  // The public package is the unscoped `velora` (see README maintainer
+  // release); scoped names stay accepted for forks and renames.
+  assert.match(manifest.name, /^(@[a-z0-9-]+\/[a-z0-9-]+|velora)$/, 'Release requires the public package name');
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/,'Release requires a stable numeric version');
   assert.notEqual(manifest.private, true);
   assert.equal(manifest.license, 'MIT');
@@ -33,7 +36,7 @@ export function validateRelease(manifest, files, options = {}) {
   assert.equal(new Set(names).size, names.length, 'Duplicate packed paths');
   for (const name of names) {
     assert.ok(!name.split('/').some(part => part === '..' || part.startsWith('.')), 'Hidden/traversal packed file: ' + name);
-    assert.ok(/^(package\.json|README\.md|LICENSE|dist\/(library|cli)\/.+\.(js|map|ts))$/.test(name),
+    assert.ok(/^(package\.json|README\.md|LICENSE|dist\/(library|cli)\/.+\.(js|map|ts)|skills\/velora\/SKILL\.md|skills\/velora\/(REFERENCE|COMPATIBILITY)\.md|skills\/velora\/templates\/[^/]+\/[^/]+\.(json|tsx|jsx|md|srt|txt)|skills\/velora\/scripts\/[A-Za-z0-9-]+\.mjs|skills\/velora-[a-z0-9-]+\/SKILL\.md)$/.test(name),
       'Unexpected packed file: ' + name);
   }
   const required = ['package.json','README.md','LICENSE',manifest.bin.flute.slice(2)];
@@ -75,7 +78,7 @@ export async function publicationStatus(manifest, {fetchRegistry = fetch, reposi
 const root = fileURLToPath(new URL('../', import.meta.url));
 export function run(command, args, options = {}) {
   const result = spawnSync(command === 'npm' && process.platform === 'win32' ? 'npm.cmd' : command, args,
-    {cwd: root, encoding:'utf8', stdio:'inherit', ...options});
+    {cwd: root, encoding:'utf8', stdio:'inherit', ...(command === 'npm' ? NPM_SHELL : {}), ...options});
   if (result.error) throw result.error;
   if (result.status !== 0) throw Error(command + ' failed (' + result.status + ')');
   return result.stdout;
@@ -102,7 +105,12 @@ export async function inspectArtifact({publishing = false} = {}) {
   });
   const cli = await readFile(path.join(root,manifest.bin.flute),'utf8');
   assert.ok(cli.startsWith('#!/usr/bin/env node'), 'CLI must have executable Node shebang');
-  assert.ok(artifact.files.find(file=>file.path===manifest.bin.flute.slice(2)).mode & 0o111, 'CLI must be executable');
+  const cliEntry = artifact.files.find(file=>file.path===manifest.bin.flute.slice(2));
+  // Windows packs cannot record executable bits; the shebang above plus npm's
+  // bin handling at install time carry the guarantee there. Stay strict on POSIX.
+  if (process.platform === 'win32' && !(cliEntry.mode & 0o111))
+    console.log('Note: Windows pack drops executable bits; shebang verified, npm sets bin permissions on install.');
+  else assert.ok(cliEntry.mode & 0o111, 'CLI must be executable');
   console.log('Checked artifact: '+artifact.filename+' ('+artifact.integrity+')');
   return path.join(directory, artifact.filename);
 }

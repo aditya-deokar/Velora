@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "id": "tour-b",
+  "title": "Tour feature plating",
+  "definition": {
+    "width": 320,
+    "height": 200,
+    "scene": {
+      "camera": { "perspective": 1400, "rotateY": -18 },
+      "focus": { "distance": 1400, "fStop": 8, "focalLength": 50, "maxBlur": 6 },
+      "nodes": [{ "id": "panel" }, { "id": "detail" }]
+    },
+    "motion": {
+      "durationMs": 1500,
+      "tracks": [
+        {
+          "target": { "kind": "surface", "id": "detail" },
+          "property": "z",
+          "keyframes": [
+            { "timeMs": 0, "value": -260 },
+            { "timeMs": 900, "value": 0 }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "detail" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0 },
+            { "timeMs": 900, "value": 1 }
+          ]
+        }
+      ]
+    }
+  }
+}

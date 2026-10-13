@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
+import { npmCmd, NPM_SHELL } from './npm-cmd.mjs';
 import { createServer } from 'node:net';
 import { createServer as httpServer } from 'node:http';
 import { chromium } from 'playwright';
@@ -20,7 +21,7 @@ let browser;
 let unrelated;
 function run(command,args,cwd=host) {
   return new Promise((resolve,reject)=>{
-    const child=spawn(command,args,{cwd,env:commandEnv,stdio:['ignore','pipe','pipe']});
+    const exe=npmCmd(command);const child=spawn(exe,args,{cwd,env:commandEnv,stdio:['ignore','pipe','pipe'],...(exe!==command?NPM_SHELL:{})});
     let stdout='',stderr='';
     child.stdout.on('data',s=>stdout+=s);child.stderr.on('data',s=>stderr+=s);
     const timer=setTimeout(()=>child.kill('SIGTERM'),120000);
@@ -96,9 +97,14 @@ try {
   const cli=path.join(host,'node_modules',installedPkg,'dist/cli/flute.js');
   const installedGuide=JSON.parse(await ok(process.execPath,[cli,'guide','--json']));
   const publicGuide=JSON.parse(await ok(process.execPath,['--input-type=module','-e',`import {getAuthoringGuide} from '${installedPkg}'; console.log(JSON.stringify(getAuthoringGuide()))`]));
-  assert.deepEqual(installedGuide,publicGuide,'Installed CLI and browser-compatible package share the exact guide');
+  const {cliVersion: _installedCliVersion, command: _installedCommand, ...installedCanonical}=installedGuide;
+  const {cliVersion: _publicCliVersion, ...publicCanonical}=publicGuide;
+  assert.deepEqual(installedCanonical,publicCanonical,'Installed CLI and browser-compatible package share the exact guide');
   assert.equal(installedGuide.version,2);
   assert.ok(installedGuide.concepts.some(c=>c.id==='focus'));
+  assert.ok(Array.isArray(installedGuide.commands) && installedGuide.commands.some(c=>c.name==='doctor'));
+  assert.equal(installedGuide.command,'guide');
+  assert.equal(typeof installedGuide.cliVersion,'string');
   assert.ok((await ok(process.execPath,[cli,'--help'])).includes('flute guide'));
   const guideFailure=await run(process.execPath,[cli,'guide','--unknown']);assert.notEqual(guideFailure.code,0);
 

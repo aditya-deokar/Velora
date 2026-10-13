@@ -1,0 +1,1230 @@
+{
+  "version": 1,
+  "kind": "video",
+  "compositionId": "teaser",
+  "compositionSha": "07121a7f2740b9c6857caa6b32b61932291eafc0fc54cb8e742aec386a1e88c1",
+  "seed": 7,
+  "fps": 30,
+  "width": 320,
+  "height": 200,
+  "durationMs": 4500,
+  "segments": [
+    {
+      "id": "s1",
+      "recipe": "teaser-a",
+      "startMs": 0,
+      "durationMs": 2000,
+      "frames": 60
+    },
+    {
+      "id": "s2",
+      "recipe": "teaser-b",
+      "startMs": 2500,
+      "durationMs": 2000,
+      "frames": 60
+    }
+  ],
+  "frames": [
+    {
+      "frame": 0,
+      "timeMs": 0,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "e18b495019578908f07e545082ab8f93d6e76b96d029d98357bb79e58eee567b",
+      "renderMs": 69,
+      "cached": true
+    },
+    {
+      "frame": 1,
+      "timeMs": 33.333333333333336,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "9d6689328aae710590bf6d005aef11e568078ce08597e23cae590f0df85ce6db",
+      "renderMs": 19,
+      "cached": true
+    },
+    {
+      "frame": 2,
+      "timeMs": 66.66666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "7f4bae79edd23027ba3e0f23c80dbb79ddd03602e7322a3fb9f0a259ff955fde",
+      "renderMs": 10,
+      "cached": true
+    },
+    {
+      "frame": 3,
+      "timeMs": 100,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "47e167902c0596af6fa5c487336dc9926fba35af0fbb75db023a10b0ed334d7e",
+      "renderMs": 26,
+      "cached": true
+    },
+    {
+      "frame": 4,
+      "timeMs": 133.33333333333334,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "67264725142adc248c318fa50deaacda31a4ad29ccb1b269e00f74215661f925",
+      "renderMs": 40,
+      "cached": true
+    },
+    {
+      "frame": 5,
+      "timeMs": 166.66666666666666,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "76801e233c4c951095923de3f99e9f7199b6ef530bf727e2e98430274b5ef403",
+      "renderMs": 35,
+      "cached": true
+    },
+    {
+      "frame": 6,
+      "timeMs": 200,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "138dc898a95f05073e56db15c92fb062d91ab216026db74d9121a48fcc5936af",
+      "renderMs": 15,
+      "cached": true
+    },
+    {
+      "frame": 7,
+      "timeMs": 233.33333333333334,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "386c6945c398eeeb0b55191d481aeb698ba21eb2f54ed29487883154a41d87dd",
+      "renderMs": 24,
+      "cached": true
+    },
+    {
+      "frame": 8,
+      "timeMs": 266.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "a8e63e08a6908c017f76c88e29e15b220b22a5faed66987224c22cd88b7b71fd",
+      "renderMs": 44,
+      "cached": true
+    },
+    {
+      "frame": 9,
+      "timeMs": 300,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "fb939558f94e7537c15dbbf93cb6097cd13fe4b27a538b7d142d5bfe779cb1aa",
+      "renderMs": 15,
+      "cached": true
+    },
+    {
+      "frame": 10,
+      "timeMs": 333.3333333333333,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "9c7bcc8788d858a295f7be47f01357eef339b1ed69d3299e42b9c4abdde4ffb7",
+      "renderMs": 17,
+      "cached": true
+    },
+    {
+      "frame": 11,
+      "timeMs": 366.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "8a6621a00fc791661d72c2c52f409ba70f0230d2222ba37b56487531a5d28153",
+      "renderMs": 11,
+      "cached": true
+    },
+    {
+      "frame": 12,
+      "timeMs": 400,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "7f8d2d2ed85157bb2600bd26638cfd4cd8722519d2001b3086624953922c849c",
+      "renderMs": 39,
+      "cached": true
+    },
+    {
+      "frame": 13,
+      "timeMs": 433.3333333333333,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "02b1acb29cb47db7826ad359f51956d8cc70572592c0a657e1b443bec1b9441f",
+      "renderMs": 10,
+      "cached": true
+    },
+    {
+      "frame": 14,
+      "timeMs": 466.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "e00754c85df7e35b2312fb3a9b1c1438ec65b2c4dce105670c6b0b9a9a84f3a3",
+      "renderMs": 17,
+      "cached": true
+    },
+    {
+      "frame": 15,
+      "timeMs": 500,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "3492991de51ca66f7e3b6db857cee337e77130fc1949bb9ce5484f5360505c9d",
+      "renderMs": 27,
+      "cached": true
+    },
+    {
+      "frame": 16,
+      "timeMs": 533.3333333333334,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "1800d18fe680084a8d867cdd560452ce3e30637b184d4ecc11429faf7dea62a8",
+      "renderMs": 20,
+      "cached": true
+    },
+    {
+      "frame": 17,
+      "timeMs": 566.6666666666666,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "cdebddc2e41c5e7262e5fd9a1c60c99efd1872d8f6a6ecbd8de4274b65643c5c",
+      "renderMs": 9,
+      "cached": true
+    },
+    {
+      "frame": 18,
+      "timeMs": 600,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "39e5a48bb6660e8ed0966f1597193f8f582ea03444e42b94893f98b9bc0f98ed",
+      "renderMs": 13,
+      "cached": true
+    },
+    {
+      "frame": 19,
+      "timeMs": 633.3333333333334,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "0ad22d06d6e1517d6696bdb1fd323718194fc00e0639bc41240222044098f892",
+      "renderMs": 24,
+      "cached": true
+    },
+    {
+      "frame": 20,
+      "timeMs": 666.6666666666666,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "712e3745aa8fece32fbb9c77672d53d80825014107355cf6fa24c651769b61d8",
+      "renderMs": 37,
+      "cached": true
+    },
+    {
+      "frame": 21,
+      "timeMs": 700,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "7f20ef06cfbacf3b8f50448ba00009834eb3a8c751ec9845d480b5d3b01e26f8",
+      "renderMs": 13,
+      "cached": true
+    },
+    {
+      "frame": 22,
+      "timeMs": 733.3333333333334,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "235ba023fc828a9b4fb04838d2ec62ec2d40caf9b344982d7384eb70700dc5b7",
+      "renderMs": 9,
+      "cached": true
+    },
+    {
+      "frame": 23,
+      "timeMs": 766.6666666666666,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "a5b98b815922ca944f80d5002168f4ee117e6eac64e56fe616f40e1e05fc81ee",
+      "renderMs": 8,
+      "cached": true
+    },
+    {
+      "frame": 24,
+      "timeMs": 800,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "5c4d0fdf85ade96859d802754a6833336f7f710a6760fad6faaeadbf9a5e0324",
+      "renderMs": 6,
+      "cached": true
+    },
+    {
+      "frame": 25,
+      "timeMs": 833.3333333333334,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "3f7d9c6e823d54794c823c93984ad0f6c79bdc6968240c930b0241328a71bb86",
+      "renderMs": 7,
+      "cached": true
+    },
+    {
+      "frame": 26,
+      "timeMs": 866.6666666666666,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "a14002076c76941f9ebb9e484f0c4bef9592b32ba4bc8de377f1b15a912be883",
+      "renderMs": 17,
+      "cached": true
+    },
+    {
+      "frame": 27,
+      "timeMs": 900,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "69a7bef5e2ff3e9f29765e3a264dde6780a18715087ec7c53ab1977042cea2ea",
+      "renderMs": 22,
+      "cached": true
+    },
+    {
+      "frame": 28,
+      "timeMs": 933.3333333333334,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "6b7ec2523f3531a0d7d3df74b9503301d76f416ba665ebfc43de1f5fb25484fe",
+      "renderMs": 13,
+      "cached": true
+    },
+    {
+      "frame": 29,
+      "timeMs": 966.6666666666666,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "b339cc798062f98d905fc1ee1765f67da8072fef271e750ee750160e206800ed",
+      "renderMs": 14,
+      "cached": true
+    },
+    {
+      "frame": 30,
+      "timeMs": 1000,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "65dd7183ed99e2c1dd1e5c08e032b75ce19ff2762d0fb204c10f32099fe96c1d",
+      "renderMs": 12,
+      "cached": true
+    },
+    {
+      "frame": 31,
+      "timeMs": 1033.3333333333333,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "3c8814d9e6b112509532eb78dc0e25be84771ab9cc5337fb1dbbbe8eff73f484",
+      "renderMs": 12,
+      "cached": true
+    },
+    {
+      "frame": 32,
+      "timeMs": 1066.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "54b0b3f018e445ed30275525c3f85977006867649a34c35879f33558af3b45f6",
+      "renderMs": 27,
+      "cached": true
+    },
+    {
+      "frame": 33,
+      "timeMs": 1100,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "a1f23512bb5b0d12921d6759ca7af4a50272c49cb88ac99f14f980194a1e04e4",
+      "renderMs": 6,
+      "cached": true
+    },
+    {
+      "frame": 34,
+      "timeMs": 1133.3333333333333,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "295211a85c5ed13292c006f5d33726bae5f939e12d9e2e68d3d30da1bab5cf22",
+      "renderMs": 12,
+      "cached": true
+    },
+    {
+      "frame": 35,
+      "timeMs": 1166.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "0406348629b8b052c7ad496811e7b1b9d9f74346121b68bbce8c9eed275423e0",
+      "renderMs": 12,
+      "cached": true
+    },
+    {
+      "frame": 36,
+      "timeMs": 1200,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "18d3ccd758fb1001566275b089fbc6367cb47223278857de4591e3d86c2826a1",
+      "renderMs": 9,
+      "cached": true
+    },
+    {
+      "frame": 37,
+      "timeMs": 1233.3333333333333,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "a45f51b9406e2325c3cad6b886ba1bd23e3faaeebcb0de5d1d3696bd8afc93db",
+      "renderMs": 5,
+      "cached": true
+    },
+    {
+      "frame": 38,
+      "timeMs": 1266.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "b1bf89c1902fb6054fae091d2dbd03ef1000eb7d706e79d3a5a53c691fa1ead5",
+      "renderMs": 6,
+      "cached": true
+    },
+    {
+      "frame": 39,
+      "timeMs": 1300,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "be7b33922691b88a6ee37a100d4a45ed349b25045cdce149e3281b0fcf1cc91c",
+      "renderMs": 5,
+      "cached": true
+    },
+    {
+      "frame": 40,
+      "timeMs": 1333.3333333333333,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "f1245f8847fc055da007a35b97a6848cd3598d837c7219a85b8f38e052619a8c",
+      "renderMs": 12,
+      "cached": true
+    },
+    {
+      "frame": 41,
+      "timeMs": 1366.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "1e23730968b27227bf86ae473119269701dc8ceed9e755eeac5163d52e6b29e7",
+      "renderMs": 13,
+      "cached": true
+    },
+    {
+      "frame": 42,
+      "timeMs": 1400,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "8af80cfae65119faf5f986c5bde48006db2a1d4107422c68247880c86e1321ed",
+      "renderMs": 11,
+      "cached": true
+    },
+    {
+      "frame": 43,
+      "timeMs": 1433.3333333333333,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "6ffbbac1d0b61c7c274e8d994a7c91c9c6303a80e492060306b06471de849443",
+      "renderMs": 9,
+      "cached": true
+    },
+    {
+      "frame": 44,
+      "timeMs": 1466.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "3bca2ce7d4563da3e3efaeb4072dd6bfbbc1edde86721e31fe7ca0273bed6536",
+      "renderMs": 4,
+      "cached": true
+    },
+    {
+      "frame": 45,
+      "timeMs": 1500,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "7e9ad835eb9150b575e16ba1aa6bf1cff1f523da46d794b605966fd19e9c84d7",
+      "renderMs": 3,
+      "cached": true
+    },
+    {
+      "frame": 46,
+      "timeMs": 1533.3333333333333,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "93de4c00a16e19f88ded70336c51e3cdbae408b166feeaa074989a8b8b5687b9",
+      "renderMs": 3,
+      "cached": true
+    },
+    {
+      "frame": 47,
+      "timeMs": 1566.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "5d731434fb799f2c51e4e65d338a5841dfdf041e579d25db587f723bd0b9eaa7",
+      "renderMs": 5,
+      "cached": true
+    },
+    {
+      "frame": 48,
+      "timeMs": 1600,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "7de5d9d2f69ec6fba24a1f7f29c4c4265c6a9715a0059a14500071870e5bde25",
+      "renderMs": 40,
+      "cached": true
+    },
+    {
+      "frame": 49,
+      "timeMs": 1633.3333333333333,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "ec06a4e561189f5cd8ec053556841168da7f60adab2d6bb38d31d46004e01335",
+      "renderMs": 9,
+      "cached": true
+    },
+    {
+      "frame": 50,
+      "timeMs": 1666.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "07e7d5212fb27a17d984d605b47f32917e688e4beee320d7ca59964f3a0ebb60",
+      "renderMs": 13,
+      "cached": true
+    },
+    {
+      "frame": 51,
+      "timeMs": 1700,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "8b9fae3adb1a3e514d312bb87c0c44d62f7cae49520fca2e80f2070beb9fb0f4",
+      "renderMs": 12,
+      "cached": true
+    },
+    {
+      "frame": 52,
+      "timeMs": 1733.3333333333333,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "a07c76a26eb7caada9471927947fa4cf13734c9b028610c62c7535c6ab98e5f8",
+      "renderMs": 11,
+      "cached": true
+    },
+    {
+      "frame": 53,
+      "timeMs": 1766.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "134eff642e152032026f4b0ace42026fa5268f9d0e96c3dcd73e47237720dac8",
+      "renderMs": 37,
+      "cached": true
+    },
+    {
+      "frame": 54,
+      "timeMs": 1800,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "147e07e63320bee83c63f000d1dcb964dfc9303eede5429fc895f93f5ccac7af",
+      "renderMs": 20,
+      "cached": true
+    },
+    {
+      "frame": 55,
+      "timeMs": 1833.3333333333333,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "ae1663e16c1ac711210cf94fb38db56175a555af9f2a9e11a1412659a2e6197f",
+      "renderMs": 14,
+      "cached": true
+    },
+    {
+      "frame": 56,
+      "timeMs": 1866.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "10b3a6f8d6baa1e7b73d5cea0f18087e290beedf23de6de2b017b90f58d0e2c2",
+      "renderMs": 4,
+      "cached": true
+    },
+    {
+      "frame": 57,
+      "timeMs": 1900,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "f560f6f2787edd8345ee7f1f740a235f5b2bb9ae002fbe16fcaa67872be7cbf0",
+      "renderMs": 8,
+      "cached": true
+    },
+    {
+      "frame": 58,
+      "timeMs": 1933.3333333333333,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "4af142f29be57df84179b6e28bff8504734d8180d3990d78d699ec250cb3d00e",
+      "renderMs": 7,
+      "cached": true
+    },
+    {
+      "frame": 59,
+      "timeMs": 1966.6666666666667,
+      "sceneId": "teaser-a",
+      "segmentId": "s1",
+      "sha": "9fc99ee0f04be557f156b5f1aa47c6fa666f111cccee8bcf14562e8cd7c23c73",
+      "renderMs": 5,
+      "cached": true
+    },
+    {
+      "frame": 60,
+      "timeMs": 2000,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 2
+    },
+    {
+      "frame": 61,
+      "timeMs": 2033.3333333333333,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 2
+    },
+    {
+      "frame": 62,
+      "timeMs": 2066.6666666666665,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 63,
+      "timeMs": 2100,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 64,
+      "timeMs": 2133.3333333333335,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 65,
+      "timeMs": 2166.6666666666665,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 66,
+      "timeMs": 2200,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 67,
+      "timeMs": 2233.3333333333335,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 68,
+      "timeMs": 2266.6666666666665,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 69,
+      "timeMs": 2300,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 70,
+      "timeMs": 2333.3333333333335,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 71,
+      "timeMs": 2366.6666666666665,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 72,
+      "timeMs": 2400,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 2
+    },
+    {
+      "frame": 73,
+      "timeMs": 2433.3333333333335,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 74,
+      "timeMs": 2466.6666666666665,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 0
+    },
+    {
+      "frame": 75,
+      "timeMs": 2500,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "b206582a8cd6d708ee12262b10f5f299d622e6ac225dc0db12cda4ab9858709e",
+      "renderMs": 421
+    },
+    {
+      "frame": 76,
+      "timeMs": 2533.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "bb9940709176074069cc9f2dbc58811855edce880f4e38205816321837b3a2da",
+      "renderMs": 205
+    },
+    {
+      "frame": 77,
+      "timeMs": 2566.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "db9ddd5bedf9d5eff76d6b0fe6f984559f98499814d795159464a4bd88d4e2cd",
+      "renderMs": 161
+    },
+    {
+      "frame": 78,
+      "timeMs": 2600,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "35a310249a3d8c1f63ec6ee61748044af753468b2fcd4eaa800f307de277681a",
+      "renderMs": 194
+    },
+    {
+      "frame": 79,
+      "timeMs": 2633.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "02b1e8184483046e5c20a6bda1667aff1e33e1b3144abae73049561a34fe3b2e",
+      "renderMs": 148
+    },
+    {
+      "frame": 80,
+      "timeMs": 2666.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "fc7651a8757f79424bd55fa6b76bb71bcfc1fa61d51ed3ae386efb89dc70a57c",
+      "renderMs": 252
+    },
+    {
+      "frame": 81,
+      "timeMs": 2700,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "356989554af04ec0fd0e08ce9ff65f37e7393035c73c60c35261debee3758175",
+      "renderMs": 125
+    },
+    {
+      "frame": 82,
+      "timeMs": 2733.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "55156b09ee9c017d75e0f73a4a6a7cec48e9c1c2582224dae3c8d50934e8435d",
+      "renderMs": 131
+    },
+    {
+      "frame": 83,
+      "timeMs": 2766.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "25a31fde6f915fdf5645d5eeb497840a5d83fcb95f2074aa2087420538b8c4e4",
+      "renderMs": 182
+    },
+    {
+      "frame": 84,
+      "timeMs": 2800,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "158a4d42aee84eebc7e5c444076d0aef501af873577ddc04caa2e4424b8c5a66",
+      "renderMs": 114
+    },
+    {
+      "frame": 85,
+      "timeMs": 2833.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "308677b7dc9567cbb1b3ba8aed411a5ad8623f84c072515e6739a70d218f67bf",
+      "renderMs": 120
+    },
+    {
+      "frame": 86,
+      "timeMs": 2866.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "28926a954ccb71364fe41f12ce8a647ce2c99b1876ceff9b65e78d7b4ffabf68",
+      "renderMs": 93
+    },
+    {
+      "frame": 87,
+      "timeMs": 2900,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "640d75f1d0503fc5d526852e4da681da63d45faed34de85b3acbb296dcd29b2d",
+      "renderMs": 99
+    },
+    {
+      "frame": 88,
+      "timeMs": 2933.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "077aed5700ab12ca653825c3bca518048cdb9d77eca72de46e18394a3880411f",
+      "renderMs": 128
+    },
+    {
+      "frame": 89,
+      "timeMs": 2966.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "44d001b0b5dfbb50a2219778e935c2cc584403ea4942583b196250c1f98b2f1c",
+      "renderMs": 104
+    },
+    {
+      "frame": 90,
+      "timeMs": 3000,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "476e36c32b3bda426a23ac5d798f9bd0d19741d67eed4d74e4e8d287a8ff9051",
+      "renderMs": 104
+    },
+    {
+      "frame": 91,
+      "timeMs": 3033.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "620b1a8954981397ea46c8b6a02eceeba9cef9b2b55b6bdd29daa74f757c63a7",
+      "renderMs": 116
+    },
+    {
+      "frame": 92,
+      "timeMs": 3066.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "175ce173ad71bed9d9858e4a50031f6287e4be218a87c0ef7e2d38a954686ab5",
+      "renderMs": 96
+    },
+    {
+      "frame": 93,
+      "timeMs": 3100,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "d86dc4cf1f8eec3b1a3c449df4c6222fbcc03871a1e1f49c89c45dc7b829814b",
+      "renderMs": 146
+    },
+    {
+      "frame": 94,
+      "timeMs": 3133.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "059e404339268ec3518c3a95553bcd482a51ee3d3d5417e4aca3785aee4f035c",
+      "renderMs": 105
+    },
+    {
+      "frame": 95,
+      "timeMs": 3166.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "4025150216709229cf0db2b15e498dd1298ce47ede557a8130d5c22caf835ef9",
+      "renderMs": 116
+    },
+    {
+      "frame": 96,
+      "timeMs": 3200,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "9f49b4c8e7cfc1f461b2a8aca78fd5a62b523cba0cce5e199d1b05d500c2e797",
+      "renderMs": 102
+    },
+    {
+      "frame": 97,
+      "timeMs": 3233.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "3afc8309619fe3af4808e06ade0f2458f61ef50f0c288e8ba6cb40f0994b6153",
+      "renderMs": 133
+    },
+    {
+      "frame": 98,
+      "timeMs": 3266.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "fc1f799148f002e8f1c3475d8bbeef558ae776debbeca9a9dc676a398550391e",
+      "renderMs": 227
+    },
+    {
+      "frame": 99,
+      "timeMs": 3300,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "eecdb3d2da383242ff719e210cf44559b7e957fc25efdb80710f9cf4fca6bfd7",
+      "renderMs": 92
+    },
+    {
+      "frame": 100,
+      "timeMs": 3333.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "a7a23c613b82e565124db875d6190ec4318a265694f14cfde6347a18639252e0",
+      "renderMs": 85
+    },
+    {
+      "frame": 101,
+      "timeMs": 3366.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "201c9528170fa9812212e815e12e4eda129174fb3b6c26e8bb682c0681b13ccf",
+      "renderMs": 230
+    },
+    {
+      "frame": 102,
+      "timeMs": 3400,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "4b0963a7cb1d1f1664a4b4867d102cc339884115496d2d4a1d53b520dce00dc7",
+      "renderMs": 93
+    },
+    {
+      "frame": 103,
+      "timeMs": 3433.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "71f06e1d6c632df1c8fab185c249a6704b3bb8d82cc64431a4fe00f96fc39d11",
+      "renderMs": 92
+    },
+    {
+      "frame": 104,
+      "timeMs": 3466.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "b377dc840dd65f6955d181388c6053a46c0f80a245a1b7a5c4d0a14d043e8feb",
+      "renderMs": 228
+    },
+    {
+      "frame": 105,
+      "timeMs": 3500,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "b9bd966a7a671f710e4456b2f6e67f53843d22968f45e068b8e6d05f07e47e5b",
+      "renderMs": 206
+    },
+    {
+      "frame": 106,
+      "timeMs": 3533.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "483951c226eea2a5c5e833af7773f42318d315c13e7df9e6a448c164ee521e3d",
+      "renderMs": 204
+    },
+    {
+      "frame": 107,
+      "timeMs": 3566.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "38f308c20ca8c84d8eb2c02b73d19add7113e36b10845e2477b0e99c7aea6f62",
+      "renderMs": 188
+    },
+    {
+      "frame": 108,
+      "timeMs": 3600,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "ecde5799846f1ee602ae7f9fd5ee6124a9cf7c0ffa6abeb8307001ae9c370b7d",
+      "renderMs": 220
+    },
+    {
+      "frame": 109,
+      "timeMs": 3633.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "ac98acf648b9c795080be88ee81ac392ca0404716ba5862e3061e6ca3f515d85",
+      "renderMs": 401
+    },
+    {
+      "frame": 110,
+      "timeMs": 3666.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "6bfe37d7fd40272ee2c4bd76b4709137e928dd58fcee1c322a1be126cfc05c54",
+      "renderMs": 154
+    },
+    {
+      "frame": 111,
+      "timeMs": 3700,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "26f846e22ee7b604299ede6c80aafc1407a2e51f6723232634a80cd8b0c9377c",
+      "renderMs": 182
+    },
+    {
+      "frame": 112,
+      "timeMs": 3733.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "7bbe42d58eea4aff827ad344b585485d00fd74ac5989e6d6f6622bff8e0f7f1d",
+      "renderMs": 130
+    },
+    {
+      "frame": 113,
+      "timeMs": 3766.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "6c0e5190240ef51f7d6bcb537ad9e32a2a6f2a8b7a87d7422c19c15d3584b4f7",
+      "renderMs": 286
+    },
+    {
+      "frame": 114,
+      "timeMs": 3800,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "1dd3d5bdfe678e4a2f2801e1a999b4d4772b7bc3b3b4dbd37587fa58a3ef632b",
+      "renderMs": 189
+    },
+    {
+      "frame": 115,
+      "timeMs": 3833.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "733c84e9254e22986e9101109ea080e4fa3f8cf87323b0658e31cea09ed1d713",
+      "renderMs": 172
+    },
+    {
+      "frame": 116,
+      "timeMs": 3866.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "2deecd994f1ed24346f4d2d686d10ae6becbc959cd2775ed708149e462401065",
+      "renderMs": 298
+    },
+    {
+      "frame": 117,
+      "timeMs": 3900,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "16c8ff4a3cf3647aaa1d2af03f2ef854850fc5a4e4d5ae96e628931fcef8ef9b",
+      "renderMs": 190
+    },
+    {
+      "frame": 118,
+      "timeMs": 3933.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "ff03aadd019e72f0e145cb888b1dbd04846cad3d76e3c05edac3c2858dda915b",
+      "renderMs": 211
+    },
+    {
+      "frame": 119,
+      "timeMs": 3966.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "a581a13356ff6cd0edd5e1eaab60fe057c5960b379ed74a15370340bd48460dd",
+      "renderMs": 251
+    },
+    {
+      "frame": 120,
+      "timeMs": 4000,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "d8d814cdfd689769df65d7d3b46c0fb5fbee8a42ee97bc8cf840f639ad70b6de",
+      "renderMs": 164
+    },
+    {
+      "frame": 121,
+      "timeMs": 4033.3333333333335,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "c6cf4e8cc1f44f4db440ae3d1c57d7f55fffc27bef48cbf58dec7902df0e523f",
+      "renderMs": 120
+    },
+    {
+      "frame": 122,
+      "timeMs": 4066.6666666666665,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "f5c5365fb95c7737ee52fae322eeeccb30d5e645ca3b8eb1c077528e2ac3cfda",
+      "renderMs": 102
+    },
+    {
+      "frame": 123,
+      "timeMs": 4100,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "631c68ae7a0cadb286e5b67816ecc8de62b52fcd5b590cabcad2e71ec51e82a9",
+      "renderMs": 133
+    },
+    {
+      "frame": 124,
+      "timeMs": 4133.333333333333,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "34d8866d26d331af53174cc98a69672790703aeebfa3a182ae54040ab8835f2e",
+      "renderMs": 131
+    },
+    {
+      "frame": 125,
+      "timeMs": 4166.666666666667,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "71ae470a2192e5a0bb3b1a2393ab5369a5664b5750662fefa4e77d11e82145a7",
+      "renderMs": 111
+    },
+    {
+      "frame": 126,
+      "timeMs": 4200,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "a9cde4636a9e4fda6e2d13069bcabb58443d1dba51c09c2e7ff80efa597a4501",
+      "renderMs": 92
+    },
+    {
+      "frame": 127,
+      "timeMs": 4233.333333333333,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "5e5288043752adc919b1f518d3d526f7beafb828aabab8eb6acd9e63e5550521",
+      "renderMs": 107
+    },
+    {
+      "frame": 128,
+      "timeMs": 4266.666666666667,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "529cd4818ffcec58354b615b27972da82f902a68541b4df909a0a0c61e7d972c",
+      "renderMs": 121
+    },
+    {
+      "frame": 129,
+      "timeMs": 4300,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "990b2195146e1909dd590461f358ec8392022ade20dc2cc91e29c1bd0562dfd3",
+      "renderMs": 121
+    },
+    {
+      "frame": 130,
+      "timeMs": 4333.333333333333,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "5ac101784347d65bfe38f4263f624c66635a5d2af24104480c9a71e71584332b",
+      "renderMs": 142
+    },
+    {
+      "frame": 131,
+      "timeMs": 4366.666666666667,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "2486f6a2cd774f3cc0ee75917b067f50c37be4b25036aadb3f49cbba237f2659",
+      "renderMs": 97
+    },
+    {
+      "frame": 132,
+      "timeMs": 4400,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "0ba7aa358d9c67ff42ce4f6d0dd133ba13bc67276120222248c567b8c2be7dba",
+      "renderMs": 128
+    },
+    {
+      "frame": 133,
+      "timeMs": 4433.333333333333,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "d496e54a765ac929edf3fe116689d1b4423232d1de8208c8cfd2a042ae3cc150",
+      "renderMs": 87
+    },
+    {
+      "frame": 134,
+      "timeMs": 4466.666666666667,
+      "sceneId": "teaser-b",
+      "segmentId": "s2",
+      "sha": "95e7bc16509e6b8d5a59c61973e8f43f22bd1d2004a77bf47203fb158df4994f",
+      "renderMs": 155
+    }
+  ],
+  "audio": {
+    "tracks": [
+      {
+        "id": "narr",
+        "assetId": "narr",
+        "startMs": 0
+      }
+    ],
+    "driftMs": 0
+  },
+  "captions": {
+    "file": "subs.srt",
+    "cues": 2,
+    "burnIn": false,
+    "windows": [
+      {
+        "startMs": 0,
+        "endMs": 2000
+      },
+      {
+        "startMs": 2500,
+        "endMs": 4500
+      }
+    ]
+  },
+  "ffmpegArgs": [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-nostdin",
+    "-y",
+    "-i",
+    "C:\\Users\\adity\\AppData\\Local\\Temp\\demo-a-full\\.flute-video-rLFAV4/video.mp4",
+    "-i",
+    "C:\\Users\\adity\\AppData\\Local\\Temp\\demo-a-full\\assets\\narr.wav",
+    "-filter_complex",
+    "[1:a]adelay=0|0,volume=1[aout]",
+    "-map",
+    "0:v",
+    "-map",
+    "[aout]",
+    "-c:a",
+    "aac",
+    "-shortest",
+    "-c:v",
+    "copy",
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    "C:\\Users\\adity\\AppData\\Local\\Temp\\demo-a-full\\demo-a-green.mp4"
+  ],
+  "veloraVersion": "0.1.2",
+  "checks": [
+    {
+      "id": "bridge-present",
+      "pass": true,
+      "detail": "Segments captured through the capture bridge; gaps render black void."
+    }
+  ],
+  "createdAt": "2026-10-13T19:10:41.129Z"
+}

@@ -1,4 +1,5 @@
 import {spawn} from 'node:child_process';
+import {NPM, NPM_SHELL} from './npm-cmd.mjs';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -14,14 +15,14 @@ function leaves(name){
  });
 }
 const ci=process.argv.includes('--ci');
-const pending=new Set([...leaves('verify:reuse'),'test:agent','test:portable:app','test:portable:pages','test:portable:react']);
+const pending=new Set([...leaves('verify:reuse'),'test:agent','test:agent-demos','test:portable:app','test:portable:pages','test:portable:react']);
 // Hosted CI has no qualified hardware GPU. Keep all behavior checks there;
 // maintainers run the unmodified hardware budgets with verify:release locally.
 if(ci)pending.delete('test:performance');
 await mkdir(new URL('../.release/logs/',import.meta.url),{recursive:true});
 async function run(name,prebuilt=false){
  const result=await new Promise(resolve=>{
-  const child=spawn('npm',['run',name],{cwd:root,env:{...process.env,FLUTE_VERIFY_HARDWARE:ci?'0':'1',...(prebuilt?{FLUTE_VERIFY_PREBUILT:'1'}:{})},stdio:['ignore','pipe','pipe']});
+   const child=spawn(NPM,['run',name],{cwd:root,env:{...process.env,FLUTE_VERIFY_HARDWARE:ci?'0':'1',...(prebuilt?{FLUTE_VERIFY_PREBUILT:'1'}:{})},stdio:['ignore','pipe','pipe'],...NPM_SHELL});
   let output='';child.stdout.on('data',value=>output+=value);child.stderr.on('data',value=>output+=value);
   child.on('error',error=>resolve({code:1,output:output+error.message}));child.on('close',code=>resolve({code,output}));
  });
@@ -33,7 +34,7 @@ try{
  // This tests prepack as well as the same canonical build used by verify:reuse.
  await run('release:local');pending.delete('build');
  const exclusive=['test:browser','test:performance','test:library'];
- const installed=['test:installed','test:iterate','test:agent','test:portable:app','test:portable:pages','test:portable:react'];
+  const installed=['test:installed','test:iterate','test:agent','test:agent-demos','test:portable:app','test:portable:pages','test:portable:react'];
  const independent=[...pending].filter(name=>!exclusive.includes(name)&&!installed.includes(name));
  const checkGroup=async names=>{const results=await Promise.allSettled(names.map(name=>run(name,true)));const failures=results.filter(result=>result.status==='rejected');if(failures.length)throw new AggregateError(failures.map(result=>result.reason),'Verification failed');};
  await checkGroup(independent);

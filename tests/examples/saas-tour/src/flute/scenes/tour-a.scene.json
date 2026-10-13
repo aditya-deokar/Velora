@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "id": "tour-a",
+  "title": "Tour dashboard survey",
+  "definition": {
+    "width": 320,
+    "height": 200,
+    "scene": {
+      "camera": { "perspective": 1400, "rotateY": -20, "rotateX": 8 },
+      "focus": { "distance": 1400, "fStop": 8, "focalLength": 50, "maxBlur": 6 },
+      "nodes": [{ "id": "page" }]
+    },
+    "motion": {
+      "durationMs": 1500,
+      "tracks": [
+        {
+          "target": { "kind": "camera" },
+          "property": "y",
+          "keyframes": [
+            { "timeMs": 0, "value": -80 },
+            { "timeMs": 1500, "value": 80 }
+          ]
+        }
+      ]
+    }
+  }
+}

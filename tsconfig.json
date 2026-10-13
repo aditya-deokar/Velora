@@ -29,5 +29,11 @@
     "vite.cli.config.ts",
     "app",
     "vite.test.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests/agent/demo-*/host",
+    "tests/examples"
   ]
 }

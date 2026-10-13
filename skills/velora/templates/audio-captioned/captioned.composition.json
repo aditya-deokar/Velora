@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "captioned",
+  "title": "Captioned",
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "seed": 3,
+  "scenes": [
+    { "id": "s1", "recipe": "minimal", "startMs": 0, "durationMs": 4000 }
+  ],
+  "assets": [],
+  "audio": [],
+  "captions": { "file": "subs.srt", "burnIn": false }
+}

@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "id": "growth",
+  "title": "Seeded growth chart",
+  "definition": {
+    "width": 320,
+    "height": 200,
+    "scene": {
+      "camera": { "perspective": 1400 },
+      "focus": { "distance": 1400, "fStop": 8, "focalLength": 50, "maxBlur": 6 },
+      "nodes": [{ "id": "bar-a" }, { "id": "bar-b" }, { "id": "bar-c" }]
+    },
+    "motion": {
+      "durationMs": 1500,
+      "tracks": [
+        {
+          "target": { "kind": "surface", "id": "bar-a" },
+          "property": "y",
+          "keyframes": [
+            { "timeMs": 0, "value": 120 },
+            { "timeMs": 900, "value": 0 }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "bar-b" },
+          "property": "y",
+          "keyframes": [
+            { "timeMs": 0, "value": 120 },
+            { "timeMs": 150, "value": 120 },
+            { "timeMs": 1050, "value": 0 }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "bar-c" },
+          "property": "y",
+          "keyframes": [
+            { "timeMs": 0, "value": 120 },
+            { "timeMs": 300, "value": 120 },
+            { "timeMs": 1200, "value": 0 }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "bar-a" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0, "easing": "linear" },
+            { "timeMs": 300, "value": 1 }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "bar-b" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0 },
+            { "timeMs": 150, "value": 0 },
+            { "timeMs": 600, "value": 1 }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "bar-c" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0 },
+            { "timeMs": 300, "value": 0 },
+            { "timeMs": 900, "value": 1 }
+          ]
+        }
+      ]
+    }
+  }
+}

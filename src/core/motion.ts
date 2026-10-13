@@ -228,6 +228,8 @@ export function cinematicTimeAtProgress(progress: number): number {
 
 /** Quantize presentation time only when a preview cadence is explicitly chosen.
  * Export still samples its own exact frame times; speed and easing do not change.
+ * Canonical frame indexing lives in core/timeline (frameAt/timeAtFrame, round-based);
+ * this floored sampler stays for display-cadence preview only. Do not use it for renders.
  */
 export function sampleFrameTime(elapsedMs:number, fps:number | "native" = "native"):number {
   if(!Number.isFinite(elapsedMs)||elapsedMs<0) throw new Error("Frame time must be finite and nonnegative.");

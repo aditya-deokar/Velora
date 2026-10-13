@@ -1,0 +1,20 @@
+{
+  "demo": "demo-a",
+  "composition": "teaser.composition.json",
+  "canvas": { "width": 320, "height": 200, "fps": 30, "seed": 7, "durationMs": 4500 },
+  "setup": ["copy host/ to a temp dir", "npm install", "install packed velora tarball"],
+  "steps": [
+    { "skill": "velora-init", "cmd": ["init", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-composition", "cmd": ["inspect", "--composition", "teaser.composition.json", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-composition", "cmd": ["scenes", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-debug", "cmd": ["validate", "--composition", "teaser-draft.composition.json", "--json"], "expect": { "code": 1, "issue": "ERR_CAPTION_TIMING" }, "replayable": true, "draft": { "base": "teaser.composition.json", "patch": { "scenes.1.startMs": 1500 } }, "note": "first draft: cue outlives the 3500ms span; fixed by butt-joining to 4500ms, see issue-fix-log.md" },
+    { "skill": "velora-debug", "cmd": ["validate", "--composition", "teaser.composition.json", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-audio", "cmd": ["audio", "check", "--composition", "teaser.composition.json", "--json"], "expect": { "code": 0 }, "replayable": true, "requires": ["ffmpeg"] },
+    { "skill": "velora-audio", "cmd": ["captions", "check", "--composition", "teaser.composition.json", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-render", "cmd": ["render", "--composition", "teaser.composition.json", "--frame", "63", "--out", "proof.png", "--json"], "expect": { "code": 0 }, "replayable": true, "note": "gap frame renders black void with a dead server URL" },
+    { "skill": "velora-render", "cmd": ["frames", "--composition", "teaser.composition.json", "--out", "stills", "--at", "2100,2300", "--url", "http://127.0.0.1:1", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-verify", "cmd": ["check", "--frames", "stills", "--json"], "expect": { "code": 0 }, "replayable": true },
+    { "skill": "velora-export", "cmd": ["render", "--composition", "teaser.composition.json", "--out", "demo-a-green.mp4", "--json"], "expect": { "code": 0 }, "replayable": false, "requires": ["dev-server", "chromium", "ffmpeg"], "note": "recorded evidence: 135 frames, MP4 hash in expected-hashes.json; replay needs a live dev server" },
+    { "skill": "velora-verify", "cmd": ["check", "--video", "demo-a-green.mp4", "--manifest", "demo-a-green.manifest.json", "--json"], "expect": { "code": 0 }, "replayable": false, "requires": ["demo-a-green.mp4"], "note": "recorded evidence: all suites green; intermediate failures in issue-fix-log.md" }
+  ]
+}

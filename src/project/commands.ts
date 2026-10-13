@@ -1,9 +1,20 @@
 import { portableIntegration, portableCatalog } from "./portable";
-import { discoverRecipes } from "./discovery";
+import { discoverAssets, discoverRecipes, discoverSharedComponents, loadComposition, type AssetDiscovery } from "./discovery";
 import { z } from "zod";
 import { RESOURCES } from "../core/resources";
 import { FLUTE_BRAND } from "../core/branding";
-import { ProjectResultSchema, ProjectStateSchema, type ProjectResult, type ProjectState } from "../core/project";
+import { OpenPreviewSchema, ProjectResultSchema, ProjectStateSchema, type ProjectResult, type ProjectState } from "../core/project";
+import { normalizeIssue, nextForIssues, type CliIssue, type DoctorCheck, type DoctorResult } from "../core/cli-schema";
+import { ASSETS_DIRECTORY, AssetIdSchema, MAX_ASSET_BYTES, resolveAssetId, sniffAssetType, type DiscoveredAsset } from "../core/assets";
+import { compositionTotals, resolveCompositionSpec, type Composition } from "../core/composition";
+import { AUDIO_DRIFT_BUDGET_MS, audioPlacement } from "../core/audio";
+import { checkCaptions, parseCaptions } from "../core/captions";
+import { TRANSITION_CATALOG } from "../core/transitions";
+import { detectForbiddenClock } from "../core/gsap";
+import { AGENT_NAMES, VELORA_SKILL_NAMES, agentSnippet, parseSkillFrontmatter, validateSkillContent, type AgentName } from "./skills";
+import { SceneRecipeIdSchema, sceneMetadata, type SceneCatalog } from "../core/recipes";
+import { reviewAuthoring } from "../core/authoring";
+import type { SceneIssue } from "../core/scene";
 import * as services from "./services";
 import { fault } from "./errors";
 import { generatedPreview, htmlEntry, inspectConfig, inspectEntry } from "./vite";
@@ -287,6 +298,7 @@ export async function executeProjectCommand(operation: unknown, input: unknown, 
     if (operation === "init-project") result = await initialize(root, (parsed.data as z.output<typeof RESOURCES["init-project"]>).packageSource, (parsed.data as z.output<typeof RESOURCES["init-project"]>).adapter);
     else if (operation === "sync-project") result = await synchronize(root);
     else if (operation === "open-preview") result = await openPreview(root, parsed.data as z.output<typeof RESOURCES["open-preview"]>);
+    else if (operation === "validate-project") result = await validate(root, parsed.data as z.output<typeof RESOURCES["validate-project"]>);
     else result = { success: true, data: { project: await load(root) } };
     return ProjectResultSchema.parse(result);
   } catch (error) {
@@ -467,4 +479,816 @@ async function synchronize(root:string):Promise<ProjectResult> {
   await services.atomicWrite(root,managedPath,JSON.stringify(managed,null,2)+"\n",savedText);
   await services.removeText(root,transactionPath,transaction);
   return {success:true,data:{project,changed:true}};
+}
+
+// SOURCE OF TRUTH: executeDoctorCommand project-side health checks.
+// WHAT: read-only environment and project diagnostics with stable codes.
+// WHY: agents diagnose init/render failures before mutating anything.
+// WHERE: cli/index merges these checks with capture-prerequisite probes;
+// services owns all filesystem/process effects.
+const DoctorInputSchema = z.strictObject({ url: OpenPreviewSchema.shape.url.optional() });
+function doctorCheck(checks: DoctorCheck[], issues: CliIssue[], id: string, label: string, pass: boolean, detail?: string, code?: string, hint?: string) {
+  checks.push({ id, label, pass, ...(detail ? { detail } : {}), ...(hint ? { hint } : {}), ...(code && !pass ? { code } : {}) });
+  if (!pass) issues.push(normalizeIssue({ code: code ?? "ERR_INTERNAL", message: detail ? `${label}: ${detail}` : label, path: `doctor.${id}`, ...(hint ? { hint } : {}) }));
+}
+function faultCode(error: unknown): string | undefined {
+  return error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : undefined;
+}
+export async function executeDoctorCommand(input: unknown, context: { root: string }): Promise<DoctorResult> {
+  const checks: DoctorCheck[] = [];
+  const issues: CliIssue[] = [];
+  const parsed = DoctorInputSchema.safeParse(input);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues)
+      issues.push(normalizeIssue({ code: "invalid-input", message: issue.message, path: `doctor.${issue.path.join(".") || "url"}` }));
+    return { success: false as const, command: "doctor" as const, data: { checks }, issues, next: nextForIssues(issues) };
+  }
+  if (!context || typeof context.root !== "string") {
+    doctorCheck(checks, issues, "scope", "Project root", false, "Provide an absolute local project directory.", "invalid-scope");
+    return { success: false as const, command: "doctor" as const, data: { checks }, issues, next: nextForIssues(issues) };
+  }
+  let root: string;
+  try {
+    root = await services.canonicalRoot(context.root);
+    doctorCheck(checks, issues, "scope", "Project root", true, root);
+  } catch (error) {
+    doctorCheck(checks, issues, "scope", "Project root", false,
+      error instanceof Error ? error.message : "Unreadable project root.", faultCode(error) ?? "invalid-scope");
+    return { success: false as const, command: "doctor" as const, data: { checks }, issues, next: nextForIssues(issues) };
+  }
+  const nodeVersion = services.runtimeVersion();
+  const nodeMatch = /^v?(\d+)\.(\d+)/.exec(nodeVersion);
+  const nodeOk = !!nodeMatch && (Number(nodeMatch[1]) > 22 || (Number(nodeMatch[1]) === 22 && Number(nodeMatch[2]) >= 12));
+  doctorCheck(checks, issues, "node", "Node runtime", nodeOk,
+    nodeOk ? `${nodeVersion} satisfies >=22.12.0.` : `${nodeVersion} is below the required >=22.12.0.`,
+    "ERR_NODE_UNSUPPORTED");
+  try {
+    const pkg = await packageAt(root, "package.json");
+    if (!pkg) doctorCheck(checks, issues, "package", "npm package", false, "No package.json at the project root.", "unsupported-project");
+    else if (pkg.workspaces !== undefined || (pkg.packageManager && !/^npm@\d/.test(pkg.packageManager)))
+      doctorCheck(checks, issues, "package", "npm package", false, "Automatic setup supports a single-root npm project.", "unsupported-project");
+    else doctorCheck(checks, issues, "package", "npm package", true, pkg.name ?? "package.json is a single-root npm package.");
+  } catch (error) {
+    doctorCheck(checks, issues, "package", "npm package", false,
+      error instanceof Error ? error.message : "Unreadable package.json.", faultCode(error) ?? "invalid-file");
+  }
+  try {
+    await hostDependenciesValid(root);
+    doctorCheck(checks, issues, "react", "React renderer", true, "Installed React and React DOM satisfy 18.2+ or 19.x.");
+  } catch (error) {
+    doctorCheck(checks, issues, "react", "React renderer", false,
+      error instanceof Error ? error.message : "Missing or incompatible React installation.", "ERR_REACT_UNSUPPORTED");
+  }
+  try {
+    const installed = await installationValid(root, false);
+    if (installed) doctorCheck(checks, issues, "toolkit", "Velora toolkit", true, "Installed velora package exposes the preview entry.");
+    else doctorCheck(checks, issues, "toolkit", "Velora toolkit", false, "Velora is not installed in this project.", "ERR_TOOLKIT_MISSING");
+  } catch (error) {
+    doctorCheck(checks, issues, "toolkit", "Velora toolkit", false,
+      error instanceof Error ? error.message : "Velora installation conflict.", faultCode(error) ?? "ERR_TOOLKIT_MISSING");
+  }
+  try {
+    const catalog = await discoverRecipes(root);
+    if (catalog.issues.length) doctorCheck(checks, issues, "scenes", "Scene catalog", false,
+      catalog.issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n").slice(0, 500), "ERR_SCENE_INVALID");
+    else doctorCheck(checks, issues, "scenes", "Scene catalog", true,
+      catalog.scenes.length ? `${catalog.scenes.length} scene${catalog.scenes.length === 1 ? "" : "s"} validated.` : "No scenes yet; the catalog is valid and empty.");
+  } catch (error) {
+    doctorCheck(checks, issues, "scenes", "Scene catalog", false,
+      error instanceof Error ? error.message : "Unable to read the scene catalog.", faultCode(error) ?? "ERR_SCENE_INVALID");
+  }
+  if (parsed.data.url !== undefined) {
+    try {
+      await services.fetchText(parsed.data.url);
+      doctorCheck(checks, issues, "dev-server", "Dev server", true, `${parsed.data.url} responds.`);
+    } catch {
+      doctorCheck(checks, issues, "dev-server", "Dev server", false,
+        `No supported dev server at ${parsed.data.url}. Run npm run dev first.`, "ERR_SERVER_UNREACHABLE");
+    }
+  }
+  if (!issues.length) return { success: true as const, command: "doctor" as const, data: { checks } };
+  return { success: false as const, command: "doctor" as const, data: { checks }, issues, next: nextForIssues(issues) };
+}
+
+// SOURCE OF TRUTH: executeInspectCommand, executeAssetsCommand, validate, read-only planning operations.
+// WHAT: project/scene/composition inspection, asset management and full validation without mutation (except assets add/rm).
+// WHY: agents plan videos from machine-readable reports before generating any scene source.
+// WHERE: cli/index adapts arguments; discovery loads files; services owns all effects.
+const InspectInputSchema = z.strictObject({ sceneId: SceneRecipeIdSchema.optional(), composition: z.string().min(1).optional() });
+export type InspectData =
+  | { kind: "project"; initialized: boolean; entry?: string; projectId?: string; adapter?: string;
+      react: { declared: { react: string | null; reactDom: string | null }; installed: { react: string | null; reactDom: string | null } };
+      recipes: { count: number; ids: string[]; issues: SceneIssue[] };
+      assets: { count: number; ids: string[] }; sharedComponents: string[] }
+  | { kind: "scene"; id: string; title: string; source: string; binding: string;
+      width: number; height: number; durationMs: number; nodeCount: number; nodeIds: string[];
+      hasSnapshot: boolean; snapshotTimeMs?: number; sharedComponents: string[]; issues: SceneIssue[] }
+  | { kind: "composition"; file: string; composition: Composition;
+      resolved: { scenes: { id: string; recipe: string; title: string; nodeCount: number; startMs: number; durationMs: number }[];
+        assets: { id: string; path: string; type: string; bytes: number }[] };
+      totals: { durationMs: number; scenes: number; assets: number };
+      catalogIssues: SceneIssue[]; issues: { code: string; path: string; message: string }[] };
+export type InspectResult =
+  | { success: true; command: "inspect"; data: InspectData }
+  | { success: false; command: "inspect"; issues: CliIssue[]; next: string[] };
+function inspectFailure(issues: unknown[]): InspectResult {
+  const normalized = (issues as unknown[]).map(normalizeIssue);
+  return { success: false as const, command: "inspect" as const, issues: normalized, next: nextForIssues(normalized) };
+}
+async function installedVersion(root: string, name: "react" | "react-dom"): Promise<string | null> {
+  try {
+    const text = await services.readDependency(root, name);
+    if (!text) return null;
+    const parsed = JSON.parse(text) as { version?: unknown };
+    return typeof parsed.version === "string" ? parsed.version : null;
+  } catch { return null; }
+}
+export async function executeInspectCommand(input: unknown, context: { root: string }): Promise<InspectResult> {
+  try {
+    const parsed = InspectInputSchema.safeParse(input);
+    if (!parsed.success)
+      return inspectFailure(parsed.error.issues.map((issue) => ({ code: "invalid-input", message: issue.message, path: `inspect.${issue.path.join(".") || "input"}` })));
+    if (parsed.data.sceneId !== undefined && parsed.data.composition !== undefined)
+      return inspectFailure([{ code: "ERR_INVALID_FLAG_COMBINATION", message: "Pass only one of --scene or --composition.", path: "inspect" }]);
+    if (!context || typeof context.root !== "string")
+      return inspectFailure([{ code: "invalid-scope", message: "Provide an absolute local project directory.", path: "inspect" }]);
+    const root = await services.canonicalRoot(context.root);
+    if (parsed.data.sceneId !== undefined) {
+      const catalog = await discoverRecipes(root, parsed.data.sceneId);
+      const selected = catalog.selected;
+      if (!selected)
+        return inspectFailure([{ code: "ERR_SCENE_NOT_FOUND", message: `Scene "${parsed.data.sceneId}" is not in the validated catalog. Run velora scenes --json to list available IDs.`, path: "sceneId" }]);
+      const metadata = sceneMetadata(selected);
+      return { success: true as const, command: "inspect" as const, data: {
+        kind: "scene", id: selected.id, title: selected.title, source: selected.source, binding: selected.binding,
+        width: metadata.width, height: metadata.height, durationMs: metadata.durationMs, nodeCount: metadata.nodeCount,
+        nodeIds: selected.definition.scene.nodes.map((node) => node.id),
+        hasSnapshot: metadata.hasSnapshot, ...(metadata.snapshotTimeMs !== undefined ? { snapshotTimeMs: metadata.snapshotTimeMs } : {}),
+        sharedComponents: await discoverSharedComponents(root), issues: catalog.issues,
+      } };
+    }
+    if (parsed.data.composition !== undefined) {
+      const loaded = await loadComposition(root, parsed.data.composition);
+      if ("issues" in loaded) return inspectFailure(loaded.issues);
+      const catalog = await discoverRecipes(root);
+      const found = await discoverAssets(root);
+      const resolved = resolveCompositionSpec(loaded.composition, catalog, found.assets, found.manifest.aliases);
+      return { success: true as const, command: "inspect" as const, data: {
+        kind: "composition", file: parsed.data.composition, composition: loaded.composition,
+        resolved: resolved.resolved, totals: resolved.totals,
+        catalogIssues: catalog.issues, issues: resolved.issues,
+      } };
+    }
+    const saved = await stateFor(root);
+    const pkg = await packageAt(root, "package.json");
+    const dependencies = { ...(pkg?.devDependencies as Record<string, string> | undefined), ...(pkg?.dependencies as Record<string, string> | undefined) };
+    const catalog = await discoverRecipes(root);
+    const found = await discoverAssets(root);
+    return { success: true as const, command: "inspect" as const, data: {
+      kind: "project", initialized: saved.project !== undefined,
+      ...(saved.project ? { entry: saved.project.entry, projectId: saved.project.projectId, ...(saved.project.adapter ? { adapter: saved.project.adapter } : {}) } : {}),
+      react: {
+        declared: { react: dependencies.react ?? null, reactDom: dependencies["react-dom"] ?? null },
+        installed: { react: await installedVersion(root, "react"), reactDom: await installedVersion(root, "react-dom") },
+      },
+      recipes: { count: catalog.scenes.length, ids: catalog.scenes.map((scene) => scene.id), issues: catalog.issues },
+      assets: { count: found.assets.length, ids: found.assets.map((asset) => asset.id) },
+      sharedComponents: await discoverSharedComponents(root),
+    } };
+  } catch (error) {
+    const known = error instanceof Error && "code" in error && "target" in error;
+    return inspectFailure([{ code: known ? String(error.code) : "project-error",
+      message: known ? error.message : "Unable to inspect the project. Check local files and permissions, then retry.",
+      ...(known && typeof error.target === "string" ? { path: error.target } : {}) }]);
+  }
+}
+export type AssetsData = {
+  assets: (DiscoveredAsset & { alias?: boolean })[];
+  manifest: { present: boolean; aliases: Record<string, string> };
+  issues?: CliIssue[];
+  verdict?: "pass" | "fail";
+  removed?: { id: string; path: string };
+};
+export type AssetsResult =
+  | { success: true; command: "assets"; data: AssetsData }
+  | { success: false; command: "assets"; issues: CliIssue[]; next: string[] };
+function assetsFailure(issues: unknown[]): AssetsResult {
+  const normalized = (issues as unknown[]).map(normalizeIssue);
+  return { success: false as const, command: "assets" as const, issues: normalized, next: nextForIssues(normalized) };
+}
+// Shared diagnostics: discovery problems plus oversize, unrecognized and
+// unaddressable files plus dangling manifest aliases. Used by `assets check`
+// and folded into hard failures by validate.
+async function assetDiagnostics(root: string): Promise<{ assets: DiscoveredAsset[]; aliases: Record<string, string>; manifestPresent: boolean; issues: CliIssue[] }> {
+  const found: AssetDiscovery = await discoverAssets(root);
+  const issues = found.issues.map(normalizeIssue);
+  for (const asset of found.assets) {
+    if (asset.bytes > MAX_ASSET_BYTES)
+      issues.push(normalizeIssue({ code: "ERR_ASSET_TOO_LARGE", path: asset.path, message: `Asset ${asset.path} is ${asset.bytes} bytes, over the ${MAX_ASSET_BYTES} byte limit. Compress it below 50MB.` }));
+    else if (asset.type === "other")
+      issues.push(normalizeIssue({ code: "ERR_ASSET_UNSUPPORTED", path: asset.path, message: `Asset ${asset.path} has an unrecognized format. Use a supported image, video, audio or font file.` }));
+    else if (!AssetIdSchema.safeParse(asset.id).success)
+      issues.push(normalizeIssue({ code: "ERR_ASSET_UNSUPPORTED", path: asset.path, message: `Asset ID "${asset.id}" is not a lowercase slug. Rename ${asset.path} so its filename is lowercase with single hyphens.` }));
+  }
+  const onDisk = new Set(found.assets.map((asset) => asset.path));
+  for (const [id, target] of Object.entries(found.manifest.aliases)) {
+    if (!onDisk.has(target))
+      issues.push(normalizeIssue({ code: "ERR_ASSET_NOT_FOUND", path: `assets.json.${id}`, message: `Manifest asset "${id}" points at missing file ${target}. Restore the file or remove the entry.` }));
+  }
+  return { assets: found.assets, aliases: found.manifest.aliases, manifestPresent: found.manifest.present, issues };
+}
+function isAbsolutePath(source: string): boolean {
+  return source.startsWith("/") || /^[A-Za-z]:[\\/]/.test(source);
+}
+export async function executeAssetsCommand(
+  operation: "list-assets" | "add-asset" | "remove-asset" | "check-assets",
+  input: unknown,
+  context: { root: string },
+): Promise<AssetsResult> {
+  try {
+    if (!context || typeof context.root !== "string")
+      return assetsFailure([{ code: "invalid-scope", message: "Provide an absolute local project directory.", path: "assets" }]);
+    const root = await services.canonicalRoot(context.root);
+    if (operation === "add-asset") {
+      const parsed = z.strictObject({ source: z.string().min(1), assetId: AssetIdSchema }).safeParse(input);
+      if (!parsed.success)
+        return assetsFailure(parsed.error.issues.map((issue) => ({ code: "invalid-input", message: issue.message, path: `assets.${issue.path.join(".") || "input"}` })));
+      const { source, assetId } = parsed.data;
+      const base = source.split("/").pop() ?? source;
+      const dot = base.lastIndexOf(".");
+      if (dot <= 0)
+        return assetsFailure([{ code: "ERR_ASSET_UNSUPPORTED", message: `Source ${source} has no file extension. Pass a supported image, video, audio or font file.`, path: "assets.source" }]);
+      const extension = base.slice(dot + 1);
+      const target = `${ASSETS_DIRECTORY}/${assetId}.${extension.toLowerCase()}`;
+      const siblings = await services.scanDirectory(root, ASSETS_DIRECTORY, 1024).catch(() => [] as string[]);
+      if (siblings.some((entry) => (entry.split("/").pop() ?? "").startsWith(`${assetId}.`)))
+        return assetsFailure([{ code: "conflict", message: `Asset ID "${assetId}" already exists. Remove it with velora assets rm --id ${assetId} --yes before re-adding.`, path: "assets.assetId" }]);
+      const sourceAbsolute = isAbsolutePath(source) ? source : await services.scopedPath(root, source.replace(/^\.\//, ""));
+      await services.copyFileInto(root, sourceAbsolute, target, MAX_ASSET_BYTES);
+      try {
+        const stat = await services.statFile(root, target);
+        const head = await services.peekBytes(root, target, 4096);
+        if (head === undefined) throw fault("conflict", "Asset changed during setup; review it before retrying.", target);
+        const kind = sniffAssetType(target, head);
+        if (kind === "other") {
+          await services.removeFile(root, target);
+          return assetsFailure([{ code: "ERR_ASSET_UNSUPPORTED", message: `Source ${source} has an unrecognized format. Use a supported image, video, audio or font file.`, path: "assets.source" }]);
+        }
+        const refreshed = await discoverAssets(root);
+        const created = refreshed.assets.find((asset) => asset.path === target);
+        return { success: true as const, command: "assets" as const, data: {
+          assets: created ? [created] : [{ id: assetId, path: target, type: kind, bytes: stat?.bytes ?? 0 }],
+          manifest: { present: refreshed.manifest.present, aliases: refreshed.manifest.aliases },
+        } };
+      } catch (error) {
+        await services.removeFile(root, target).catch(() => {});
+        throw error;
+      }
+    }
+    if (operation === "remove-asset") {
+      const parsed = z.strictObject({ assetId: AssetIdSchema, confirmed: z.literal(true) }).safeParse(input);
+      if (!parsed.success) {
+        const missingYes = typeof input === "object" && input !== null && (input as Record<string, unknown>).confirmed !== true;
+        if (missingYes)
+          return assetsFailure([{ code: "invalid-input", message: "Pass --yes to confirm removal.", path: "assets.confirmed" }]);
+        return assetsFailure(parsed.error.issues.map((issue) => ({ code: "invalid-input", message: issue.message, path: `assets.${issue.path.join(".") || "input"}` })));
+      }
+      const found = await discoverAssets(root);
+      const aliasTarget = found.manifest.aliases[parsed.data.assetId];
+      const matches = found.assets.filter((asset) => asset.id === parsed.data.assetId).map((asset) => asset.path);
+      const target = aliasTarget ?? (matches.length === 1 ? matches[0] : undefined);
+      if (!target) {
+        if (matches.length > 1)
+          return assetsFailure([{ code: "conflict", message: `Multiple files match asset ID "${parsed.data.assetId}". Rename them to unique lowercase slugs, then retry.`, path: "assets.assetId" }]);
+        return assetsFailure([{ code: "ERR_ASSET_NOT_FOUND", message: `Asset "${parsed.data.assetId}" was not discovered. Run velora assets ls --json to list available IDs.`, path: "assets.assetId" }]);
+      }
+      if (!await services.isRegularFile(root, target))
+        return assetsFailure([{ code: "ERR_ASSET_NOT_FOUND", message: `Asset file ${target} is not on disk. Restore it and retry.`, path: "assets.assetId" }]);
+      await services.removeFile(root, target);
+      return { success: true as const, command: "assets" as const, data: { assets: [], manifest: { present: found.manifest.present, aliases: found.manifest.aliases }, removed: { id: parsed.data.assetId, path: target } } };
+    }
+    const report = await assetDiagnostics(root);
+    if (operation === "check-assets")
+      return { success: true as const, command: "assets" as const, data: {
+        assets: report.assets, manifest: { present: report.manifestPresent, aliases: report.aliases },
+        verdict: report.issues.length ? "fail" as const : "pass" as const, issues: report.issues,
+      } };
+    return { success: true as const, command: "assets" as const, data: {
+      assets: report.assets, manifest: { present: report.manifestPresent, aliases: report.aliases },
+    } };
+  } catch (error) {
+    const known = error instanceof Error && "code" in error && "target" in error;
+    return assetsFailure([{ code: known ? String(error.code) : "project-error",
+      message: known ? error.message : "Unable to manage assets. Check local files and permissions, then retry.",
+      ...(known && typeof error.target === "string" ? { path: error.target } : {}) }]);
+  }
+}
+// Map codeless catalog diagnostics to stable machine-readable codes.
+function classifyCatalogIssue(issue: SceneIssue): CliIssue {
+  if (/missing local component/i.test(issue.message))
+    return normalizeIssue({ code: "ERR_BINDING_MISSING", path: issue.path, message: issue.message });
+  if (issue.path === "sceneId")
+    return normalizeIssue({ code: "ERR_SCENE_NOT_FOUND", path: issue.path, message: issue.message });
+  if (/duplicate scene id/i.test(issue.message))
+    return normalizeIssue({ code: "ERR_SCENE_INVALID", path: issue.path, message: issue.message });
+  if (/focus|focal|f-stop|fstop|blur|aperture/i.test(`${issue.path} ${issue.message}`))
+    return normalizeIssue({ code: "ERR_FOCUS_INVALID", path: issue.path, message: issue.message });
+  return normalizeIssue({ code: "ERR_SCENE_INVALID", path: issue.path, message: issue.message });
+}
+// Full composition verification shared by validate and the render pipeline:
+// catalog, assets, composition resolution, audio, captions and transitions in
+// one deterministic order. Renderers fail closed on any issue returned here.
+export type CompositionCheck = {
+  composition?: Composition;
+  catalog: SceneCatalog;
+  assets: DiscoveredAsset[];
+  aliases: Record<string, string>;
+  totals?: { durationMs: number; scenes: number; assets: number };
+  issues: CliIssue[];
+};
+export async function checkCompositionFull(root: string, file: string): Promise<CompositionCheck> {
+  const catalog = await discoverRecipes(root);
+  const report = await assetDiagnostics(root);
+  const issues: CliIssue[] = [];
+  for (const issue of catalog.issues) issues.push(classifyCatalogIssue(issue));
+  issues.push(...report.issues);
+  const loaded = await loadComposition(root, file);
+  if ("issues" in loaded) {
+    issues.push(...loaded.issues.map(normalizeIssue));
+    return { catalog, assets: report.assets, aliases: report.aliases, issues };
+  }
+  const composition = loaded.composition;
+  const resolved = resolveCompositionSpec(composition, catalog, report.assets, report.aliases);
+  issues.push(...resolved.issues.map(normalizeIssue));
+  issues.push(...await checkCompositionAudio(root, composition, report.assets, report.aliases));
+  issues.push(...await checkCompositionCaptions(root, composition, resolved.totals.durationMs));
+  issues.push(...checkCompositionTransitions(composition, catalog.scenes.map((scene) => ({ id: scene.id, nodeCount: scene.definition.scene.nodes.length }))));
+  return { composition, catalog, assets: report.assets, aliases: report.aliases, totals: resolved.totals, issues };
+}
+// Full validation: project identity plus recipes, bindings, assets and an
+// optional composition file in one pass. Advisory authoring notes ride along
+// on success; every failure carries a stable code, field path and hint.
+async function validate(root: string, input: { composition?: string }): Promise<ProjectResult> {
+  const project = await load(root);
+  if (input.composition === undefined) {
+    const catalog = await discoverRecipes(root);
+    const report = await assetDiagnostics(root);
+    const issues: CliIssue[] = [];
+    for (const issue of catalog.issues) issues.push(classifyCatalogIssue(issue));
+    issues.push(...report.issues);
+    issues.push(...await checkSceneClocks(root, catalog));
+    if (issues.length) return { success: false, issues, next: nextForIssues(issues) };
+    return { success: true, data: { project, validation: {
+      scenes: catalog.scenes.length, assets: report.assets.length, advice: await validationAdvice(catalog), requiresVisualReview: true as const,
+    } } };
+  }
+  const full = await checkCompositionFull(root, input.composition);
+  const issues = [...full.issues];
+  issues.push(...await checkSceneClocks(root, full.catalog));
+  if (issues.length) return { success: false, issues, next: nextForIssues(issues) };
+  return { success: true, data: { project, validation: {
+    scenes: full.catalog.scenes.length, assets: full.assets.length, composition: input.composition,
+    ...(full.totals ? { durationMs: full.totals.durationMs } : {}),
+    advice: await validationAdvice(full.catalog), requiresVisualReview: true as const,
+  } } };
+}
+async function validationAdvice(catalog: SceneCatalog): Promise<{ code: string; path: string; message: string }[]> {
+  const advice: { code: string; path: string; message: string }[] = [];
+  for (const scene of catalog.scenes) {
+    const review = reviewAuthoring({ scene: scene.definition.scene, motion: scene.definition.motion ?? { durationMs: 0, tracks: [] } });
+    for (const item of review.advice) advice.push({ code: item.code, path: `${scene.source}:${item.path}`, message: item.message });
+  }
+  return advice;
+}
+
+// Composition audio validation shared by `audio check` diagnostics and
+// validate: asset existence/type/size, probe codec, fade fit, ducking refs.
+async function checkCompositionAudio(
+  root: string,
+  composition: Composition,
+  assets: DiscoveredAsset[],
+  aliases: Record<string, string>,
+): Promise<CliIssue[]> {
+  const issues: CliIssue[] = [];
+  const byPath = new Map(assets.map((asset) => [asset.path, asset]));
+  if (composition.audio.filter((track) => track.duckUnder).length > 1)
+    issues.push(normalizeIssue({ code: "ERR_AUDIO_INVALID", path: "audio", message: "Only one ducking relationship is supported. Premix additional ducking outside Velora." }));
+  for (const [index, track] of composition.audio.entries()) {
+    const at = `audio.${index}`;
+    const resolved = resolveAssetId(assets, aliases, track.assetId);
+    if (!resolved) {
+      issues.push(normalizeIssue({ code: "ERR_ASSET_NOT_FOUND", path: `${at}.assetId`, message: `Audio asset "${track.assetId}" was not discovered. Run velora assets ls --json to list available IDs.` }));
+      continue;
+    }
+    const discovered = byPath.get(resolved);
+    if (!discovered || discovered.type !== "audio") {
+      issues.push(normalizeIssue({ code: "ERR_ASSET_UNSUPPORTED", path: `${at}.assetId`, message: `Asset "${track.assetId}" is ${discovered?.type ?? "missing"}, not audio.` }));
+      continue;
+    }
+    if (discovered.bytes > MAX_ASSET_BYTES)
+      issues.push(normalizeIssue({ code: "ERR_ASSET_TOO_LARGE", path: `${at}.assetId`, message: `Asset ${resolved} exceeds the 50MB limit.` }));
+    let absolute: string;
+    try {
+      absolute = await services.scopedPath(root, resolved);
+    } catch {
+      issues.push(normalizeIssue({ code: "denied-path", path: `${at}.assetId`, message: `Asset path ${resolved} is outside the project.` }));
+      continue;
+    }
+    const probe = await services.probeAudioFile(absolute);
+    if (!probe.codec)
+      issues.push(normalizeIssue({ code: "ERR_AUDIO_CODEC", path: `${at}.assetId`, message: `Audio ${resolved} could not be probed. Install FFmpeg and use a supported file.` }));
+    else if (!(["aac", "mp3", "opus", "vorbis", "flac", "pcm_s16le", "pcm_s24le", "pcm_f32le", "wav", "m4a"] as readonly string[]).includes(probe.codec))
+      issues.push(normalizeIssue({ code: "ERR_AUDIO_CODEC", path: `${at}.assetId`, message: `Audio ${resolved} uses codec ${probe.codec}. Use AAC, MP3, Opus, Vorbis, FLAC or WAV.` }));
+    if (probe.durationMs !== null && track.fadeInMs + track.fadeOutMs > probe.durationMs)
+      issues.push(normalizeIssue({ code: "ERR_AUDIO_INVALID", path: at, message: `Track "${track.id}" fades (${track.fadeInMs + track.fadeOutMs}ms) exceed the audio length (${probe.durationMs}ms).` }));
+    if (track.duckUnder && !composition.audio.some((other) => other.id === track.duckUnder!.trackId))
+      issues.push(normalizeIssue({ code: "ERR_AUDIO_INVALID", path: `${at}.duckUnder.trackId`, message: `Track "${track.id}" ducks under unknown track "${track.duckUnder.trackId}".` }));
+  }
+  return issues;
+}
+// Composition caption validation shared by `captions check` and validate.
+async function checkCompositionCaptions(root: string, composition: Composition, durationMs: number): Promise<CliIssue[]> {
+  if (!composition.captions) return [];
+  const ref = composition.captions.file;
+  const lower = ref.toLowerCase();
+  if (!lower.endsWith(".srt") && !lower.endsWith(".vtt"))
+    return [normalizeIssue({ code: "ERR_CAPTION_INVALID", path: "captions.file", message: `Caption file ${ref} must be .srt or .vtt.` })];
+  let text: string | undefined;
+  try {
+    text = await services.readText(root, ref, 256_000);
+  } catch (error) {
+    const known = error instanceof Error && "code" in error && "target" in error;
+    return [normalizeIssue({ code: known ? String(error.code) : "project-error", path: ref, message: known ? error.message : "Unable to read the caption file." })];
+  }
+  if (text === undefined)
+    return [normalizeIssue({ code: "ERR_CAPTION_INVALID", path: ref, message: `Caption file ${ref} was not found.` })];
+  const parsed = parseCaptions(text, lower.endsWith(".vtt") ? "vtt" : "srt");
+  if ("issues" in parsed) return parsed.issues.map(normalizeIssue);
+  return checkCaptions(parsed.cues, durationMs).map(normalizeIssue);
+}
+// Composition transition declarations: known types fit the segment span and
+// leaf-targeted transitions resolve to scenes that actually own leaves.
+// Builders stay total; this is where declarations meet reality.
+function checkCompositionTransitions(
+  composition: Composition,
+  scenes: { id: string; nodeCount: number }[],
+): CliIssue[] {
+  const issues: CliIssue[] = [];
+  for (const [index, segment] of composition.scenes.entries()) {
+    const transition = segment.transition;
+    if (!transition) continue;
+    const at = `composition.scenes.${index}.transition`;
+    if (transition.durationMs > segment.durationMs)
+      issues.push(normalizeIssue({ code: "ERR_TRANSITION_INVALID", path: `${at}.durationMs`, message: `Transition lasts ${transition.durationMs}ms but segment "${segment.id}" spans ${segment.durationMs}ms.` }));
+    const entry = TRANSITION_CATALOG.find((item) => item.type === transition.type);
+    if (entry?.needsLeaves) {
+      const recipe = scenes.find((scene) => scene.id === segment.recipe);
+      if (recipe && recipe.nodeCount === 0)
+        issues.push(normalizeIssue({ code: "ERR_TRANSITION_INVALID", path: at, message: `Transition "${transition.type}" animates Surface leaves but scene "${segment.recipe}" declares none.` }));
+    }
+  }
+  return issues;
+}
+// Render-path clock discipline: scene bindings and shared components must not
+// own ScrollTrigger, ticker or rAF clocks. Static text scan with line numbers;
+// unreadable files are skipped (discovery already validated their existence).
+async function checkSceneClocks(root: string, catalog: { scenes: { id: string; binding: string }[] }): Promise<CliIssue[]> {
+  const issues: CliIssue[] = [];
+  const targets = new Map<string, string>();
+  for (const scene of catalog.scenes) targets.set(scene.binding, `scene "${scene.id}"`);
+  try {
+    for (const component of await discoverSharedComponents(root)) targets.set(component, "shared component");
+  } catch { /* discovery already reported catalog problems; clocks stay unchecked */ }
+  for (const [file, label] of targets) {
+    let text: string | undefined;
+    try {
+      text = await services.readText(root, file, 256_000);
+    } catch { continue; }
+    if (text === undefined) continue;
+    for (const hit of detectForbiddenClock(text)) {
+      const what = hit.kind === "scrolltrigger" ? "ScrollTrigger" : hit.kind === "ticker" ? "a ticker clock" : "requestAnimationFrame";
+      issues.push(normalizeIssue({ code: "ERR_ANIMATION_CLOCK", path: `${file}:${hit.line}`, message: `${label} uses ${what} (line ${hit.line}). Drive motion from video time instead.` }));
+    }
+  }
+  return issues;
+}
+// SOURCE OF TRUTH: executeAudioCommand, executeCaptionsCommand, media validation ops.
+// WHAT: composition audio inventory plus static checks; caption file validation
+// against a timeline span. Drift is measured at export (manifest) and enforced
+// by check; these ops fail closed on everything measurable without rendering.
+export type AudioTrackView = { id: string; assetId: string; startMs: number; frame: number; gain: number; placedStartMs: number; placementErrorMs: number };
+export type AudioResult =
+  | { success: true; command: "audio"; data: { composition: string; fps: number; tracks: AudioTrackView[]; driftBudgetMs: number; placementErrorMs: number } }
+  | { success: false; command: "audio"; issues: CliIssue[]; next: string[] };
+export type CaptionsResult =
+  | { success: true; command: "captions"; data: { file?: string; composition?: string; kind: string; cues: { startMs: number; endMs: number; text: string }[]; durationMs?: number } }
+  | { success: false; command: "captions"; issues: CliIssue[]; next: string[] };
+function audioFailure(issues: unknown[]): AudioResult {
+  const normalized = (issues as unknown[]).map(normalizeIssue);
+  return { success: false as const, command: "audio" as const, issues: normalized, next: nextForIssues(normalized) };
+}
+function captionsFailure(issues: unknown[]): CaptionsResult {
+  const normalized = (issues as unknown[]).map(normalizeIssue);
+  return { success: false as const, command: "captions" as const, issues: normalized, next: nextForIssues(normalized) };
+}
+async function loadCompositionTracks(root: string, file: string): Promise<
+  | { composition: Composition; assets: DiscoveredAsset[]; aliases: Record<string, string> }
+  | { issues: { code: string; path: string; message: string }[] }
+> {
+  const loaded = await loadComposition(root, file);
+  if ("issues" in loaded) return { issues: loaded.issues };
+  const found = await discoverAssets(root);
+  return { composition: loaded.composition, assets: found.assets, aliases: found.manifest.aliases };
+}
+export async function executeAudioCommand(
+  operation: "list-audio" | "check-audio", input: unknown, context: { root: string },
+): Promise<AudioResult> {
+  try {
+    const parsed = z.strictObject({ composition: z.string().min(1) }).safeParse(input);
+    if (!parsed.success)
+      return audioFailure(parsed.error.issues.map((issue) => ({ code: "invalid-input", message: issue.message, path: `audio.${issue.path.join(".") || "composition"}` })));
+    if (!context || typeof context.root !== "string")
+      return audioFailure([{ code: "invalid-scope", message: "Provide an absolute local project directory.", path: "audio" }]);
+    const root = await services.canonicalRoot(context.root);
+    const loaded = await loadCompositionTracks(root, parsed.data.composition);
+    if ("issues" in loaded) return audioFailure(loaded.issues);
+    const { composition, assets, aliases } = loaded;
+    const views: AudioTrackView[] = composition.audio.map((track) => {
+      const placed = audioPlacement(track, composition.fps);
+      return { id: track.id, assetId: track.assetId, startMs: track.startMs, frame: placed.frame, gain: track.gain, placedStartMs: placed.startMs, placementErrorMs: Math.abs(placed.startMs - track.startMs) };
+    });
+    if (operation === "list-audio")
+      return { success: true as const, command: "audio" as const, data: {
+        composition: parsed.data.composition, fps: composition.fps, tracks: views,
+        driftBudgetMs: AUDIO_DRIFT_BUDGET_MS, placementErrorMs: views.reduce((max, v) => Math.max(max, v.placementErrorMs), 0),
+      } };
+    const issues: CliIssue[] = await checkCompositionAudio(root, composition, assets, aliases);
+    if (issues.length) return { success: false as const, command: "audio" as const, issues, next: nextForIssues(issues) };
+    return { success: true as const, command: "audio" as const, data: {
+      composition: parsed.data.composition, fps: composition.fps, tracks: views,
+      driftBudgetMs: AUDIO_DRIFT_BUDGET_MS, placementErrorMs: views.reduce((max, v) => Math.max(max, v.placementErrorMs), 0),
+    } };
+  } catch (error) {
+    const known = error instanceof Error && "code" in error && "target" in error;
+    return audioFailure([{ code: known ? String(error.code) : "project-error",
+      message: known ? error.message : "Unable to check audio. Check local files and permissions, then retry.",
+      ...(known && typeof error.target === "string" ? { path: error.target } : {}) }]);
+  }
+}
+export async function executeCaptionsCommand(
+  operation: "validate-captions" | "check-captions", input: unknown, context: { root: string },
+): Promise<CaptionsResult> {
+  try {
+    const parsed = (operation === "validate-captions"
+      ? z.strictObject({ file: z.string().min(1) })
+      : z.strictObject({ composition: z.string().min(1) })).safeParse(input);
+    if (!parsed.success)
+      return captionsFailure(parsed.error.issues.map((issue) => ({ code: "invalid-input", message: issue.message, path: `captions.${issue.path.join(".") || "input"}` })));
+    if (!context || typeof context.root !== "string")
+      return captionsFailure([{ code: "invalid-scope", message: "Provide an absolute local project directory.", path: "captions" }]);
+    const root = await services.canonicalRoot(context.root);
+    let file: string;
+    let durationMs: number | undefined;
+    if (operation === "check-captions") {
+      const fileInput = (parsed.data as { composition: string }).composition;
+      const loaded = await loadCompositionTracks(root, fileInput);
+      if ("issues" in loaded) return captionsFailure(loaded.issues);
+      if (!loaded.composition.captions)
+        return captionsFailure([{ code: "ERR_CAPTION_INVALID", path: "captions", message: `Composition ${fileInput} declares no captions.` }]);
+      file = loaded.composition.captions.file;
+      durationMs = compositionTotals(loaded.composition).durationMs;
+    } else {
+      file = (parsed.data as { file: string }).file;
+    }
+    const lower = file.toLowerCase();
+    if (!lower.endsWith(".srt") && !lower.endsWith(".vtt"))
+      return captionsFailure([{ code: "ERR_CAPTION_INVALID", path: "captions.file", message: `Caption file ${file} must be .srt or .vtt.` }]);
+    let text: string | undefined;
+    try {
+      text = await services.readText(root, file, 256_000);
+    } catch (error) {
+      const known = error instanceof Error && "code" in error && "target" in error;
+      return captionsFailure([{ code: known ? String(error.code) : "project-error", path: file, message: known ? error.message : "Unable to read the caption file." }]);
+    }
+    if (text === undefined)
+      return captionsFailure([{ code: "ERR_CAPTION_INVALID", path: file, message: `Caption file ${file} was not found.` }]);
+    const parsedFile = parseCaptions(text, lower.endsWith(".vtt") ? "vtt" : "srt");
+    if ("issues" in parsedFile) return captionsFailure(parsedFile.issues);
+    if (durationMs !== undefined) {
+      const timed = checkCaptions(parsedFile.cues, durationMs);
+      if (timed.length) return captionsFailure(timed);
+    }
+    return { success: true as const, command: "captions" as const, data: {
+      ...(operation === "check-captions" ? { composition: (parsed.data as { composition: string }).composition } : { file }),
+      kind: lower.endsWith(".vtt") ? "vtt" : "srt",
+      cues: parsedFile.cues, ...(durationMs !== undefined ? { durationMs } : {}),
+    } };
+  } catch (error) {
+    const known = error instanceof Error && "code" in error && "target" in error;
+    return captionsFailure([{ code: known ? String(error.code) : "project-error",
+      message: known ? error.message : "Unable to validate captions. Check local files and permissions, then retry.",
+      ...(known && typeof error.target === "string" ? { path: error.target } : {}) }]);
+  }
+}
+
+// SOURCE OF TRUTH: executeSkillsCommand installable Velora skills library.
+// WHAT: install (idempotent copy of the velora* skill tree), ls (available +
+// installed + drift) and check (front-matter, sections, cross-links, versions).
+// WHY: agents discover capabilities progressively and pin the CLI version they
+// were written against; the CLI stays the capability surface while skills
+// carry selection, workflow and validation intelligence.
+// WHERE: cli/index adapts skills install/ls/check; services owns absolute
+// transports; project/skills owns pure front-matter and content validators.
+// Install never overwrites AGENTS.md/CLAUDE.md/provider config: only
+// velora*/ files are written, differing targets are ERR_SKILL_CONFLICT.
+export type SkillsData =
+  | { kind: "install"; dir: string; installed: string[]; changed: boolean; versions: Record<string, string>; snippet?: string }
+  | { kind: "list"; source?: string; dir?: string; available: { name: string; version: string; path: string }[]; installed: { name: string; version: string; path: string }[]; drift: { name: string; expected: string; found: string }[] }
+  | { kind: "check"; source?: string; dir?: string; skills: { name: string; version: string; ok: boolean; issues: { code: string; path: string; message: string }[] }[] };
+export type SkillsResult =
+  | { success: true; command: "skills"; data: SkillsData }
+  | { success: false; command: "skills"; issues: CliIssue[]; next: string[] };
+function skillsFailure(issues: unknown[]): SkillsResult {
+  const normalized = (issues as unknown[]).map(normalizeIssue);
+  return { success: false as const, command: "skills" as const, issues: normalized, next: nextForIssues(normalized) };
+}
+function skillsFaultCode(error: unknown): string {
+  const code = error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : "project-error";
+  if (code === "conflict") return "ERR_SKILL_CONFLICT";
+  if (code === "denied-path") return "denied-path";
+  if (code === "invalid-scope" || code === "invalid-input" || code === "invalid-file") return code;
+  return code;
+}
+async function readSkillVersion(absoluteFile: string): Promise<string | undefined> {
+  const text = await services.readAbsoluteText(absoluteFile);
+  if (text === undefined) return undefined;
+  const parsed = parseSkillFrontmatter(text);
+  if ("issues" in parsed) return undefined;
+  const version = parsed.frontmatter["version"];
+  return typeof version === "string" ? version : undefined;
+}
+export async function executeSkillsCommand(
+  operation: "install-skills" | "list-skills" | "check-skills",
+  input: unknown,
+  context: { root: string; version?: string },
+): Promise<SkillsResult> {
+  try {
+    if (!context || typeof context.root !== "string")
+      return skillsFailure([{ code: "invalid-scope", message: "Provide an absolute local project directory.", path: "skills" }]);
+    const root = await services.canonicalRoot(context.root);
+    const cliVersion = typeof context.version === "string" && context.version ? context.version : undefined;
+    if (operation === "install-skills") {
+      const parsed = z.strictObject({
+        dir: z.string().min(1),
+        agent: z.enum(AGENT_NAMES).optional(),
+        source: z.string().min(1).optional(),
+      }).safeParse(input);
+      if (!parsed.success)
+        return skillsFailure(parsed.error.issues.map((issue) => ({ code: "invalid-input", message: issue.message, path: `skills.${issue.path.join(".") || "dir"}` })));
+      let targetDir: string;
+      let sourceDir: string | undefined;
+      try {
+        targetDir = (await services.resolveSkillsDir(root, parsed.data.dir))!;
+        sourceDir = await services.resolveSkillsSource(root, parsed.data.source);
+      } catch (error) {
+        const known = error instanceof Error && "code" in error;
+        return skillsFailure([{ code: skillsFaultCode(error), message: error instanceof Error ? error.message : "Unable to resolve skills paths.", path: "skills.dir" }]);
+      }
+      if (!sourceDir)
+        return skillsFailure([{ code: "ERR_SKILL_MISSING", message: "Packaged Velora skills were not found. Run from a Velora checkout or pass --source.", path: "skills.source" }]);
+      let rels: string[];
+      try {
+        rels = (await services.listAbsoluteTree(sourceDir)).filter((rel) => services.isVeloraSkillFile(rel));
+      } catch (error) {
+        const known = error instanceof Error && "code" in error;
+        return skillsFailure([{ code: skillsFaultCode(error), message: "Unable to list packaged skills.", path: "skills.source" }]);
+      }
+      if (!rels.length)
+        return skillsFailure([{ code: "ERR_SKILL_MISSING", message: "Packaged Velora skills tree is empty.", path: "skills.source" }]);
+      try {
+        await services.ensureAbsoluteDir(targetDir);
+      } catch (error) {
+        return skillsFailure([{ code: skillsFaultCode(error), message: error instanceof Error ? error.message : "Unable to prepare the skills directory.", path: "skills.dir" }]);
+      }
+      const installed: string[] = [];
+      const versions: Record<string, string> = {};
+      let changed = false;
+      // Join with forward slashes: skills trees use posix separators.
+      const joinAbs = (base: string, rel: string) => `${base}/${rel}`;
+      for (const rel of rels) {
+        const from = `${sourceDir}/${rel}`;
+        const to = joinAbs(targetDir, rel);
+        const sourceText = await services.readAbsoluteText(from);
+        if (sourceText === undefined)
+          return skillsFailure([{ code: "ERR_SKILL_MISSING", message: `Packaged skill file ${rel} disappeared during install.`, path: `skills.${rel}` }]);
+        const existing = await services.readAbsoluteText(to);
+        if (existing !== undefined && existing !== sourceText)
+          return skillsFailure([{ code: "ERR_SKILL_CONFLICT", message: `Skill file ${rel} differs in ${targetDir}. Preserve or move it, then retry.`, path: `skills.${rel}` }]);
+        if (existing === undefined) {
+          try {
+            await services.writeAbsoluteText(to, sourceText, undefined);
+          } catch (error) {
+            return skillsFailure([{ code: skillsFaultCode(error) === "conflict" ? "ERR_SKILL_CONFLICT" : skillsFaultCode(error), message: error instanceof Error ? error.message : `Unable to install ${rel}.`, path: `skills.${rel}` }]);
+          }
+          changed = true;
+        }
+        installed.push(rel);
+        const skillName = services.skillNameFromRel(rel);
+        if (skillName) {
+          const version = await readSkillVersion(to);
+          if (version) versions[skillName] = version;
+        }
+      }
+      const agent = parsed.data.agent as AgentName | undefined;
+      const snippet = agent ? agentSnippet(agent, targetDir) : undefined;
+      return { success: true as const, command: "skills" as const, data: { kind: "install", dir: targetDir, installed, changed, versions, ...(snippet ? { snippet } : {}) } };
+    }
+    if (operation === "list-skills") {
+      const parsed = z.strictObject({
+        dir: z.string().min(1).optional(),
+        source: z.string().min(1).optional(),
+      }).safeParse(input);
+      if (!parsed.success)
+        return skillsFailure(parsed.error.issues.map((issue) => ({ code: "invalid-input", message: issue.message, path: `skills.${issue.path.join(".") || "input"}` })));
+      let sourceDir: string | undefined;
+      let targetDir: string | undefined;
+      try {
+        sourceDir = await services.resolveSkillsSource(root, parsed.data.source);
+        targetDir = await services.resolveSkillsDir(root, parsed.data.dir);
+      } catch (error) {
+        return skillsFailure([{ code: skillsFaultCode(error), message: error instanceof Error ? error.message : "Unable to resolve skills paths.", path: "skills" }]);
+      }
+      const available: { name: string; version: string; path: string }[] = [];
+      const installed: { name: string; version: string; path: string }[] = [];
+      if (sourceDir) {
+        const rels = (await services.listAbsoluteTree(sourceDir)).filter((rel) => services.skillNameFromRel(rel));
+        for (const rel of rels.sort()) {
+          const name = services.skillNameFromRel(rel)!;
+          const version = (await readSkillVersion(`${sourceDir}/${rel}`)) ?? "0.0.0";
+          available.push({ name, version, path: rel });
+        }
+      }
+      if (targetDir) {
+        const rels = (await services.listAbsoluteTree(targetDir)).filter((rel) => services.skillNameFromRel(rel));
+        for (const rel of rels.sort()) {
+          const name = services.skillNameFromRel(rel)!;
+          const version = (await readSkillVersion(`${targetDir}/${rel}`)) ?? "0.0.0";
+          installed.push({ name, version, path: rel });
+        }
+      }
+      const byAvailable = new Map(available.map((skill) => [skill.name, skill.version]));
+      const drift: { name: string; expected: string; found: string }[] = [];
+      for (const skill of installed) {
+        const expected = byAvailable.get(skill.name);
+        if (expected && expected !== skill.version) drift.push({ name: skill.name, expected, found: skill.version });
+        else if (cliVersion && skill.version !== cliVersion) drift.push({ name: skill.name, expected: cliVersion, found: skill.version });
+      }
+      return { success: true as const, command: "skills" as const, data: { kind: "list", ...(sourceDir ? { source: sourceDir } : {}), ...(targetDir ? { dir: targetDir } : {}), available, installed, drift } };
+    }
+    const parsed = z.strictObject({
+      dir: z.string().min(1).optional(),
+      source: z.string().min(1).optional(),
+    }).safeParse(input);
+    if (!parsed.success)
+      return skillsFailure(parsed.error.issues.map((issue) => ({ code: "invalid-input", message: issue.message, path: `skills.${issue.path.join(".") || "input"}` })));
+    let checkDir: string | undefined;
+    try {
+      const sourceDir = await services.resolveSkillsSource(root, parsed.data.source);
+      checkDir = (await services.resolveSkillsDir(root, parsed.data.dir)) ?? sourceDir;
+    } catch (error) {
+      return skillsFailure([{ code: skillsFaultCode(error), message: error instanceof Error ? error.message : "Unable to resolve skills paths.", path: "skills" }]);
+    }
+    if (!checkDir)
+      return skillsFailure([{ code: "ERR_SKILL_MISSING", message: "No skills tree found. Run from a Velora checkout or pass --source/--dir.", path: "skills" }]);
+    const rels = await services.listAbsoluteTree(checkDir);
+    const byRel = new Map(rels.map((rel) => [rel, true]));
+    const skills: { name: string; version: string; ok: boolean; issues: { code: string; path: string; message: string }[] }[] = [];
+    const failures: CliIssue[] = [];
+    for (const name of VELORA_SKILL_NAMES) {
+      const rel = name === "velora" ? "velora/SKILL.md" : `${name}/SKILL.md`;
+      const absolute = `${checkDir}/${rel}`;
+      const text = byRel.has(rel) ? await services.readAbsoluteText(absolute) : undefined;
+      if (text === undefined) {
+        const issue = normalizeIssue({ code: "ERR_SKILL_MISSING", message: `Skill "${name}" is missing (${rel}). Re-run velora skills install --dir ${checkDir}.`, path: `skills.${name}` });
+        failures.push(issue);
+        skills.push({ name, version: "0.0.0", ok: false, issues: [{ code: issue.code, path: issue.path ?? `skills.${name}`, message: issue.message }] });
+        continue;
+      }
+      const { frontmatter, issues } = validateSkillContent(name, text);
+      const version = typeof frontmatter.version === "string" ? frontmatter.version : "0.0.0";
+      const versionIssues: { code: string; path: string; message: string }[] = [];
+      if (cliVersion && version !== cliVersion)
+        versionIssues.push({ code: "ERR_SKILL_VERSION", path: `skills.${name}:version`, message: `Skill "${name}" pins ${version} but the CLI is ${cliVersion}. Re-run velora skills install --dir ${checkDir}.` });
+      const all = [...issues, ...versionIssues];
+      if (all.length) for (const issue of all) failures.push(normalizeIssue({ code: issue.code, message: issue.message, path: issue.path }));
+      skills.push({ name, version, ok: all.length === 0, issues: all });
+    }
+    if (failures.length) return { success: false as const, command: "skills" as const, issues: failures, next: nextForIssues(failures) };
+    return { success: true as const, command: "skills" as const, data: { kind: "check", ...(parsed.data.dir ? { dir: checkDir } : { source: checkDir }), skills } };
+  } catch (error) {
+    const known = error instanceof Error && "code" in error && "target" in error;
+    return skillsFailure([{ code: known ? skillsFaultCode(error) : "project-error",
+      message: known ? error.message : "Unable to manage skills. Check local files and permissions, then retry.",
+      ...(known && typeof error.target === "string" ? { path: error.target } : {}) }]);
+  }
 }

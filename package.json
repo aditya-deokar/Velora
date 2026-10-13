@@ -34,6 +34,8 @@
     "release:local": "node scripts/pack-release.mjs",
     "verify:agent": "node scripts/verify-mvp.mjs",
     "test:agent": "node scripts/check-agent.mjs",
+    "test:agent-demos": "node scripts/check-agent-demos.mjs",
+    "test:skills": "node scripts/check-skills.mjs",
     "test:release": "node --test tests/release.test.mjs",
     "verify:ci": "node scripts/verify-mvp.mjs --ci && npm run test:release && node scripts/release.mjs check",
     "verify:release": "npm run verify:agent && npm run test:release && node scripts/release.mjs check",
@@ -75,7 +77,9 @@
   },
   "files": [
     "dist/library",
-    "dist/cli"
+    "dist/cli",
+    "skills/velora",
+    "skills/velora-*/SKILL.md"
   ],
   "peerDependencies": {
     "react": ">=18.2.0 <20",

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "id": "three-act",
+  "title": "Three act",
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "seed": 1,
+  "scenes": [
+    { "id": "act1", "recipe": "minimal", "startMs": 0, "durationMs": 2000 },
+    { "id": "act2", "recipe": "minimal", "startMs": 2000, "durationMs": 2000 },
+    { "id": "act3", "recipe": "minimal", "startMs": 4000, "durationMs": 2000 }
+  ],
+  "assets": []
+}

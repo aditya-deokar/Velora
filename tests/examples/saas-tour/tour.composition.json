@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "tour",
+  "title": "SaaS product tour",
+  "width": 320,
+  "height": 200,
+  "fps": 30,
+  "seed": 11,
+  "scenes": [
+    { "id": "s1", "recipe": "tour-a", "startMs": 0, "durationMs": 1500 },
+    {
+      "id": "s2",
+      "recipe": "tour-b",
+      "startMs": 2000,
+      "durationMs": 1500,
+      "transition": { "type": "slide-push", "durationMs": 300 }
+    },
+    { "id": "s3", "recipe": "tour-c", "startMs": 3500, "durationMs": 1500 }
+  ],
+  "assets": [],
+  "captions": { "file": "subs.srt", "burnIn": false }
+}

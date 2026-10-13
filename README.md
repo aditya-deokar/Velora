@@ -53,6 +53,51 @@ Replace “dashboard” with the page you want. Claude Code, Codex CLI or anothe
 
 The guide explains concepts, tradeoffs, exact APIs and a tested file-pair example. It leaves the composition to the creator. Ask your agent to revise the source when you want a different shot.
 
+## Five-minute path (CLI + skills, `--json`-first)
+
+```sh
+npm install velora
+npx velora init
+npx velora guide --json
+npx velora skills install --dir .skills --json
+npx velora doctor --json
+npx velora validate --composition teaser.composition.json --json
+npx velora render --composition teaser.composition.json --frame 0 --out proof.png --json
+```
+
+Then extract evidence and gate it before calling the video done:
+
+```sh
+npx velora frames --composition teaser.composition.json --out stills --json
+npx velora check --frames stills --json
+```
+
+Every command supports `--help` and `--json`; exit `0` ok, `1` operational
+failure with `issues[].code`, `2` usage error. The root skill
+(`velora/SKILL.md`, loaded first) routes each request to one specialized
+skill; `npx velora skills check --json` verifies the installed library.
+`velora check` runs technical gates only — a human still reviews taste
+(`requiresVisualReview: true`).
+
+## Compatibility and limits
+
+| Surface | Supported |
+|---|---|
+| Agents | Claude Code, Codex CLI, Cursor, any skill-compatible agent (`--json` contract is the coupling surface; snippets are additive) |
+| React | DOM 18.2+ or 19 (Next.js App/Pages Router, Vite, portable wrapper, Electron renderer) |
+| Node | 22.12+ for the CLI |
+| FFmpeg | Required for audio mix, caption burn, MP4 encode, and audio probing |
+| Chromium | Required via Playwright for capture, snapshots, and video sampling |
+| AI auth | Bring your own agent subscription — Velora runs no agent and stores no keys |
+
+Not supported: React Native without DOM, hosted rendering service, accounts or
+licensing, a visual builder or focus-position editor, text-to-speech and
+transcription, and universal quality or performance promises (evidence is
+device- and scene-specific). Ewmotion integration is deferred until a real
+source exists to integrate. The dual command name `flute`/`velora` runs the
+same CLI; recipe files stay at version 1 and scenes at focus version 3, and
+older wrappers are upgraded by re-running `velora init` (never hand-edited).
+
 ## Scenes and studio
 
 The agent creates `src/velora/scenes/my-shot.scene.json` and matching `my-shot.tsx` or `my-shot.jsx` (one component per recipe). JSON owns the scene definition; the component imports actual host UI and returns stable `Surface` elements. The shared studio supplies the camera renderer, playback and capture—no separate scene editor or duplicated renderer.
@@ -101,8 +146,8 @@ Read [architecture](docs/architecture.md) for canonical code owners and [product
 
 All tests run locally. GitHub Actions only builds and publishes a new npm version; it does not run verification suites or upload artifacts.
 
-1. Update the package version with `npm version patch --no-git-tag-version`.
-2. Run `npm ci`, install Chromium and FFmpeg, then run `npm run verify:release` locally. This includes architecture, browser, installed-app, export and hardware checks. Logs remain in `.release/logs/`.
+1. Update the package version with `npm version patch --no-git-tag-version`. Every `skills/velora*/SKILL.md` front-matter `version` and `skills-lock.json` must pin the same version; `npm run test:skills` enforces it.
+2. Run `npm ci`, install Chromium and FFmpeg, then run `npm run verify:release` locally. This includes architecture, browser, installed-app, export, agent-demo transcript replay (`test:agent-demos`), and hardware checks. Logs remain in `.release/logs/`. `npm run release:local` plus `node scripts/release.mjs check` must accept the artifact (skills ship, tests and demo MP4s do not).
 3. Commit the verified version and lockfile, then push to `main`. The publishing workflow checks npm first. If that version already exists, it stops before installing or building. Otherwise it runs `npm run build:package` and publishes through OIDC. npm versions are immutable; changing source without a version bump does not update the public package.
 4. Run `npm run test:published` locally after publication to check the exact public version in a fresh installed app.
 

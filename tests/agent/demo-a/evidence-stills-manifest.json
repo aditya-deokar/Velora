@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "kind": "frames",
+  "compositionId": "teaser",
+  "compositionSha": "9e4c3a94dd936e40112c4af8cf4df6636241d3fbb32d3d06f7316ad139e36a75",
+  "seed": 7,
+  "fps": 30,
+  "width": 320,
+  "height": 200,
+  "durationMs": 4500,
+  "segments": [
+    {
+      "id": "s1",
+      "recipe": "teaser-a",
+      "startMs": 0,
+      "durationMs": 2000,
+      "frames": 60
+    },
+    {
+      "id": "s2",
+      "recipe": "teaser-b",
+      "startMs": 2500,
+      "durationMs": 2000,
+      "frames": 60
+    }
+  ],
+  "frames": [
+    {
+      "frame": 63,
+      "timeMs": 2100,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "file": "frame-00063.png",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 4
+    },
+    {
+      "frame": 69,
+      "timeMs": 2300,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "file": "frame-00069.png",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 2
+    }
+  ],
+  "veloraVersion": "0.1.2",
+  "checks": [
+    {
+      "id": "bridge-present",
+      "pass": true,
+      "detail": "Frames captured through the capture bridge; gaps render black void."
+    }
+  ],
+  "createdAt": "2026-10-13T19:02:57.725Z"
+}

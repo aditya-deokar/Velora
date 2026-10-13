@@ -16,8 +16,10 @@ describe('canonical authoring system',()=>{
   guide.concepts[0].meaning='modified';expect(getAuthoringGuide().concepts[0].meaning).not.toBe('modified');
  });
  it('CLI and package return the same guide without project or export effects',async()=>{
-  const executor=vi.fn(),exporter=vi.fn();const result=await runCli(['guide','--json'],{root:'/does-not-exist'},executor,exporter);
-  expect(result.code).toBe(0);expect(JSON.parse(result.stdout)).toEqual(getAuthoringGuide());
+   const executor=vi.fn(),exporter=vi.fn();const result=await runCli(['guide','--json'],{root:'/does-not-exist'},executor,exporter);
+   expect(result.code).toBe(0);expect(JSON.parse(result.stdout)).toMatchObject(getAuthoringGuide());
+   expect(JSON.parse(result.stdout)).toMatchObject({command:'guide',cliVersion:'development'});
+   expect(Array.isArray(JSON.parse(result.stdout).commands)).toBe(true);
   const human=await runCli(['guide'],{root:'/does-not-exist'},executor,exporter);
   for(const concept of getAuthoringGuide().concepts)expect(human.stdout).toContain(concept.mechanism);
   expect(executor).not.toHaveBeenCalled();expect(exporter).not.toHaveBeenCalled();

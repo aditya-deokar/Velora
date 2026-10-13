@@ -1,0 +1,665 @@
+{
+  "version": 1,
+  "kind": "video",
+  "compositionId": "determinism",
+  "compositionSha": "9ce0515214e90d2fe3cd427ea99d8208a7bd04650045a4176bb64c4ef2e10151",
+  "seed": 42,
+  "fps": 30,
+  "width": 320,
+  "height": 200,
+  "durationMs": 2500,
+  "segments": [
+    {
+      "id": "s1",
+      "recipe": "proc-stage",
+      "startMs": 0,
+      "durationMs": 1000,
+      "frames": 30
+    },
+    {
+      "id": "s2",
+      "recipe": "proc-stage",
+      "startMs": 1500,
+      "durationMs": 1000,
+      "frames": 30
+    }
+  ],
+  "frames": [
+    {
+      "frame": 0,
+      "timeMs": 0,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "d01b23d1890c625535f0fbd875f8bf383a4236d0fc805c977850b8c764b9db27",
+      "renderMs": 316
+    },
+    {
+      "frame": 1,
+      "timeMs": 33.333333333333336,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "b3016da4fa34bfb39a3c3b338176e53fa3225c32fc4030c873ed11c2b17416b9",
+      "renderMs": 95
+    },
+    {
+      "frame": 2,
+      "timeMs": 66.66666666666667,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "e292bff2e1f4045a115fa7c24d16a71c34d003a2c1c217de9ad42cce1044aec4",
+      "renderMs": 105
+    },
+    {
+      "frame": 3,
+      "timeMs": 100,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "f19cf44995ae3d8e5f159a30c58093b1e485a17eea1f527d32aab874fc39c518",
+      "renderMs": 111
+    },
+    {
+      "frame": 4,
+      "timeMs": 133.33333333333334,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "ed826febc6ba498e9de9d326512e93d7b9bdfa143d89139440b9aea04bbc4b62",
+      "renderMs": 112
+    },
+    {
+      "frame": 5,
+      "timeMs": 166.66666666666666,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "5e1b78dc5b619f0a5d427bc086238f0f450643645618777622ffa385dddc2be7",
+      "renderMs": 168
+    },
+    {
+      "frame": 6,
+      "timeMs": 200,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "365a00cef52f9e38dd5fa7eb4a485258a6bd2b45f6d8e07289383fe393e99c5c",
+      "renderMs": 129
+    },
+    {
+      "frame": 7,
+      "timeMs": 233.33333333333334,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "6f5e498abc71170d5c67a3a9a33115809387f940456e23b78534b5f32ac36e06",
+      "renderMs": 121
+    },
+    {
+      "frame": 8,
+      "timeMs": 266.6666666666667,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "fce2074f90a317666ae644290c8e0d3790869aeb178a7e021fc4ed281e29385b",
+      "renderMs": 73
+    },
+    {
+      "frame": 9,
+      "timeMs": 300,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "5c655a783389236944964c2afd84c167031886b40d24f5c90a814df8dccf9126",
+      "renderMs": 113
+    },
+    {
+      "frame": 10,
+      "timeMs": 333.3333333333333,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "8018745b48bbe84fb266c82b30a28971a5a71fba6c3ea8d091a13471403151cd",
+      "renderMs": 162
+    },
+    {
+      "frame": 11,
+      "timeMs": 366.6666666666667,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "efd9e31236c90e057facedb211c28bf71eeaf09c09cf15f40ce15789e38dd678",
+      "renderMs": 167
+    },
+    {
+      "frame": 12,
+      "timeMs": 400,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "ba07779eb60056cb891e3a58eb6b61feb7f6127d4aa9f04f9cdfd0a528fe2791",
+      "renderMs": 118
+    },
+    {
+      "frame": 13,
+      "timeMs": 433.3333333333333,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "0702f137ec8755ed634134e28e80f8d62d139778ed230b5117e58b4b3c3b8283",
+      "renderMs": 156
+    },
+    {
+      "frame": 14,
+      "timeMs": 466.6666666666667,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "6a0d544cadaed62e381a8db9ec265530ffa156b6eb2d04b0f564dcf43aa6f18a",
+      "renderMs": 137
+    },
+    {
+      "frame": 15,
+      "timeMs": 500,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "270718cd404858385bb07ae64caedf0038d30652c7159d98145bc5ada55ff23b",
+      "renderMs": 122
+    },
+    {
+      "frame": 16,
+      "timeMs": 533.3333333333334,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "fe77ed24aefd5d7a25ca3f4fefe9b3c4eb65cb33587c6896b0113d08d7ca3e4d",
+      "renderMs": 109
+    },
+    {
+      "frame": 17,
+      "timeMs": 566.6666666666666,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "6a9b9bec72554ebb086b9f4f31c0a4bb5723d0e19a49e142f33098ca6fc71e2e",
+      "renderMs": 114
+    },
+    {
+      "frame": 18,
+      "timeMs": 600,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "30e1d7b6c272083618776fb2892dc772201f8f3ce7916afdc752608bd3644c28",
+      "renderMs": 89
+    },
+    {
+      "frame": 19,
+      "timeMs": 633.3333333333334,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "f58894879d6966d781d336767b271639218e3f42dd05b760bdba2c46fdd75bff",
+      "renderMs": 103
+    },
+    {
+      "frame": 20,
+      "timeMs": 666.6666666666666,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "87789e22bc5b8ec910d2edb8f5285d42ff67351cdd87c0ab7ef16dae1e4cf887",
+      "renderMs": 142
+    },
+    {
+      "frame": 21,
+      "timeMs": 700,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "5758ad0149eb68749941b719f51f0a9cc797e33711ff3cc3e9684079c9026e18",
+      "renderMs": 92
+    },
+    {
+      "frame": 22,
+      "timeMs": 733.3333333333334,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "7343a5a2fecb75d91a1a42a2db226bc049e94920fec6237c3c57cb9e87e15180",
+      "renderMs": 104
+    },
+    {
+      "frame": 23,
+      "timeMs": 766.6666666666666,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "f43bd31be81dec1f89073c1d3c6db44055b891326fd41dcaab9315a80ef0e47b",
+      "renderMs": 102
+    },
+    {
+      "frame": 24,
+      "timeMs": 800,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "4a7d4934254882b327e394d2dee1669e1877877fe8a5a0da4972c90b6854d605",
+      "renderMs": 95
+    },
+    {
+      "frame": 25,
+      "timeMs": 833.3333333333334,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "97585104f05a2595b26dc9629fe064ed7e41742ac99b63806e20e08f6df1b6ea",
+      "renderMs": 145
+    },
+    {
+      "frame": 26,
+      "timeMs": 866.6666666666666,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "ed84c7a7ca7383479c3d6ebf5bfe1c77a84c15490d89e5b460adc4d0ab114933",
+      "renderMs": 125
+    },
+    {
+      "frame": 27,
+      "timeMs": 900,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "5b72fa66a00923b8c513455dd9f7391e283f5dd24bee7e7297a9883b66ddf373",
+      "renderMs": 60
+    },
+    {
+      "frame": 28,
+      "timeMs": 933.3333333333334,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "67afe5bb18cf7effaa375e372baefc7996e87010324b84ba5655412600beec59",
+      "renderMs": 105
+    },
+    {
+      "frame": 29,
+      "timeMs": 966.6666666666666,
+      "sceneId": "proc-stage",
+      "segmentId": "s1",
+      "sha": "35520381435f76e8eeb71e548fca6c7c2e518e08fd5dcea0f25825b3b1bce5ee",
+      "renderMs": 141
+    },
+    {
+      "frame": 30,
+      "timeMs": 1000,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 8
+    },
+    {
+      "frame": 31,
+      "timeMs": 1033.3333333333333,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 2
+    },
+    {
+      "frame": 32,
+      "timeMs": 1066.6666666666667,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 33,
+      "timeMs": 1100,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 34,
+      "timeMs": 1133.3333333333333,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 2
+    },
+    {
+      "frame": 35,
+      "timeMs": 1166.6666666666667,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 36,
+      "timeMs": 1200,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 2
+    },
+    {
+      "frame": 37,
+      "timeMs": 1233.3333333333333,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 38,
+      "timeMs": 1266.6666666666667,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 2
+    },
+    {
+      "frame": 39,
+      "timeMs": 1300,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 40,
+      "timeMs": 1333.3333333333333,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 41,
+      "timeMs": 1366.6666666666667,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 42,
+      "timeMs": 1400,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 0
+    },
+    {
+      "frame": 43,
+      "timeMs": 1433.3333333333333,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 44,
+      "timeMs": 1466.6666666666667,
+      "sceneId": "black-void",
+      "segmentId": "gap",
+      "sha": "12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851",
+      "renderMs": 1
+    },
+    {
+      "frame": 45,
+      "timeMs": 1500,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "d01b23d1890c625535f0fbd875f8bf383a4236d0fc805c977850b8c764b9db27",
+      "renderMs": 325
+    },
+    {
+      "frame": 46,
+      "timeMs": 1533.3333333333333,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "b3016da4fa34bfb39a3c3b338176e53fa3225c32fc4030c873ed11c2b17416b9",
+      "renderMs": 97
+    },
+    {
+      "frame": 47,
+      "timeMs": 1566.6666666666667,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "e292bff2e1f4045a115fa7c24d16a71c34d003a2c1c217de9ad42cce1044aec4",
+      "renderMs": 149
+    },
+    {
+      "frame": 48,
+      "timeMs": 1600,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "f19cf44995ae3d8e5f159a30c58093b1e485a17eea1f527d32aab874fc39c518",
+      "renderMs": 157
+    },
+    {
+      "frame": 49,
+      "timeMs": 1633.3333333333333,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "ed826febc6ba498e9de9d326512e93d7b9bdfa143d89139440b9aea04bbc4b62",
+      "renderMs": 128
+    },
+    {
+      "frame": 50,
+      "timeMs": 1666.6666666666667,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "5e1b78dc5b619f0a5d427bc086238f0f450643645618777622ffa385dddc2be7",
+      "renderMs": 131
+    },
+    {
+      "frame": 51,
+      "timeMs": 1700,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "365a00cef52f9e38dd5fa7eb4a485258a6bd2b45f6d8e07289383fe393e99c5c",
+      "renderMs": 99
+    },
+    {
+      "frame": 52,
+      "timeMs": 1733.3333333333333,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "6f5e498abc71170d5c67a3a9a33115809387f940456e23b78534b5f32ac36e06",
+      "renderMs": 102
+    },
+    {
+      "frame": 53,
+      "timeMs": 1766.6666666666667,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "fce2074f90a317666ae644290c8e0d3790869aeb178a7e021fc4ed281e29385b",
+      "renderMs": 91
+    },
+    {
+      "frame": 54,
+      "timeMs": 1800,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "5c655a783389236944964c2afd84c167031886b40d24f5c90a814df8dccf9126",
+      "renderMs": 146
+    },
+    {
+      "frame": 55,
+      "timeMs": 1833.3333333333333,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "8018745b48bbe84fb266c82b30a28971a5a71fba6c3ea8d091a13471403151cd",
+      "renderMs": 168
+    },
+    {
+      "frame": 56,
+      "timeMs": 1866.6666666666667,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "efd9e31236c90e057facedb211c28bf71eeaf09c09cf15f40ce15789e38dd678",
+      "renderMs": 99
+    },
+    {
+      "frame": 57,
+      "timeMs": 1900,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "ba07779eb60056cb891e3a58eb6b61feb7f6127d4aa9f04f9cdfd0a528fe2791",
+      "renderMs": 137
+    },
+    {
+      "frame": 58,
+      "timeMs": 1933.3333333333333,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "0702f137ec8755ed634134e28e80f8d62d139778ed230b5117e58b4b3c3b8283",
+      "renderMs": 131
+    },
+    {
+      "frame": 59,
+      "timeMs": 1966.6666666666667,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "6a0d544cadaed62e381a8db9ec265530ffa156b6eb2d04b0f564dcf43aa6f18a",
+      "renderMs": 144
+    },
+    {
+      "frame": 60,
+      "timeMs": 2000,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "270718cd404858385bb07ae64caedf0038d30652c7159d98145bc5ada55ff23b",
+      "renderMs": 128
+    },
+    {
+      "frame": 61,
+      "timeMs": 2033.3333333333333,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "fe77ed24aefd5d7a25ca3f4fefe9b3c4eb65cb33587c6896b0113d08d7ca3e4d",
+      "renderMs": 84
+    },
+    {
+      "frame": 62,
+      "timeMs": 2066.6666666666665,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "6a9b9bec72554ebb086b9f4f31c0a4bb5723d0e19a49e142f33098ca6fc71e2e",
+      "renderMs": 124
+    },
+    {
+      "frame": 63,
+      "timeMs": 2100,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "30e1d7b6c272083618776fb2892dc772201f8f3ce7916afdc752608bd3644c28",
+      "renderMs": 97
+    },
+    {
+      "frame": 64,
+      "timeMs": 2133.3333333333335,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "f58894879d6966d781d336767b271639218e3f42dd05b760bdba2c46fdd75bff",
+      "renderMs": 150
+    },
+    {
+      "frame": 65,
+      "timeMs": 2166.6666666666665,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "87789e22bc5b8ec910d2edb8f5285d42ff67351cdd87c0ab7ef16dae1e4cf887",
+      "renderMs": 89
+    },
+    {
+      "frame": 66,
+      "timeMs": 2200,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "5758ad0149eb68749941b719f51f0a9cc797e33711ff3cc3e9684079c9026e18",
+      "renderMs": 72
+    },
+    {
+      "frame": 67,
+      "timeMs": 2233.3333333333335,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "7343a5a2fecb75d91a1a42a2db226bc049e94920fec6237c3c57cb9e87e15180",
+      "renderMs": 75
+    },
+    {
+      "frame": 68,
+      "timeMs": 2266.6666666666665,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "f43bd31be81dec1f89073c1d3c6db44055b891326fd41dcaab9315a80ef0e47b",
+      "renderMs": 85
+    },
+    {
+      "frame": 69,
+      "timeMs": 2300,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "4a7d4934254882b327e394d2dee1669e1877877fe8a5a0da4972c90b6854d605",
+      "renderMs": 109
+    },
+    {
+      "frame": 70,
+      "timeMs": 2333.3333333333335,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "97585104f05a2595b26dc9629fe064ed7e41742ac99b63806e20e08f6df1b6ea",
+      "renderMs": 144
+    },
+    {
+      "frame": 71,
+      "timeMs": 2366.6666666666665,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "ed84c7a7ca7383479c3d6ebf5bfe1c77a84c15490d89e5b460adc4d0ab114933",
+      "renderMs": 90
+    },
+    {
+      "frame": 72,
+      "timeMs": 2400,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "5b72fa66a00923b8c513455dd9f7391e283f5dd24bee7e7297a9883b66ddf373",
+      "renderMs": 102
+    },
+    {
+      "frame": 73,
+      "timeMs": 2433.3333333333335,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "67afe5bb18cf7effaa375e372baefc7996e87010324b84ba5655412600beec59",
+      "renderMs": 108
+    },
+    {
+      "frame": 74,
+      "timeMs": 2466.6666666666665,
+      "sceneId": "proc-stage",
+      "segmentId": "s2",
+      "sha": "35520381435f76e8eeb71e548fca6c7c2e518e08fd5dcea0f25825b3b1bce5ee",
+      "renderMs": 90
+    }
+  ],
+  "ffmpegArgs": [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-nostdin",
+    "-f",
+    "image2pipe",
+    "-framerate",
+    "30",
+    "-vcodec",
+    "png",
+    "-i",
+    "pipe:0",
+    "-an",
+    "-vf",
+    "scale=320:200:force_original_aspect_ratio=decrease,pad=320:200:(ow-iw)/2:(oh-ih)/2",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    "-frames:v",
+    "75",
+    "-n",
+    "C:\\Users\\adity\\AppData\\Local\\Temp\\demo-b-full\\run2.mp4"
+  ],
+  "veloraVersion": "0.1.2",
+  "checks": [
+    {
+      "id": "bridge-present",
+      "pass": true,
+      "detail": "Segments captured through the capture bridge; gaps render black void."
+    }
+  ],
+  "createdAt": "2026-10-13T19:15:54.957Z"
+}

@@ -53,8 +53,8 @@ describe("Amethyst terminal onboarding",()=>{
   expect(plain(result.stdout)).toContain('Detected Next.js');
  });
  it("never decorates JSON or calls human progress in machine mode",async()=>{
-  const progress=vi.fn();const result=await runCli(['init','--json'],{root:'/host',terminal,progress},vi.fn().mockResolvedValue(ready('react')));
-  expect(JSON.parse(result.stdout)).toEqual(ready('react'));expect(progress).not.toHaveBeenCalled();expect(result.stdout).not.toContain('\x1b');
+   const progress=vi.fn();const result=await runCli(['init','--json'],{root:'/host',terminal,progress},vi.fn().mockResolvedValue(ready('react')));
+   expect(JSON.parse(result.stdout)).toMatchObject(ready('react'));expect(JSON.parse(result.stdout)).toMatchObject({command:'init'});expect(progress).not.toHaveBeenCalled();expect(result.stdout).not.toContain('\x1b');
  });
  it("never reports success or fabricates completed steps on setup failure",async()=>{
   const progress=vi.fn();const failure={success:false,issues:[{code:'conflict',message:'Preserve FLUTE.md and retry.'}]};

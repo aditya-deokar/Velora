@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "id": "hook",
+  "title": "Explainer hook",
+  "definition": {
+    "width": 320,
+    "height": 200,
+    "scene": {
+      "camera": { "perspective": 1400 },
+      "focus": { "distance": 1400, "fStop": 8, "focalLength": 50, "maxBlur": 6 },
+      "nodes": [{ "id": "word-1" }, { "id": "word-2" }, { "id": "word-3" }]
+    },
+    "motion": {
+      "durationMs": 1500,
+      "tracks": [
+        {
+          "target": { "kind": "surface", "id": "word-1" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0, "easing": "linear" },
+            { "timeMs": 300, "value": 1 }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "word-2" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0 },
+            { "timeMs": 150, "value": 0 },
+            { "timeMs": 600, "value": 1 }
+          ]
+        },
+        {
+          "target": { "kind": "surface", "id": "word-3" },
+          "property": "opacity",
+          "keyframes": [
+            { "timeMs": 0, "value": 0 },
+            { "timeMs": 300, "value": 0 },
+            { "timeMs": 900, "value": 1 }
+          ]
+        }
+      ]
+    }
+  }
+}

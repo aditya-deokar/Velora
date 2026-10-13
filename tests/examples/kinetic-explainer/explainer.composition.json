@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "explainer",
+  "title": "Kinetic title explainer",
+  "width": 320,
+  "height": 200,
+  "fps": 30,
+  "seed": 5,
+  "scenes": [
+    { "id": "s1", "recipe": "hook", "startMs": 0, "durationMs": 1500 },
+    {
+      "id": "s2",
+      "recipe": "hook",
+      "startMs": 2000,
+      "durationMs": 1500,
+      "transition": { "type": "cascade-handoff", "durationMs": 600 }
+    }
+  ],
+  "assets": [],
+  "captions": { "file": "subs.srt", "burnIn": false }
+}

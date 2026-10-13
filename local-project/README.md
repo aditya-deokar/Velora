@@ -7,3 +7,5 @@ From the repository root run `npm run build && npm run setup:local`, then `npm r
 Each scene is one versioned JSON recipe plus its matching default-export TSX component in `src/velora/scenes/`. All ten are discovered by the installed package. The TSX files reuse `components/scene-content.tsx`, which uses the original dashboard components and provider. Change the JSON to adjust camera, focus and motion. Add another file pair to add a scene. No second list registry or copied playback UI is needed.
 
 The `.local-package` archive and installed dependencies are generated locally by setup. Run setup again after changing the library. The committed `.velora/project.json` identity contains no machine paths or application data; filesystem operations are scoped to the caller’s project root.
+
+Troubleshooting: `Failed to resolve import "velora/preview"` (or `"velora"`) in `npm run dev` means the packed package is not installed — the `file:../.local-package/*.tgz` reference is dangling or stale. Re-run `npm run setup:local` from the repository root; it rebuilds, repacks, reinstalls, and re-runs init.

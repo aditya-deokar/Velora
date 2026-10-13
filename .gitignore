@@ -19,3 +19,9 @@ local-project/.flute/init-pending.json
 
 .release/
 .git_backup/
+
+# Phase 09 demo renders: MP4s stay local, hashes are recorded in expected-hashes.json.
+tests/agent/**/*.mp4
+tests/agent/**/stills/
+tests/agent/**/proof*.png
+tests/examples/**/*.mp4

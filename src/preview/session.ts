@@ -5,15 +5,20 @@ import { RESOURCES, motionDuration, type PreviewDefinition, type PreviewDefiniti
  * WHAT: one presentation cursor, source revision retention and playback lifecycle.
  * WHY: UI and capture seek the same canonical motion clock without remounting host UI.
  * WHERE: ScenePreview owns presentation; core/presentPreview validates source revisions.
+ * Timeline mode is additive: an optional {durationMs, boundaries} descriptor only
+ * rescales the single cursor's clamp span and adds segment-boundary jumps. No
+ * second clock, no second capture bridge; undefined keeps byte-identical behavior.
  */
-export function usePreviewSession(input: PreviewDefinitionInput | undefined, revision: unknown) {
+export type PreviewTimeline = { durationMs: number; boundaries: number[] };
+export function usePreviewSession(input: PreviewDefinitionInput | undefined, revision: unknown, timeline?: PreviewTimeline) {
   const result = useMemo(() => input === undefined ? null : RESOURCES["present-preview"](input), [input]);
   const [accepted, setAccepted] = useState<PreviewDefinition | null>(() => result?.valid ? result.definition : null);
   const definition = result?.valid ? result.definition : input === undefined ? null : accepted;
   const [timeMs, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [renderIssues, setRenderIssues] = useState<SceneIssue[]>([]);
-  const durationMs = definition?.motion ? motionDuration(definition.motion) : 0;
+  const sceneDurationMs = definition?.motion ? motionDuration(definition.motion) : 0;
+  const durationMs = timeline?.durationMs ?? sceneDurationMs;
   const cursor = useRef(timeMs);
   cursor.current = timeMs;
   const issues = result && !result.valid ? result.issues : renderIssues;
@@ -57,5 +62,18 @@ export function usePreviewSession(input: PreviewDefinitionInput | undefined, rev
     if (cursor.current >= durationMs) setTime(0);
     setPlaying(value => !value);
   };
-  return {definition, timeMs, durationMs, playing, valid, issues, seek, pause, toggle, onDiagnostics: setRenderIssues};
+  // Segment-boundary jumps over the single cursor. Without a timeline both
+  // are undefined and every other behavior is unchanged.
+  const boundaries = useMemo(() => [...(timeline?.boundaries ?? [])].sort((a, b) => a - b), [timeline]);
+  const seekNext = useCallback(() => {
+    if (!timeline || !valid) return;
+    const edge = boundaries.find((boundary) => boundary > cursor.current);
+    if (edge !== undefined) seek(Math.min(edge, durationMs));
+  }, [timeline, valid, boundaries, seek, durationMs]);
+  const seekPrev = useCallback(() => {
+    if (!timeline || !valid) return;
+    const edge = [...boundaries].reverse().find((boundary) => boundary < cursor.current);
+    if (edge !== undefined) seek(edge);
+  }, [timeline, valid, boundaries, seek]);
+  return {definition, timeMs, durationMs, playing, valid, issues, seek, pause, toggle, onDiagnostics: setRenderIssues, ...(timeline ? {seekNext, seekPrev, boundaries} : {})};
 }

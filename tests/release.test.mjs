@@ -6,8 +6,11 @@ const manifest = {name:'@owner/scene',version:'1.2.3',license:'MIT',publishConfi
  exports:{'.':{types:'./dist/library/types/index.d.ts',import:'./dist/library/index.js'}}};
 const files = ['package.json','README.md','LICENSE','dist/cli/flute.js','dist/library/index.js','dist/library/types/index.d.ts','dist/library/chunk.js'].map(path=>({path}));
 test('accepts a public tagged artifact for its repository',()=>validateRelease(manifest,files,{publishing:true,repository:'owner/flute',tag:'v1.2.3'}));
-for (const name of ['.env','dist/library/.env','local-project/index.html','tests/fixture.ts','dist/library/../../secret.js','dist/cli/token.json'])
- test('rejects unintended packed file '+name,()=>assert.throws(()=>validateRelease(manifest,[...files,{path:name}])));
+const skillsFiles = ['skills/velora/SKILL.md','skills/velora/REFERENCE.md','skills/velora/COMPATIBILITY.md','skills/velora/templates/scene-minimal/minimal.scene.json','skills/velora/templates/scene-minimal/minimal.tsx','skills/velora/templates/scene-minimal/README.md','skills/velora/scripts/new-scene.mjs','skills/velora-init/SKILL.md','skills/velora-verify/SKILL.md'].map(path=>({path}));
+test('accepts the skills library, templates and scripts',()=>validateRelease(manifest,[...files,...skillsFiles],{publishing:true,repository:'owner/flute',tag:'v1.2.3'}));
+test('accepts the unscoped public package name',()=>validateRelease({...manifest,name:'velora',repository:{type:'git',url:'git+https://github.com/aditya-deokar/velora.git'}},files,{publishing:true,repository:'aditya-deokar/velora',tag:'v1.2.3'}));
+for (const name of ['.env','dist/library/.env','local-project/index.html','tests/fixture.ts','dist/library/../../secret.js','dist/cli/token.json','tests/agent/demo-a/host/package.json','tests/examples/saas-tour/tour.composition.json','skills/velora/templates/scene-minimal/evil.js','skills/other/SKILL.md','skills/velora/SKILL.md.bak'])
+  test('rejects unintended packed file '+name,()=>assert.throws(()=>validateRelease(manifest,[...files,{path:name}])));
 for (const [name,change] of [
  ['private',{private:true}],['restricted',{publishConfig:{access:'restricted'}}],['lifecycle',{scripts:{postinstall:'run-me'}}],
  ['missing repository',{repository:undefined}],['wrong CLI',{bin:{flute:'wrong.js'}}],['prerelease',{version:'1.2.3-beta.1'}]

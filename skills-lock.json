@@ -1,0 +1,242 @@
+{
+  "version": 1,
+  "skills": {
+    "gsap-core": {
+      "source": "aditya-deokar/gsap-motion-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-core/SKILL.md",
+      "computedHash": "e5d1710bb88083e69c553f16c7189c4e58ee7d51196fabba74a9b60dd26ea5f1"
+    },
+    "gsap-debugger": {
+      "source": "aditya-deokar/gsap-motion-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-debugger/SKILL.md",
+      "computedHash": "055ae327c35b1856ab2ed584372c4871ec7fd7b01ccf517fa3e1f6d914e09023"
+    },
+    "gsap-frameworks": {
+      "source": "aditya-deokar/gsap-motion-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-frameworks/SKILL.md",
+      "computedHash": "94f8589a112f30b076ee5a8005a141c8caff7c90b353de88c5c44fa92e3e2e17"
+    },
+    "gsap-motion-engineer": {
+      "source": "aditya-deokar/gsap-motion-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-motion-engineer/SKILL.md",
+      "computedHash": "1a5489156646dc778960df04234e669ff8d336ea38af36940b833d83c4b70871"
+    },
+    "gsap-performance": {
+      "source": "aditya-deokar/gsap-motion-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-performance/SKILL.md",
+      "computedHash": "927e7040a13887ecd558eaf41f75f7b51b03a044d38dcb6c6e8084552d146b94"
+    },
+    "gsap-plugins": {
+      "source": "aditya-deokar/gsap-motion-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-plugins/SKILL.md",
+      "computedHash": "e9bed61cf9159a9a9fe9d9efab6de8abe0ccd1ca8a8a73c1c395de29e0208ce7"
+    },
+    "gsap-production-patterns": {
+      "source": "aditya-deokar/gsap-motion-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-production-patterns/SKILL.md",
+      "computedHash": "4aa532d7d72402f0ca2dd54d561a74b03e9cdae570d7f925506e116904cca277"
+    },
+    "gsap-react": {
+      "source": "aditya-deokar/gsap-motion-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-react/SKILL.md",
+      "computedHash": "4973f9803ce0feb998a64b4fcfd9809b22e2e2ae0425e06b25aa4b5e7ac054a0"
+    },
+    "gsap-scrolltrigger": {
+      "source": "aditya-deokar/gsap-motion-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-scrolltrigger/SKILL.md",
+      "computedHash": "30b72cde986ebee19376f04fee6519898601cc5c8837cceba733a422fbaf2782"
+    },
+    "gsap-timeline": {
+      "source": "aditya-deokar/gsap-motion-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-timeline/SKILL.md",
+      "computedHash": "2cfe6b6c7d1e0d66241b5bb7eee6a727ec250d27311b0c50e8913f1830b9d0d2"
+    },
+    "gsap-utils": {
+      "source": "aditya-deokar/gsap-motion-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-utils/SKILL.md",
+      "computedHash": "b5d88cb4a36f38c7b83a85d913d50e76dc7814dafef4533ca3e8a81473b7f374"
+    },
+    "threejs-animation": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-animation/SKILL.md",
+      "computedHash": "457900cae6babbe092e3226a2ac9ae5d09a84199c1b3d5050ed400d4f56a9d82"
+    },
+    "threejs-fundamentals": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-fundamentals/SKILL.md",
+      "computedHash": "110044d18d358c235c3f938e7117ea0ccbcf72e0a8703567473e85c84b09ae99"
+    },
+    "threejs-geometry": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-geometry/SKILL.md",
+      "computedHash": "9312cc4d2a68f408c789ff326904bbc88840605c8f6985d9a7a0a92d64918953"
+    },
+    "threejs-interaction": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-interaction/SKILL.md",
+      "computedHash": "d7d3b36f25e7705c3c1e9cac52699d50e84242fab6f26e3de57575b1bef2d391"
+    },
+    "threejs-lighting": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-lighting/SKILL.md",
+      "computedHash": "7adc319af73a15ce16b94c83aafe0bcca7b8ef17d9fb263d75a937b9670f1772"
+    },
+    "threejs-loaders": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-loaders/SKILL.md",
+      "computedHash": "ba08b24a9700c4e89f86155ee4f5f31709479ecb7c51bfe07306b3e2a5ad2e4a"
+    },
+    "threejs-materials": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-materials/SKILL.md",
+      "computedHash": "4d181db0b35213b772bf20eff5fe6f72f1c84bdc03294db96d1f712dd9047443"
+    },
+    "threejs-postprocessing": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-postprocessing/SKILL.md",
+      "computedHash": "95c3952afb0f1164253e013cce0c1cb1c290b17e3cbdc3583379bd4c66ca2870"
+    },
+    "threejs-shaders": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-shaders/SKILL.md",
+      "computedHash": "d95f7e19b4aa4992d3d5dfbdbfeec0d21affd251dc2006dc0d4d4d1a317f1b04"
+    },
+    "threejs-textures": {
+      "source": "cloudai-x/threejs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/threejs-textures/SKILL.md",
+      "computedHash": "5afbbaa048507fcbb76adca76cdc2fa58f7edb68383c0c48785756fecb68a2d0"
+    },
+    "understand-and-create-animation": {
+      "source": "aditya-deokar/gsap-motion-engineer",
+      "sourceType": "github",
+      "skillPath": "skills/understand-and-create-animation/SKILL.md",
+      "computedHash": "2a0c4989e379336bb0f6de5b34520558024b755af1c2181360debc37c2174313"
+    },
+    "velora": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "d5c286263bb3978cfa5bfb883fde6ca8da28c146486d2579693061d60207e820"
+    },
+    "velora-init": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-init/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "093b866e22a8bca9b7a5cb51366093d7644bdff6197f342fcf798c08546bf8c0"
+    },
+    "velora-composition": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-composition/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "d77e87616f685b8ca9c868220a522d8259ac649e18b846fcfd261613b720db01"
+    },
+    "velora-scenes": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-scenes/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "5bcd24c875a9a501f5ca326340170d3cac0e40fc8d8c5d6d66340fd561881117"
+    },
+    "velora-render": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-render/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "df8892eee41cc3ce1766e5b1cb3a3d496aa3d8722f19d23c19d9cc5b1d8d1763"
+    },
+    "velora-gsap": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-gsap/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "10a80f4811b1a9efaf28df81d1b53a482ee5b235b62f6a32887dcce5d6030f14"
+    },
+    "velora-threejs": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-threejs/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "181fce1c80910e6389f02e588fb28d1f928021bb74e9a1d9d79bda657b14e122"
+    },
+    "velora-ewmotion": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-ewmotion/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "9857a44fc8090737a968b94934431aaf633716653f472c27573abb6d5302bffd"
+    },
+    "velora-typography": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-typography/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "97fdb4e07e4c5074e444223f3c78f67421e2dad69aa8113d9aeab42677e320b2"
+    },
+    "velora-transitions": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-transitions/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "51e6aade62b121adcb8a80548743d098ef5e051960b2ba3e5fc37c70079d5c5f"
+    },
+    "velora-audio": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-audio/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "49f16cd028bca27e80570f1334da62d48f06a07cbf9218a1ae5dbbf37d516a9d"
+    },
+    "velora-export": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-export/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "3b290ffb43fef7519f9f59c54df12d48e3bd69539da0a8670481dc9e9d7b16b5"
+    },
+    "velora-debug": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-debug/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "20f46f1a7be22a9c237ebb48a082ba7a0dbd0cf853fc906f24b06870c84733de"
+    },
+    "velora-performance": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-performance/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "04be7718741595270956174664bcd22859db6cc9cf22bcec45586143257e17d3"
+    },
+    "velora-verify": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-verify/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "f5f5410b2643c2e081ccc50dd776a9c8aebaf031b4b6810b707fa5f934522cb8"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "teaser",
+  "title": "Demo A product teaser",
+  "width": 320,
+  "height": 200,
+  "fps": 30,
+  "seed": 7,
+  "scenes": [
+    { "id": "s1", "recipe": "teaser-a", "startMs": 0, "durationMs": 2000 },
+    {
+      "id": "s2",
+      "recipe": "teaser-b",
+      "startMs": 2500,
+      "durationMs": 2000,
+      "transition": { "type": "depth-dolly", "durationMs": 400 }
+    }
+  ],
+  "assets": [{ "id": "narr", "path": "assets/narr.wav", "type": "audio" }],
+  "audio": [{ "id": "narr", "assetId": "narr", "startMs": 0, "gain": 1 }],
+  "captions": { "file": "subs.srt", "burnIn": false }
+}

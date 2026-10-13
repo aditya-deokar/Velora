@@ -368,3 +368,5 @@ function SceneErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
 }
 
 export { useSceneCapture } from "./capture";
+export { KineticText, kineticStyle, kineticWordIds, type KineticTextProps } from "./kinetic-text";
+export { WebGLSurface, type WebGLSurfaceProps, type WebGLTime } from "./three-bridge";

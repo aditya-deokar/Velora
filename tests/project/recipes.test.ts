@@ -126,7 +126,7 @@ describe("scene CLI adapter", () => {
     const context = { root: value };
     expect((await runCli(["scenes"], context)).stdout).toContain("demo\tdemo");
     const result = await runCli(["load", "--scene", "demo", "--json"], context);
-    expect(JSON.parse(result.stdout)).toEqual(await executeRecipeCommand("load-scene", { sceneId: "demo" }, context));
+    expect(JSON.parse(result.stdout)).toEqual({ ...(await executeRecipeCommand("load-scene", { sceneId: "demo" }, context)), command: "load" });
     expect((await runCli(["load", "--scene", "missing"], context)).code).toBe(1);
   });
   it("routes open through the fifth executor without changing existing injection positions", async () => {
