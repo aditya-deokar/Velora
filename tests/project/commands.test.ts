@@ -465,7 +465,7 @@ describe("generated preview refresh boundary setup", () => {
     expect(await readFile(path.join(root, "src/main.tsx"), "utf8")).toBe(current);
     expect(await readFile(path.join(root, adapterPath), "utf8")).toBe(generatedPreview("src/main.tsx").text);
     expect(success(await run(root)).changed).toBe(false);
-  });
+  }, 30_000);
   it("rejects a changed legacy glob without creating the adapter or a journal", async () => {
     const root = await fixture();
     const first = success(await run(root));

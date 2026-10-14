@@ -110,7 +110,7 @@ export async function openCapture(input: Pick<ExportVideo,"url"|"width"|"height"
           for (let i = 0; i < frames; i++) {
             check();
             await page.evaluate(elapsed => (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__.seek(elapsed), i * 1000 / options.fps);
-            const png = await page.screenshot({clip:rect, type: "png", animations: "disabled", timeout: 10_000 });
+            const png = await page.screenshot({clip:rect, type: "png", animations: "disabled", timeout: 30_000 });
             if(i>0 && i % (options.fps*2)===0) process.stderr.write(`Captured ${i}/${frames} frames\n`);
             await Promise.race([new Promise<void>((resolve, reject) => encoder!.stdin!.write(png, error => error ? reject(error) : resolve())), finished.then(() => { throw fault("encoding-failed", "Encoder stopped before all scene frames were written."); })]);
           }

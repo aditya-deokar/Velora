@@ -307,7 +307,7 @@ export async function executeProjectCommand(operation: unknown, input: unknown, 
     const known = error instanceof Error && "code" in error && "target" in error;
     return { success: false, issues: [{
       code: known ? String(error.code) : "project-error",
-      message: known ? error.message : "Unable to access the project. Check local files and permissions, then retry.",
+      message: known ? error.message : (error instanceof Error ? error.message : "Unable to access the project. Check local files and permissions, then retry."),
       ...(known && typeof error.target === "string" ? { path: error.target } : {}),
     }] };
   }

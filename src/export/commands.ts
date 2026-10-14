@@ -53,7 +53,8 @@ export async function executeVideoExport(input: unknown, context: { root: string
     }
   } catch (error) {
     const known = error as { code?: string; message?: string };
-    return { success: false, issues: [{ code: known.code ?? "export-failed", message: known.code && known.message ? known.message : "Video export failed. Check the local scene server and retry." }] };
+    const message = (known.code && known.message) || (error instanceof Error ? error.message : "Video export failed. Check the local scene server and retry.");
+    return { success: false, issues: [{ code: known.code ?? "export-failed", message }] };
   } finally { await session?.close(); }
 }
 

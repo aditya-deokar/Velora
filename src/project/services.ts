@@ -244,7 +244,7 @@ export function probeExecutable(executable: string, args: string[], timeoutMs = 
 
 function run(root: string, executable: string, args: string[], timeout = 120_000): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, args, { cwd: root, shell: false, stdio: "ignore" });
+    const child = spawn(executable, args, { cwd: root, shell: process.platform === "win32", stdio: "ignore" });
     const timer = setTimeout(() => { child.kill(); reject(fault("process-failed", "Local process timed out; retry after checking the project.")); }, timeout);
     child.once("error", error => { clearTimeout(timer); reject(error); });
     child.once("exit", code => {

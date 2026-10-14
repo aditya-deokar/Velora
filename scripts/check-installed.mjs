@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, cp, readFile, readdir, writeFile, rm, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

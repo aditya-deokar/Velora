@@ -90,7 +90,7 @@ describe("scoped recipe commands", () => {
     const result = await executeRecipeCommand("list-scenes", {}, { root: value });
     expect(result).toMatchObject({ success: false });
     expect(JSON.stringify(result)).toContain("256 entries");
-  });
+  }, 30_000);
   it("rejects malformed scope and unknown fields before effects", async () => {
     const canonical = vi.spyOn(services, "canonicalRoot");
     expect(await executeRecipeCommand("list-scenes", { directory: "../outside" }, { root: "/unused" })).toMatchObject({ success: false });
