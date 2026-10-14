@@ -24,7 +24,7 @@ function manifestDoc(frames: { frame: number; timeMs: number; sceneId: string; s
 let contentPng: Buffer;
 let blankPng: Buffer;
 beforeAll(async () => {
-  root = await mkdtemp(path.join(tmpdir(), "flute-check-"));
+  root = await mkdtemp(path.join(tmpdir(), "velora-check-"));
   ffmpeg("-f", "lavfi", "-i", "testsrc=size=128x96:rate=30:duration=2", "-frames:v", "1", path.join(root, "content.png"));
   contentPng = await readFile(path.join(root, "content.png"));
   blankPng = voidPng(128, 96);

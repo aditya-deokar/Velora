@@ -12,11 +12,11 @@ import { fileURLToPath } from 'node:url';
 import { NPM, NPM_SHELL } from './npm-cmd.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const cli = path.join(root, 'dist', 'cli', 'flute.js');
+const cli = path.join(root, 'dist', 'cli', 'velora.js');
 try {
   await readFile(cli, 'utf8');
 } catch {
-  console.error('check-agent-demos: dist/cli/flute.js is missing. Run npm run build first.');
+  console.error('check-agent-demos: dist/cli/velora.js is missing. Run npm run build first.');
   process.exit(1);
 }
 

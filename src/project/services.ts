@@ -326,7 +326,7 @@ export async function probeAudioFile(absolutePath: string, timeoutMs = 30_000): 
 }
 /** Read-only dependency resolution; hoisted and pnpm-linked packages are not mutation targets. */
 export async function readDependency(root:string,name:string,target="package.json"):Promise<string|undefined> {
-  if (!["react","react-dom","velora","@webprodigies/flute"].includes(name)) throw fault("invalid-input","Unknown runtime dependency.");
+  if (!["react","react-dom","@webprodigies/velora","velora"].includes(name)) throw fault("invalid-input","Unknown runtime dependency.");
   relativeTarget(target);
   const candidates=createRequire(path.join(root,"package.json")).resolve.paths(name)??[];
   for(const modules of candidates) {

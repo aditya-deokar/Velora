@@ -33,7 +33,7 @@ Use this skill after frame proofs pass and the request is an MP4. It chooses fps
 - `velora render --composition teaser.composition.json --out teaser.mp4 --no-stream --json`: envelope only.
 - `velora render --composition teaser.composition.json --frame 0 --out proof.png --json`: still proof before video.
 - `velora frames --composition teaser.composition.json --out stills --json`: sequence plus `manifest.json`.
-- `velora export --url http://127.0.0.1:5173/?flute-preview=1 --output clip.mp4 --json`: live-scene capture through the bridge.
+- `velora export --url http://127.0.0.1:5173/?velora-preview=1 --output clip.mp4 --json`: live-scene capture through the bridge.
 - `velora check --frames stills --json`: gates before calling video done.
 
 Flags: `--fps 30|60|120`, `--width` and `--height` even numbers 64 to 3840, `--parallel 1-4`, `--no-cache`, `--cache-dir <dir>`, `--url <origin>`, `--project <dir>`.

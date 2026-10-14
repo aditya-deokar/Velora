@@ -182,8 +182,8 @@ export function Scene({
       <ParentContext.Provider value={undefined}>
         <div
           className={className}
-          data-flute-scene=""
-          data-flute-valid={result.evaluation.issues.length===0 ? "true" : "false"}
+          data-velora-scene=""
+          data-velora-valid={result.evaluation.issues.length===0 ? "true" : "false"}
           style={{
             ...style,
             background: SCENE_BACKGROUND,
@@ -200,7 +200,7 @@ export function Scene({
         >
           <div
             ref={stage}
-            data-flute-stage=""
+            data-velora-stage=""
             style={{
               position: "relative",
               pointerEvents: "none",
@@ -215,8 +215,8 @@ export function Scene({
           </div>
         </div>
         {result.evaluation.issues.length > 0 && (
-          <div role="alert" data-flute-diagnostics="">
-            <strong>Flute scene needs a correction.</strong>
+          <div role="alert" data-velora-diagnostics="">
+            <strong>Velora scene needs a correction.</strong>
             <ul>
               {result.evaluation.issues.map((issue, index) => (
                 <li key={index}>
@@ -243,14 +243,14 @@ export function Surface({
   className,
   style,
 }: SurfaceProps) {
-  const filterId = "flute-focus-" + useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const filterId = "velora-focus-" + useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const context = useContext(SceneContext);
   const parent = useContext(ParentContext);
-  const [token] = useState(() => Symbol("flute-binding"));
+  const [token] = useState(() => Symbol("velora-binding"));
   const element = useRef<HTMLDivElement>(null);
   if (!context)
     throw new Error(
-      "Surface and Motion must be rendered inside a Flute Scene.",
+      "Surface and Motion must be rendered inside a Velora Scene.",
     );
   const { registry, nodes, transforms } = context;
   useLayout(() => {
@@ -287,9 +287,9 @@ export function Surface({
       <div
         ref={element}
         className={className}
-        data-flute-id={id}
-        data-flute-blur={blur}
-        data-flute-depth={node?.worldPosition.z ?? 0}
+        data-velora-id={id}
+        data-velora-blur={blur}
+        data-velora-depth={node?.worldPosition.z ?? 0}
         style={{
           ...style,
           position: style?.position ?? "relative",
@@ -303,12 +303,12 @@ export function Surface({
         }}
       >
         {content !== undefined && (
-          <div data-flute-content="" style={leafStyle}>
+          <div data-velora-content="" style={leafStyle}>
             {content}
           </div>
         )}
         <div
-          data-flute-content={
+          data-velora-content={
             content === undefined && !grouped ? "" : undefined
           }
           style={{
@@ -328,7 +328,7 @@ export function Surface({
 /** Opt-in component adapters read the same explicit time used by spatial tracks. */
 export function useSceneTime(): number {
   const context = useContext(SceneContext);
-  if (!context) throw new Error("useSceneTime requires a Flute Scene.");
+  if (!context) throw new Error("useSceneTime requires a Velora Scene.");
   return context.timeMs;
 }
 /** Motion shares Surface registration; Scene supplies canonical evaluated tracks. */
@@ -356,8 +356,8 @@ export function SceneErrorBoundary({ children, resetKey, onError, onReset }: Sce
 function SceneErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   const message = error instanceof Error ? error.message : String(error);
   return (
-    <div role="alert" data-flute-error="">
-      <strong>Unable to render the Flute scene.</strong>
+    <div role="alert" data-velora-error="">
+      <strong>Unable to render the Velora scene.</strong>
       <p>{message}</p>
       <p>Correct the component or scene configuration, then retry.</p>
       <button type="button" onClick={resetErrorBoundary}>

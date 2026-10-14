@@ -17,7 +17,7 @@ function ffprobe(file: string) {
   return JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_streams", "-of", "json", file], { encoding: "utf8" }).toString()).streams;
 }
 beforeAll(async () => {
-  root = await mkdtemp(path.join(tmpdir(), "flute-mux-"));
+  root = await mkdtemp(path.join(tmpdir(), "velora-mux-"));
   ffmpeg("-f", "lavfi", "-i", "testsrc=size=128x96:rate=30:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", path.join(root, "silent.mp4"));
   ffmpeg("-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "pcm_s16le", path.join(root, "tone.wav"));
   await writeFile(path.join(root, "subs.srt"), "1\n00:00:00,200 --> 00:00:01,800\nHello burn\n");

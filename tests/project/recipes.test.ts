@@ -9,10 +9,10 @@ import { loadSceneRecipes } from "../../src/core/recipes";
 import { runCli } from "../../src/cli";
 
 const roots: string[] = [];
-const directory = "src/flute/scenes";
+const directory = "src/velora/scenes";
 const recipe = (id = "demo") => ({ version: 1, id, title: id, definition: { scene: { nodes: [{ id: "panel" }], focus: { distance: 1800 } }, motion: { durationMs: 200, tracks: [] } } });
 async function root() {
-  const value = await mkdtemp(path.join(tmpdir(), "flute-recipes-"));
+  const value = await mkdtemp(path.join(tmpdir(), "velora-recipes-"));
   roots.push(value);
   return value;
 }
@@ -75,7 +75,7 @@ describe("scoped recipe commands", () => {
   it("denies a symlinked recipe directory and traversal through scoped services", async () => {
     const value = await root(), outside = await root();
     await add(outside);
-    await mkdir(path.join(value, "src/flute"), { recursive: true });
+    await mkdir(path.join(value, "src/velora"), { recursive: true });
     await symlink(path.join(outside, directory), path.join(value, directory));
     expect(await executeRecipeCommand("list-scenes", {}, { root: value })).toMatchObject({ success: false });
     await expect(services.scanDirectory(value, "../outside", 10)).rejects.toMatchObject({ code: "denied-path" });
@@ -99,12 +99,12 @@ describe("scoped recipe commands", () => {
   });
   it("opens only the selected final URL after canonical preview verification", async () => {
     const value = await root(); await add(value);
-    const execute = vi.spyOn(commands, "executeProjectCommand").mockResolvedValue({ success: true, data: { url: "http://127.0.0.1:5173/?flute-preview=1" } });
+    const execute = vi.spyOn(commands, "executeProjectCommand").mockResolvedValue({ success: true, data: { url: "http://127.0.0.1:5173/?velora-preview=1" } });
     const browser = vi.spyOn(services, "openBrowser").mockResolvedValue();
     const result = await executeRecipeCommand("open-scene", { sceneId: "demo", url: "http://127.0.0.1:5173" }, { root: value });
     expect(execute).toHaveBeenCalledWith("open-preview", { url: "http://127.0.0.1:5173", launch: false }, { root: await services.canonicalRoot(value) });
-    expect(result).toMatchObject({ success: true, data: { selected: { id: "demo" }, url: "http://127.0.0.1:5173/?flute-preview=1&flute-scene=demo" } });
-    expect(browser).toHaveBeenCalledExactlyOnceWith(await services.canonicalRoot(value), "http://127.0.0.1:5173/?flute-preview=1&flute-scene=demo");
+    expect(result).toMatchObject({ success: true, data: { selected: { id: "demo" }, url: "http://127.0.0.1:5173/?velora-preview=1&velora-scene=demo" } });
+    expect(browser).toHaveBeenCalledExactlyOnceWith(await services.canonicalRoot(value), "http://127.0.0.1:5173/?velora-preview=1&velora-scene=demo");
     browser.mockClear();
     await executeRecipeCommand("open-scene", { sceneId: "demo", url: "http://127.0.0.1:5173", launch: false }, { root: value });
     expect(browser).not.toHaveBeenCalled();
@@ -131,10 +131,10 @@ describe("scene CLI adapter", () => {
   });
   it("routes open through the fifth executor without changing existing injection positions", async () => {
     const execute = vi.fn(), exporter = vi.fn();
-    const recipes = vi.fn().mockResolvedValue({ success: true, data: { scenes: [], issues: [], url: "http://localhost:6211/?flute-preview=1&flute-scene=demo" } });
+    const recipes = vi.fn().mockResolvedValue({ success: true, data: { scenes: [], issues: [], url: "http://localhost:6211/?velora-preview=1&velora-scene=demo" } });
     const result = await runCli(["open", "--scene", "demo", "--project", "/host", "--no-open"], { root: "/default", port: "6211" }, execute, exporter, recipes);
     expect(recipes).toHaveBeenCalledWith("open-scene", { sceneId: "demo", url: "http://127.0.0.1:6211", launch: false }, { root: "/host" });
-    expect(result.stdout).toContain("flute-scene=demo");
+    expect(result.stdout).toContain("velora-scene=demo");
     expect(execute).not.toHaveBeenCalled(); expect(exporter).not.toHaveBeenCalled();
   });
   it.each([["scenes", "--url", "http://localhost"], ["scenes", "--scene", "demo"], ["validate", "--scene", "demo"], ["load", "--scene"], ["open", "--scene", "demo", "--scene", "other"]])("rejects invalid scene flags %j", async (...args) => {

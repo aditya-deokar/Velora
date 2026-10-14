@@ -1,19 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 import { runCli } from "../../src/cli";
 import { terminalWelcome, formatOnboarding, terminalText } from "../../src/cli/terminal";
-import { FLUTE_BRAND } from "../../src/core/branding";
+import { VELORA_BRAND } from "../../src/core/branding";
 import type { ProjectResult } from "../../src/core/project";
 const terminal = {interactive:true, colorDepth:24, columns:90, version:"9.8.7"};
-const handoff = {path:"FLUTE.md" as const,guideCommand:"npx flute guide --json" as const,guideVersion:1,prompt:"Read FLUTE.md and animate <page route or component path>."};
+const handoff = {path:"VELORA.md" as const,guideCommand:"npx velora guide --json" as const,guideVersion:1,prompt:"Read VELORA.md and animate <page route or component path>."};
 const ready = (kind?:string, changed=true): Extract<ProjectResult,{success:true}> => ({success:true,data:{changed,handoff,
  project:{version:1,projectId:"00000000-0000-4000-8000-000000000000",entry:"src/main.tsx",packageManager:"npm"},
- ...(kind?{integration:{kind,component:"src/flute/ProjectPreview.jsx",...(kind==='react'?{}:{route:"/flute"}),instructions:"Canonical host instructions."}}:{})}});
+ ...(kind?{integration:{kind,component:"src/velora/ProjectPreview.jsx",...(kind==='react'?{}:{route:"/velora"}),instructions:"Canonical host instructions."}}:{})}});
 const plain = (text:string) => text.replace(/\x1b\[[0-9;]*m/g, "");
 describe("Amethyst terminal onboarding",()=>{
  it("uses the approved wordmark, real supplied version and canonical brand",()=>{
   const text=terminalWelcome(terminal);
   expect(text).toContain("\x1b[38;2;191;161;255m");
-  for(const value of ["███████",FLUTE_BRAND.title,FLUTE_BRAND.url,"v9.8.7","cinematic 3D mockups"])expect(plain(text)).toContain(value);
+  for(const value of ["███████",VELORA_BRAND.title,VELORA_BRAND.url,"v9.8.7","cinematic 3D mockups"])expect(plain(text)).toContain(value);
  });
  it.each([0,4,8,24])("adapts ANSI to color depth %s",colorDepth=>{
   const text=terminalWelcome({...terminal,colorDepth});
@@ -33,7 +33,7 @@ describe("Amethyst terminal onboarding",()=>{
   expect(text).not.toContain("localhost:3000");
  });
  it("reports retries accurately and only prints a URL returned by the operation",()=>{
-  const result=ready('next-app',false);result.data.url="http://localhost:4321/flute?flute-preview=1";
+  const result=ready('next-app',false);result.data.url="http://localhost:4321/velora?velora-preview=1";
   const text=plain(formatOnboarding(result,terminal));
   expect(text).toContain("Verified your existing connection");expect(text).not.toContain("Added your");expect(text).toContain(result.data.url);
  });
@@ -49,7 +49,7 @@ describe("Amethyst terminal onboarding",()=>{
  it("emits pending feedback before setup resolves, then confirmed results with one banner",async()=>{
   const progress=vi.fn();const execute=vi.fn(async()=>{expect(progress).toHaveBeenCalledOnce();expect(progress.mock.calls[0][0]).not.toContain("✓");return ready('next-app')});
   const result=await runCli(['init'],{root:'/host',terminal,progress},execute);
-  expect(plain(progress.mock.calls[0][0]+result.stdout).split(FLUTE_BRAND.title)).toHaveLength(2);
+  expect(plain(progress.mock.calls[0][0]+result.stdout).split(VELORA_BRAND.title)).toHaveLength(2);
   expect(plain(result.stdout)).toContain('Detected Next.js');
  });
  it("never decorates JSON or calls human progress in machine mode",async()=>{
@@ -57,9 +57,9 @@ describe("Amethyst terminal onboarding",()=>{
    expect(JSON.parse(result.stdout)).toMatchObject(ready('react'));expect(JSON.parse(result.stdout)).toMatchObject({command:'init'});expect(progress).not.toHaveBeenCalled();expect(result.stdout).not.toContain('\x1b');
  });
  it("never reports success or fabricates completed steps on setup failure",async()=>{
-  const progress=vi.fn();const failure={success:false,issues:[{code:'conflict',message:'Preserve FLUTE.md and retry.'}]};
+  const progress=vi.fn();const failure={success:false,issues:[{code:'conflict',message:'Preserve VELORA.md and retry.'}]};
   const result=await runCli(['init'],{root:'/host',terminal,progress},vi.fn().mockResolvedValue(failure));
-  expect(result.code).toBe(1);expect(result.stdout).toBe('');expect(result.stderr).toContain('Preserve FLUTE.md');
+  expect(result.code).toBe(1);expect(result.stdout).toBe('');expect(result.stderr).toContain('Preserve VELORA.md');
   expect(progress.mock.calls[0][0]).not.toContain('Ready.');
  });
  it("keeps successful setup and repair instructions when opening fails",async()=>{

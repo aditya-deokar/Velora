@@ -56,9 +56,9 @@ export async function verifyIteration({page,host,origin,server,processes,waitFor
  await page.evaluate(()=>window.hostIdentity=document.querySelector('[data-testid="host-revenue"]'));
  const seek=page.getByRole('slider',{name:'Scene time'});
  await seek.fill('4000');
- const blur=await page.locator('[data-flute-id="host"]').getAttribute('data-flute-blur');
+ const blur=await page.locator('[data-velora-id="host"]').getAttribute('data-velora-blur');
  await writeSource('scene.ts',sceneSource(1600));
- await expect(page.locator('[data-flute-id="host"]')).not.toHaveAttribute('data-flute-blur',blur);
+ await expect(page.locator('[data-velora-id="host"]')).not.toHaveAttribute('data-velora-blur',blur);
  await expect(seek).toHaveValue('4000');
  await expect(page.getByRole('button',{name:'Inspect 1',exact:true})).toBeVisible();
  assert.equal(await page.evaluate(()=>window.hostIdentity===document.querySelector('[data-testid="host-revenue"]')),true);
@@ -94,7 +94,7 @@ export async function verifyIteration({page,host,origin,server,processes,waitFor
  await expect(page.getByText('Revenue: 12840',{exact:true})).toBeVisible({timeout:20000});
  await expect(page.getByText('Reconnecting to your app…')).toHaveCount(0,{timeout:20000});
  await writeSource('App.tsx',originalApp);
- await expect(page.locator('[data-flute-preview]')).toHaveCount(0);
+ await expect(page.locator('[data-velora-preview]')).toHaveCount(0);
  await expect(page.getByRole('heading',{name:'Existing revenue dashboard'})).toBeVisible();
  for(const directory of ['demo','examples','dist/tests']) {
    let present=true;try{await access(path.join(root,directory))}catch{present=false}

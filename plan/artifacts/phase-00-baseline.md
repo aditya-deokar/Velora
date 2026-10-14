@@ -1,6 +1,6 @@
 # Phase 00 Exit Report — Audit & Baseline (frozen 2026-10-13)
 
-Repo: `velora@0.1.2` (dual name `velora`/`flute`). No `src/` changes in this phase; all Phase 01 work is recorded separately.
+Repo: `velora@0.1.2` (dual name `velora`/`velora`). No `src/` changes in this phase; all Phase 01 work is recorded separately.
 
 ## 00.1 Capability inventory
 
@@ -24,7 +24,7 @@ Aliases: `init→init-project`, `sync→sync-project`, `open→open-preview`, `l
 Gaps found (drove Phase 01): no per-command `--help`, no `doctor`, usage errors were free text even with `--json`, issue objects had no stable `code`/`hint` contract, `guide --json` carried no command index.
 
 `RESOURCES` keys (`src/core/resources.ts`): `present-preview`, `resolve-recipes`, `list-scenes`, `load-scene`, `open-scene`, `snapshot-scene`, `authoring-guide`, `review-authoring`, `export-video`, `init-project`, `sync-project`, `load-project`, `validate-project`, `open-preview`, `evaluate-spatial`, `evaluate-motion`, `validate-definition`.
-`FLUTE_BRAND` consumers: `src/cli/index.ts`, `terminal.ts`, `src/core/authoring.ts` (guide), `src/project/commands.ts` (handoff).
+`VELORA_BRAND` consumers: `src/cli/index.ts`, `terminal.ts`, `src/core/authoring.ts` (guide), `src/project/commands.ts` (handoff).
 
 ## 00.2 Architecture & purity
 
@@ -66,4 +66,4 @@ Agent-unblock × effort order stands as planned: 01 CLI envelope → 02 composit
 - Discoverability: `<cmd> --help` + `help <cmd>` for all 10 commands; `guide --json` gains `cliVersion` + `commands[]`; top-level help documents doctor, non-interactive guarantee, exit codes.
 - Non-interactive: no stdin reads anywhere (verified by construction); `--json` bypasses all presentation incl. init progress; pipes/`NO_COLOR`/narrow terminals stay plain (byte-stability test).
 - Backward compatibility: legacy kebab-case operation codes preserved (tests assert them); `ProjectResultSchema`/`ExportVideoResultSchema` extended with optional `command/warnings/next/hint/path` (old payloads still parse); `getAuthoringGuide()` defaults `cliVersion: "development"`; `scripts/check-installed.mjs` compares canonical guide fields and asserts the new ones separately.
-- Known exception (documented): `guide --json` returns the versioned guide document (flat, with `command:"guide"`), not the operation envelope — changing it would break the `FLUTE.md` handoff contract.
+- Known exception (documented): `guide --json` returns the versioned guide document (flat, with `command:"guide"`), not the operation envelope — changing it would break the `VELORA.md` handoff contract.

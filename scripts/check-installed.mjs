@@ -12,9 +12,9 @@ import { chromium } from 'playwright';
 // Installed consumer evidence: use the packed artifact and an independent host app,
 // never aliases back into src/ or the demo. All writes stay inside a disposable fixture.
 const root = fileURLToPath(new URL('../', import.meta.url));
-const scratch = await mkdtemp(path.join(tmpdir(), 'flute-installed-'));
+const scratch = await mkdtemp(path.join(tmpdir(), 'velora-installed-'));
 const host = path.join(scratch, 'host');
-const registryPackage = process.env.FLUTE_REGISTRY_PACKAGE;
+const registryPackage = process.env.VELORA_REGISTRY_PACKAGE;
 const commandEnv = registryPackage ? {...process.env, npm_config_cache:path.join(scratch,'npm-cache'), npm_config_registry:'https://registry.npmjs.org/'} : process.env;
 const processes = [];
 let browser;
@@ -48,9 +48,10 @@ try {
   const originalPackage=JSON.parse(await readFile(path.join(host,'package.json'),'utf8'));
   let tarball;
   if(!registryPackage) {
-  const packed=JSON.parse(await ok('npm',['pack','--json',...(process.env.FLUTE_VERIFY_PREBUILT==='1'?['--ignore-scripts']:[]),'--pack-destination',scratch],root));
+  const rawPack = await ok('npm',['pack','--json',...(process.env.VELORA_VERIFY_PREBUILT==='1'?['--ignore-scripts']:[]),'--pack-destination',scratch],root);
+  const packed=JSON.parse(rawPack.match(/\[\s*\{[\s\S]*\}\s*\]/)[0]);
   tarball=path.join(scratch,packed[0].filename);
-  assert.ok(packed[0].files.some(f=>f.path==='dist/cli/flute.js'));
+  assert.ok(packed[0].files.some(f=>f.path==='dist/cli/velora.js'));
   assert.ok(packed[0].files.some(f=>f.path==='LICENSE'));
   assert.ok(packed[0].files.some(f=>f.path==='README.md'));
   assert.ok(!packed[0].files.some(f=>/^(local-project|tests|app|docs)\//.test(f.path)));
@@ -64,17 +65,17 @@ try {
   const chosen=await port();const origin=`http://127.0.0.1:${chosen}`;
   const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(chosen),'--strictPort'],{cwd:host,stdio:'ignore'});processes.push(server);
   await waitFor(origin,server);
-  const parentCli=path.join(root,'dist/cli/flute.js');
-  if(registryPackage || process.env.FLUTE_VERIFY_AGENT==='1') await ok('npm',['install','--ignore-scripts','--no-audit','--no-fund',registryPackage ?? tarball]);
+  const parentCli=path.join(root,'dist/cli/velora.js');
+  if(registryPackage || process.env.VELORA_VERIFY_AGENT==='1') await ok('npm',['install','--ignore-scripts','--no-audit','--no-fund',registryPackage ?? tarball]);
   if(registryPackage) {
     const installedPath = existsSync(path.join(host,'node_modules/velora/package.json'))
       ? path.join(host,'node_modules/velora/package.json')
-      : path.join(host,'node_modules/@webprodigies/flute/package.json');
+      : path.join(host,'node_modules/@webprodigies/velora/package.json');
     const installed=JSON.parse(await readFile(installedPath,'utf8'));
     assert.equal(installed.name+'@'+installed.version,registryPackage,'Install exact published version');
   }
-  const initResult=registryPackage || process.env.FLUTE_VERIFY_AGENT==='1'
-    ? await run('npm',['exec','--offline','--','flute','init','--url',origin,'--no-open','--json'])
+  const initResult=registryPackage || process.env.VELORA_VERIFY_AGENT==='1'
+    ? await run('npm',['exec','--offline','--','velora','init','--url',origin,'--no-open','--json'])
     : await run(process.execPath,[parentCli,'init','--project',host,'--package',tarball,'--url',origin,'--no-open','--json']);
   if(initResult.code!==0) {
     await mkdir(path.join(root,'test-results'),{recursive:true});
@@ -84,8 +85,8 @@ try {
   assert.equal(initResult.code,0,initResult.stderr);
   const initialized=JSON.parse(initResult.stdout);
   assert.equal(initialized.success,true);
-  assert.equal(initialized.data.handoff.path,'FLUTE.md');
-  assert.equal(initialized.data.handoff.guideCommand,'npx flute guide --json');
+  assert.equal(initialized.data.handoff.path,'VELORA.md');
+  assert.equal(initialized.data.handoff.guideCommand,'npx velora guide --json');
   assert.equal(new URL(initialized.data.url).port,String(chosen));
   const entryAfter=await readFile(path.join(host,'src/main.tsx'),'utf8');
   assert.ok(entryAfter.includes('<DashboardProvider><App /></DashboardProvider>'));
@@ -93,8 +94,8 @@ try {
   assert.notEqual(entryAfter,originalEntry);
   const installedPkg = existsSync(path.join(host,'node_modules/velora/package.json'))
     ? JSON.parse(await readFile(path.join(host,'node_modules/velora/package.json'),'utf8')).name
-    : '@webprodigies/flute';
-  const cli=path.join(host,'node_modules',installedPkg,'dist/cli/flute.js');
+    : '@webprodigies/velora';
+  const cli=path.join(host,'node_modules',installedPkg,'dist/cli/velora.js');
   const installedGuide=JSON.parse(await ok(process.execPath,[cli,'guide','--json']));
   const publicGuide=JSON.parse(await ok(process.execPath,['--input-type=module','-e',`import {getAuthoringGuide} from '${installedPkg}'; console.log(JSON.stringify(getAuthoringGuide()))`]));
   const {cliVersion: _installedCliVersion, command: _installedCommand, ...installedCanonical}=installedGuide;
@@ -105,7 +106,7 @@ try {
   assert.ok(Array.isArray(installedGuide.commands) && installedGuide.commands.some(c=>c.name==='doctor'));
   assert.equal(installedGuide.command,'guide');
   assert.equal(typeof installedGuide.cliVersion,'string');
-  assert.ok((await ok(process.execPath,[cli,'--help'])).includes('flute guide'));
+  assert.ok((await ok(process.execPath,[cli,'--help'])).includes('velora guide'));
   const guideFailure=await run(process.execPath,[cli,'guide','--unknown']);assert.notEqual(guideFailure.code,0);
 
   await ok(process.execPath,[cli,'init','--project',host,'--json']);
@@ -122,9 +123,9 @@ try {
   unrelated=httpServer((_req,res)=>res.end('<html><body>Another app</body></html>'));
   await new Promise(r=>unrelated.listen(0,'127.0.0.1',r));
   const wrong=await run(process.execPath,[cli,'open','--project',host,'--url',`http://127.0.0.1:${unrelated.address().port}`,'--no-open','--json']);assert.notEqual(wrong.code,0);
-  await mkdir(path.join(host,'src/flute/scenes'),{recursive:true});
-  await writeFile(path.join(host,'src/flute/scenes/revenue.scene.json'),JSON.stringify({version:1,id:'revenue',title:'Revenue scene',definition:{scene:{nodes:[{id:'host'}]}}}));
-  await writeFile(path.join(host,'src/flute/scenes/revenue.tsx'),`import {Surface} from '${installedPkg}';import {App,DashboardProvider} from '../../App';export default function RevenueScene(){return <DashboardProvider><Surface id="host" style={{width:1400,height:980}}><App/></Surface></DashboardProvider>}`);
+  await mkdir(path.join(host,'src/velora/scenes'),{recursive:true});
+  await writeFile(path.join(host,'src/velora/scenes/revenue.scene.json'),JSON.stringify({version:1,id:'revenue',title:'Revenue scene',definition:{scene:{nodes:[{id:'host'}]}}}));
+  await writeFile(path.join(host,'src/velora/scenes/revenue.tsx'),`import {Surface} from '${installedPkg}';import {App,DashboardProvider} from '../../App';export default function RevenueScene(){return <DashboardProvider><Surface id="host" style={{width:1400,height:980}}><App/></Surface></DashboardProvider>}`);
   browser=await chromium.launch({channel:'chromium',headless:true});
   const page=await browser.newPage({viewport:{width:1440,height:1000}});
   let requests=0;const errors=[];
@@ -132,8 +133,8 @@ try {
   await page.goto(initialized.data.url);
   await page.getByRole('link',{name:/Revenue scene/}).click();
   await page.getByText('Revenue: 12840',{exact:true}).waitFor();
-  assert.equal(await page.locator('[data-flute-scene]').count(),1);
-  assert.equal(await page.locator('[data-flute-project]').count(),1);
+  assert.equal(await page.locator('[data-velora-scene]').count(),1);
+  assert.equal(await page.locator('[data-velora-project]').count(),1);
   await page.getByRole('button',{name:'Inspect 0',exact:true}).click();
   await page.getByRole('button',{name:'Inspect 1',exact:true}).waitFor();
   assert.equal(requests,1,'Provider should request data once in preview');
@@ -142,27 +143,27 @@ try {
   await page.screenshot({path:path.join(root,'test-results/installed-preview.png'),fullPage:true});
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Preview must fit a mobile viewport');
-  if(process.env.FLUTE_VERIFY_ITERATE==='1') {
+  if(process.env.VELORA_VERIFY_ITERATE==='1') {
     const {verifyIteration}=await import('./verify-iteration.mjs');
     await verifyIteration({page,host,origin,server,processes,waitFor,root,originalApp});
   }
-  if(process.env.FLUTE_VERIFY_AGENT==='1') {
+  if(process.env.VELORA_VERIFY_AGENT==='1') {
     const {verifyAgent}=await import('./verify-agent.mjs');
     await verifyAgent({page,host,origin,root,cli,ok,installedGuide});
   }
   await page.goto(origin);
   await page.getByText('Revenue: 12840',{exact:true}).waitFor();
-  assert.equal(await page.locator('[data-flute-scene]').count(),0,'Ordinary host URL stays ordinary');
+  assert.equal(await page.locator('[data-velora-scene]').count(),0,'Ordinary host URL stays ordinary');
   await ok('npm',['run','build']);
   const assets=path.join(host,'dist/assets');
   const productionCode=(await Promise.all((await readdir(assets)).filter(name=>name.endsWith('.js')).map(name=>readFile(path.join(assets,name),'utf8')))).join('\n');
-  assert.ok(!productionCode.includes('flute-library-scroll')&&!productionCode.includes('data-flute-capture'),'Production host must not ship the unused studio renderer');
+  assert.ok(!productionCode.includes('velora-library-scroll')&&!productionCode.includes('data-velora-capture'),'Production host must not ship the unused studio renderer');
   const previewPort=await port();const productionOrigin=`http://127.0.0.1:${previewPort}`;
   const production=spawn(process.execPath,['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port',String(previewPort),'--strictPort'],{cwd:host,stdio:'ignore'});processes.push(production);
   await waitFor(productionOrigin,production);
-  await page.goto(productionOrigin+'/?flute-preview=1');
+  await page.goto(productionOrigin+'/?velora-preview=1');
   await page.getByRole('heading',{name:'Existing revenue dashboard'}).waitFor();
-  assert.equal(await page.locator('[data-flute-scene]').count(),0,'Production build cannot enable developer preview');
+  assert.equal(await page.locator('[data-velora-scene]').count(),0,'Production build cannot enable developer preview');
   console.log((registryPackage ? 'Published '+registryPackage : 'Installed tarball')+': init/retry, source/config preservation, real provider/counter, configured port, missing/wrong server, normal route and production exclusion passed.');
 } finally {
   await browser?.close();

@@ -107,9 +107,9 @@ export async function discoverAssets(root: string): Promise<AssetDiscovery> {
   }
   return { assets, manifest, issues };
 }
-export const SHARED_COMPONENTS_DIRECTORY = "src/flute/components";
+export const SHARED_COMPONENTS_DIRECTORY = "src/velora/components";
 // Reusable Surface wrappers live beside discovery, never inside it: helpers
-// stay out of src/flute/scenes so the recipe glob cannot mistake them for scenes.
+// stay out of src/velora/scenes so the recipe glob cannot mistake them for scenes.
 export async function discoverSharedComponents(root: string): Promise<string[]> {
   const entries = await services.scanDirectory(root, SHARED_COMPONENTS_DIRECTORY, 256);
   const components: string[] = [];

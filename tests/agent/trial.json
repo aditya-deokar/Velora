@@ -25,7 +25,7 @@
     "delegated": false
   },
   "sources": [
-    "node dist/cli/flute.js guide --json (guide version 2, scene version 3)",
+    "node dist/cli/velora.js guide --json (guide version 2, scene version 3)",
     "dist/library/types/{index,core/recipes,core/authoring,core/spatial,core/motion,preview/SceneLibrary,react/index}.d.ts",
     "tests/fixtures/project-host/src/{App,main}.tsx",
     "tests/fixtures/project-host/package.json",
@@ -90,7 +90,7 @@
     "verifiedBy": "scripts/check-agent.mjs and scripts/verify-agent.mjs",
     "result": "passed",
     "evidence": [
-      "Actual npm tarball installed into independent host; npm exec flute init uses installed bin",
+      "Actual npm tarball installed into independent host; npm exec velora init uses installed bin",
       "Strict TypeScript consumer check and host production build",
       "Exact guide example and agent initial/revised source render real provider revenue and one live component",
       "Five timestamps preserve DOM and Inspect1; JSON HMR changes duration without state reset; reload reopens revised source",

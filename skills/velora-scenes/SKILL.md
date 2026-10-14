@@ -37,7 +37,7 @@ Preview and capture run through the app dev server; rendering proofs use `velora
 ## Prerequisites
 
 - The requested page route or component path plus its providers and styles inspected.
-- Recipe directory `src/flute/scenes` with `<id>.scene.json` version 1 and sibling `<id>.tsx` default export.
+- Recipe directory `src/velora/scenes` with `<id>.scene.json` version 1 and sibling `<id>.tsx` default export.
 - No ScrollTrigger, ticker, or `requestAnimationFrame` clocks in scene sources; motion comes from video time only.
 
 ## Workflow
@@ -52,7 +52,7 @@ Preview and capture run through the app dev server; rendering proofs use `velora
 
 ## Worked Example
 
-Recipe `src/flute/scenes/page-survey.scene.json`:
+Recipe `src/velora/scenes/page-survey.scene.json`:
 
 ```json
 {
@@ -84,7 +84,7 @@ Recipe `src/flute/scenes/page-survey.scene.json`:
 }
 ```
 
-Binding `src/flute/scenes/page-survey.tsx`:
+Binding `src/velora/scenes/page-survey.tsx`:
 
 ```tsx
 import { Surface } from 'velora';

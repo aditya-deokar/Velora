@@ -94,6 +94,6 @@ describe("export media flags", () => {
   });
   it("lists media flags in help", async () => {
     expect((await runCli(["export", "--help"], context, vi.fn())).stdout).toContain("--captions");
-    expect((await runCli(["--help"], context, vi.fn())).stdout).toContain("flute captions");
+    expect((await runCli(["--help"], context, vi.fn())).stdout).toContain("velora captions");
   });
 });

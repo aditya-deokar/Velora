@@ -29,6 +29,6 @@ function Fixture() {
 function CatalogHost() {return <Surface id="host" style={{width:1100,height:880,left:150,top:50}}><Context value="Provider content"><Host/></Context></Surface>}
 const snapshot='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPdwAAAAASUVORK5CYII=';
 const recipes=Array.from({length:30},(_,index)=>{const id='scene-'+String(index+1).padStart(2,'0');return {id,version:1,title:'Scene '+String(index+1).padStart(2,'0'),description:'Existing host components',definition,...(index===0?{snapshot:{image:snapshot,timeMs:0}}:index===1?{snapshot:{image:'data:image/png;base64,iVBORw0KGgoAAAA',timeMs:0}}:{})}});
-const sources=Object.fromEntries(recipes.map(recipe=>['src/flute/scenes/'+recipe.id+'.scene.json',recipe]));
-const bindings=Object.fromEntries(recipes.map(recipe=>['src/flute/scenes/'+recipe.id+'.tsx',CatalogHost]));
+const sources=Object.fromEntries(recipes.map(recipe=>['src/velora/scenes/'+recipe.id+'.scene.json',recipe]));
+const bindings=Object.fromEntries(recipes.map(recipe=>['src/velora/scenes/'+recipe.id+'.tsx',CatalogHost]));
 createRoot(document.getElementById('root')!).render(new URLSearchParams(location.search).get('mode')==='library'?<SceneLibrary sources={sources} bindings={bindings} backHref="/"/>:<Fixture/>);

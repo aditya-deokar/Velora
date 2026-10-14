@@ -44,7 +44,7 @@ describe("frames command", () => {
   });
   it("documents frames in help", async () => {
     expect((await runCli(["frames", "--help"], context, vi.fn())).stdout).toContain("--every");
-    expect((await runCli(["--help"], context, vi.fn())).stdout).toContain("flute frames");
+    expect((await runCli(["--help"], context, vi.fn())).stdout).toContain("velora frames");
   });
 });
 
@@ -64,7 +64,7 @@ describe("shot command", () => {
   });
   it("documents shot in help", async () => {
     expect((await runCli(["shot", "--help"], context, vi.fn())).stdout).toContain("--scene");
-    expect((await runCli(["--help"], context, vi.fn())).stdout).toContain("flute shot");
+    expect((await runCli(["--help"], context, vi.fn())).stdout).toContain("velora shot");
   });
 });
 
@@ -101,6 +101,6 @@ describe("check command", () => {
   });
   it("documents check in help", async () => {
     expect((await runCli(["check", "--help"], context, vi.fn())).stdout).toContain("--budget-ms");
-    expect((await runCli(["--help"], context, vi.fn())).stdout).toContain("flute check");
+    expect((await runCli(["--help"], context, vi.fn())).stdout).toContain("velora check");
   });
 });

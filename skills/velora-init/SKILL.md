@@ -29,7 +29,7 @@ Use this skill when the project is new, the preview URL is unknown, files were a
 
 ## Commands
 
-- `velora init --json`: create the connection and `FLUTE.md` handoff. With `--adapter react` force the portable connection; with `--package <tgz>` install from a local tarball.
+- `velora init --json`: create the connection and `VELORA.md` handoff. With `--adapter react` force the portable connection; with `--package <tgz>` install from a local tarball.
 - `velora open --no-open --json`: verify the running dev server and print the preview URL without launching a browser.
 - `velora sync --json`: refresh the scene registry after adding or removing recipe or component files.
 - `velora doctor --json`: check Node, package, React, toolkit, scene catalog, FFmpeg, and Chromium.
@@ -40,16 +40,16 @@ All commands accept `--project <dir>` to target another checkout and `--json` fo
 
 - An existing npm Vite React project with `package.json`, `index.html`, and a standard dev script, or a Next.js app, or any React DOM renderer for `--adapter react`.
 - No conflicting lockfiles or duplicate Vite configs.
-- `FLUTE.md` either absent or byte-identical to the generated handoff; differing content is a conflict to preserve, not overwrite.
+- `VELORA.md` either absent or byte-identical to the generated handoff; differing content is a conflict to preserve, not overwrite.
 
 ## Workflow
 
 1. Run `velora doctor --json` to record the starting state.
 2. Run `velora init --json`. For an unknown host add `--adapter react`; for a local build add `--package <path-to-tgz>`.
-3. Read `FLUTE.md` and `velora guide --json` before authoring.
+3. Read `VELORA.md` and `velora guide --json` before authoring.
 4. Start the host dev server with `npm run dev` in the project; Velora never starts it.
 5. Run `velora open --no-open --json` with `--url <origin>` to verify the preview URL.
-6. After adding or deleting `src/flute/scenes/*` files outside the Vite glob, run `velora sync --json`.
+6. After adding or deleting `src/velora/scenes/*` files outside the Vite glob, run `velora sync --json`.
 7. Re-run `velora doctor --json` to confirm green.
 
 ## Worked Example
@@ -68,20 +68,20 @@ velora init --adapter react --project ./my-app --json
 velora open --url http://127.0.0.1:5173 --no-open --project ./my-app --json
 ```
 
-Expected: `velora init --json` reports `changed` plus the `FLUTE.md` handoff prompt; re-running reports `changed: false` with identical bytes. `velora open --no-open --json` prints a `?flute-preview=1` URL only when the dev server serves this project's identity.
+Expected: `velora init --json` reports `changed` plus the `VELORA.md` handoff prompt; re-running reports `changed: false` with identical bytes. `velora open --no-open --json` prints a `?velora-preview=1` URL only when the dev server serves this project's identity.
 
 ## Anti-Patterns
 
 - Re-running `velora init` to fix content errors; init owns connection, not scene motion.
 - Editing the generated catalog or adapter by hand instead of running `velora sync --json`.
 - Starting another dev server on a new port; reuse `APP_PORT`, `PORT`, or `5173`.
-- Overwriting a differing `FLUTE.md`; move or preserve it, then retry.
+- Overwriting a differing `VELORA.md`; move or preserve it, then retry.
 - Passing `--adapter` or `--package` to non-init commands.
 
 ## Troubleshooting
 
 - `unsupported-project`: run inside an npm Vite React package, or retry with `velora init --adapter react --json`.
-- `conflict` on `FLUTE.md` or the preview adapter: preserve the differing file, then retry.
+- `conflict` on `VELORA.md` or the preview adapter: preserve the differing file, then retry.
 - `missing-installation`: run `npm install` in the project root, then retry.
 - `missing-dev-server` or `wrong-dev-server`: run `npm run dev` and point `--url` at its loopback origin.
 - `ERR_TOOLKIT_MISSING`: install the local Velora tarball, then run `velora init --json`.

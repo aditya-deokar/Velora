@@ -18,7 +18,7 @@ const owners = new Map([
   ['executeRecipeCommand','src/project/recipes.ts'],['SceneLibrary','src/preview/SceneLibrary.tsx'],
   ["PreviewDefinitionSchema","src/core/preview.ts"], ["presentPreview","src/core/preview.ts"],
   ["ScenePreview","src/preview/ScenePreview.tsx"], ["usePreviewSession","src/preview/session.ts"],
-  ...["FLUTE_BRAND"].map(name=>[name,"src/core/branding.ts"]),
+  ...["VELORA_BRAND"].map(name=>[name,"src/core/branding.ts"]),
   ...["getAuthoringGuide","reviewAuthoring","AuthoringGuideSchema"].map(name=>[name,"src/core/authoring.ts"]),
   ['ExportVideoSchema','src/core/export.ts'], ['CaptureManifestSchema','src/core/export.ts'], ['executeVideoExport','src/export/commands.ts'], ['executeSceneSnapshot','src/export/commands.ts'],
   ['executeProjectCommand', 'src/project/commands.ts'],
@@ -72,7 +72,7 @@ const packageOf = name => name.startsWith('@') ? name.split('/').slice(0, 2).joi
 /** Returns actionable diagnostics; fixtures and the CLI use exactly the same rules. */
 export function checkArchitecture(input, { compilerOptions = {} } = {}) {
   const sources = new Map(Object.entries(input).map(([name, text]) => [normalize(name), text]));
-  const root = '/__flute_architecture__';
+  const root = '/__velora_architecture__';
   const virtualName = name => `${root}/${name}`;
   const files = new Map([...sources].map(([name, text]) => [virtualName(name), ts.createSourceFile(virtualName(name), text, ts.ScriptTarget.Latest, true)]));
   const options = { ...compilerOptions, noLib: true, noResolve: true, allowJs: true, jsx: ts.JsxEmit.ReactJSX };
@@ -134,7 +134,7 @@ export function checkArchitecture(input, { compilerOptions = {} } = {}) {
         const exported = statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword);
         const ambient = statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.DeclareKeyword);
         let implemented = false;
-        if (symbol === 'FLUTE_BRAND' && ts.isVariableDeclaration(node) && node.initializer) {
+        if (symbol === 'VELORA_BRAND' && ts.isVariableDeclaration(node) && node.initializer) {
           const value=node.initializer;
           implemented=ts.isCallExpression(value) && value.expression.getText(file)==='Object.freeze' && value.arguments.length===1 && ts.isObjectLiteralExpression(value.arguments[0]);
         } else if (symbol.endsWith('Schema') && ts.isVariableDeclaration(node) && node.initializer) {
@@ -158,7 +158,7 @@ export function checkArchitecture(input, { compilerOptions = {} } = {}) {
           implemented = !!body && (!ts.isBlock(body) || body.statements.length > 0);
         }
         if (exported && !ambient && implemented && statement.parent === file) implementations.get(symbol).push(node);
-        else add(file, identifier, 'canonical-implementation', `${symbol} needs an exported runtime ${symbol==='FLUTE_BRAND' ? 'frozen metadata object' : symbol.endsWith('Schema') ? 'Zod object schema' : 'function body'} in its owner.`);
+        else add(file, identifier, 'canonical-implementation', `${symbol} needs an exported runtime ${symbol==='VELORA_BRAND' ? 'frozen metadata object' : symbol.endsWith('Schema') ? 'Zod object schema' : 'function body'} in its owner.`);
       }
     }
 

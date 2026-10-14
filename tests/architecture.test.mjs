@@ -59,7 +59,7 @@ const valid = {
  */
  export function usePreviewSession(){return {};}`,
 
- 'src/core/branding.ts': `/** SOURCE OF TRUTH: FLUTE_BRAND. WHAT: shared attribution. WHY: consistent presentation. WHERE: CLI and browser. */ export const FLUTE_BRAND=Object.freeze({});`,
+ 'src/core/branding.ts': `/** SOURCE OF TRUTH: VELORA_BRAND. WHAT: shared attribution. WHY: consistent presentation. WHERE: CLI and browser. */ export const VELORA_BRAND=Object.freeze({});`,
  'src/core/authoring.ts': `/** SOURCE OF TRUTH: getAuthoringGuide, reviewAuthoring, AuthoringGuideSchema.
  * WHAT: define cinematic concepts and review.
  * WHY: share capabilities across clients.
@@ -198,7 +198,7 @@ test('actual source obeys architecture, including React whenever present', () =>
   assert.deepEqual(checkProject(root), []);
 });
 test('CLI succeeds for allowed source, fails for violations and missing source', () => {
-  const directory = mkdtempSync(path.join(tmpdir(), 'flute-architecture-'));
+  const directory = mkdtempSync(path.join(tmpdir(), 'velora-architecture-'));
   const run = () => spawnSync(process.execPath, [path.join(root, 'scripts/check-architecture.mjs'), directory], { encoding: 'utf8' });
   try {
     assert.equal(run().status, 1);
@@ -227,7 +227,7 @@ test('CLI succeeds for allowed source, fails for violations and missing source',
 for(const symbol of ['sampleFocus','focusMask','focusForSurface','cameraToCss','evaluateMotion','MotionSchema'])test('rejects duplicate '+symbol+' owner',()=>rejects('src/react/duplicate.ts',`export const ${symbol}=()=>0;`,'canonical-owner'));
 
 function docsFixture(run) {
-  const directory=mkdtempSync(path.join(tmpdir(),'flute-docs-'));
+  const directory=mkdtempSync(path.join(tmpdir(),'velora-docs-'));
   try {
     mkdirSync(path.join(directory,'docs'));
     for(const name of ['architecture.md','product.md'])writeFileSync(path.join(directory,'docs',name),'# Canonical');
@@ -341,7 +341,7 @@ test('snapshot schemas and command keep canonical owners',()=>{
 });
 test('preview cannot call snapshot filesystem or browser effects',()=>rejects('src/preview/capture.ts',"import {openCapture} from '../export/services'; openCapture({});",'module-boundary'));
 
-test("rejects another branding owner",()=>{ rejects("src/preview/brand.ts", "export const FLUTE_BRAND=Object.freeze({});", "canonical-owner"); });
+test("rejects another branding owner",()=>{ rejects("src/preview/brand.ts", "export const VELORA_BRAND=Object.freeze({});", "canonical-owner"); });
 
 // Framework adapters must reuse the shared owners, never establish competing policy.
 test('framework connection cannot duplicate canonical recipe discovery', () => {

@@ -8,13 +8,13 @@ import { loadSceneRecipes, reviewAuthoring, evaluateMotion, motionDuration, matr
 // WHAT: verify the independently authored artifacts and the requested revision.
 // WHY: use public runtime validation and compiler checks, never private render math.
 // WHERE: tests/agent holds evidence; the parent's verify-agent owns browser/export proof.
-const read = name => readFileSync(new URL(`../tests/agent/${name}`, import.meta.url), 'utf8');
+const read = name => readFileSync(new URL(`../tests/agent/${name}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const initial = JSON.parse(read('initial.scene.json'));
 const revised = JSON.parse(read('revised.scene.json'));
 const trial = JSON.parse(read('trial.json'));
 const binding = read('scene.tsx.txt');
-const sourcePath = 'src/flute/scenes/agent-survey.scene.json';
-const bindingPath = 'src/flute/scenes/agent-survey.tsx';
+const sourcePath = 'src/velora/scenes/agent-survey.scene.json';
+const bindingPath = 'src/velora/scenes/agent-survey.tsx';
 const catalogInput = document => ({ sources: [{ path: sourcePath, document }], bindingPaths: [bindingPath] });
 
 for (const recipe of [initial, revised]) {
@@ -82,7 +82,7 @@ function inspectBinding(source) {
     ts.forEachChild(node, walk);
   }
   walk(ast);
-  const expectedPkg = binding.includes("from 'velora'") ? 'velora' : '@webprodigies/flute';
+  const expectedPkg = binding.includes("from 'velora'") ? 'velora' : '@webprodigies/velora';
   assert.deepEqual(imports, [[expectedPkg, ['Surface']], ['../../App', ['App', 'DashboardProvider']]]);
   assert.deepEqual(tags, ['DashboardProvider', 'Surface', 'App']);
   assert.deepEqual(ids, ['revenue-dashboard']);
@@ -111,7 +111,7 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 assert.equal(hash(read('initial.scene.json')), trial.evidenceHashes.initialSha256);
 // The independent trial predates the public npm namespace. Normalize only its
 // single package import; the original hash still rejects every other source edit.
-const pkgSpecifier = binding.includes("from 'velora'") ? "from 'velora'" : "from '@webprodigies/flute'";
+const pkgSpecifier = binding.includes("from 'velora'") ? "from 'velora'" : "from '@webprodigies/velora'";
 assert.equal(binding.split(pkgSpecifier).length, 2);
 assert.equal(hash(binding.replace(pkgSpecifier, "from '@flute/scene'")), trial.evidenceHashes.bindingSha256);
 console.log('Agent trial passed: public recipe/review validation, retimed rail, deeper focus, original binding, negative cases and TSX transpilation. Browser/export evidence belongs to parent verification.');

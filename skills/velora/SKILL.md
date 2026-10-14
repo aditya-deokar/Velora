@@ -31,7 +31,7 @@ Load this skill first for every Velora request. It tells you which specialized s
 
 Request type to skill map:
 
-- New project, FLUTE.md handoff, dev-server wiring, Next or Vite adapter, `velora sync` after adding files: load `velora-init`.
+- New project, VELORA.md handoff, dev-server wiring, Next or Vite adapter, `velora sync` after adding files: load `velora-init`.
 - Composition file authoring, `velora inspect --json`, `velora assets ls --json`, reusable scene catalog: load `velora-composition`.
 - Scene recipe plus TSX binding, `ScenePreview` and `Surface` rules, camera rails, shot families: load `velora-scenes`.
 - One exact frame, PNG sequences, MP4 export, manifests, cache and parallel flags: load `velora-render` and `velora-export`.
@@ -62,7 +62,7 @@ Every CLI command supports `--help` and `--json`. Exit 0 on success, 1 on operat
 | `velora inspect --scene demo --json` | `velora-composition` | `velora inspect --scene demo --json` |
 | `velora assets ls --json` | `velora-composition` | `velora assets ls --json` |
 | `velora snapshot --scene demo --url http://127.0.0.1:5173 --json` | `velora-render` | `velora snapshot --scene demo --url http://127.0.0.1:5173 --json` |
-| `velora export --url http://127.0.0.1:5173/?flute-preview=1 --output clip.mp4 --json` | `velora-export` | `velora export --url http://127.0.0.1:5173/?flute-preview=1 --output clip.mp4 --json` |
+| `velora export --url http://127.0.0.1:5173/?velora-preview=1 --output clip.mp4 --json` | `velora-export` | `velora export --url http://127.0.0.1:5173/?velora-preview=1 --output clip.mp4 --json` |
 | `velora doctor --json` | `velora-debug` | `velora doctor --json` |
 | `velora render --composition teaser.composition.json --out teaser.mp4 --json` | `velora-export` | `velora render --composition teaser.composition.json --out teaser.mp4 --json` |
 | `velora render --composition teaser.composition.json --frame 30 --out frame.png --json` | `velora-export` | `velora render --composition teaser.composition.json --frame 30 --out frame.png --json` |

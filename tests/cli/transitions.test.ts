@@ -43,6 +43,6 @@ describe("transitions command", () => {
     const help = await runCli(["transitions", "--help"], context, vi.fn());
     expect(help.stdout).toContain("transitions describe");
     expect((await runCli(["help", "transitions"], context, vi.fn())).stdout).toBe(help.stdout);
-    expect((await runCli(["--help"], context, vi.fn())).stdout).toContain("flute transitions");
+    expect((await runCli(["--help"], context, vi.fn())).stdout).toContain("velora transitions");
   });
 });

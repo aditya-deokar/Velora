@@ -77,7 +77,7 @@ gap frames render deterministically offline (recorded void SHA).
 
 README gained a copy-pasteable five-minute path, a compatibility matrix
 (agents × React × Node × FFmpeg/Chromium, BYO subscription), limits, and
-migration notes (`flute`/`velora` dual name, recipe v1 / focus v3,
+migration notes (`velora`/`velora` dual name, recipe v1 / focus v3,
 `init`-owned wrapper upgrades); the maintainer release checklist now pins
 skill versions and demo gates. `skills/velora/COMPATIBILITY.md` carries the
 same matrix plus honest limits. No hosted service, accounts, builder, TTS,

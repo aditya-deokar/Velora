@@ -86,8 +86,7 @@
     "react-dom": ">=18.2.0 <20"
   },
   "bin": {
-    "velora": "./dist/cli/flute.js",
-    "flute": "./dist/cli/flute.js"
+    "velora": "./dist/cli/velora.js"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -114,6 +113,6 @@
     "url": "https://github.com/aditya-deokar/velora/issues"
   },
   "sideEffects": [
-    "./dist/cli/flute.js"
+    "./dist/cli/velora.js"
   ]
 }

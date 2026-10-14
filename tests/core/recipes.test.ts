@@ -4,14 +4,14 @@ import { loadSceneRecipes, SceneRecipeSchema } from "../../src/core/recipes";
 const definition = { scene: { nodes: [{ id: "panel" }], focus: { distance: 1800, fStop: 4 } },
   motion: { durationMs: 1000, tracks: [{ target: { kind: "surface", id: "panel" }, property: "x", keyframes: [{ timeMs: 0, value: 0 }, { timeMs: 1000, value: 100 }] }] } };
 const recipe = (id = "demo") => ({ version: 1, id, title: `Scene ${id}`, description: "Editable", definition });
-const source = (id = "demo", document: unknown = recipe(id)) => ({ path: `src/flute/scenes/${id}.scene.json`, document });
-const catalog = (sources: unknown[], sceneId?: string) => loadSceneRecipes({ sources, bindingPaths: ["demo", "alpha", "zebra"].map(id => `src/flute/scenes/${id}.tsx`), ...(sceneId === undefined ? {} : { sceneId }) });
+const source = (id = "demo", document: unknown = recipe(id)) => ({ path: `src/velora/scenes/${id}.scene.json`, document });
+const catalog = (sources: unknown[], sceneId?: string) => loadSceneRecipes({ sources, bindingPaths: ["demo", "alpha", "zebra"].map(id => `src/velora/scenes/${id}.tsx`), ...(sceneId === undefined ? {} : { sceneId }) });
 
 describe("canonical local recipes", () => {
   it("reopens version, focus and motion with inferred canonical defaults", () => {
     const result = catalog([source()], "demo");
     expect(result.issues).toEqual([]);
-    expect(result.selected).toEqual({ ...SceneRecipeSchema.parse(recipe()), source: "src/flute/scenes/demo.scene.json", binding: "src/flute/scenes/demo.tsx" });
+    expect(result.selected).toEqual({ ...SceneRecipeSchema.parse(recipe()), source: "src/velora/scenes/demo.scene.json", binding: "src/velora/scenes/demo.tsx" });
     expect(result.selected?.definition.scene.focus.distance).toBe(1800);
     expect(result.selected?.definition.motion).toMatchObject(definition.motion);
   });
@@ -42,13 +42,13 @@ describe("canonical local recipes", () => {
     expect(result.scenes).toEqual([]);
     expect(result.issues[0].message).toContain("demo.tsx");
   });
-  it.each(["../demo.scene.json", "/src/flute/scenes/demo.scene.json", "src/flute/scenes/../demo.scene.json", "src/flute/scenes/nested/demo.scene.json", "src\\flute\\scenes\\demo.scene.json"])("denies noncanonical source %s", path => {
+  it.each(["../demo.scene.json", "/src/velora/scenes/demo.scene.json", "src/velora/scenes/../demo.scene.json", "src/velora/scenes/nested/demo.scene.json", "src\\velora\\scenes\\demo.scene.json"])("denies noncanonical source %s", path => {
     const result = catalog([{ path, document: recipe() }]);
     expect(result.scenes).toEqual([]);
     expect(result.issues[0].path).toBe(path);
   });
   it("reports malformed entries and bindings while retaining unrelated valid records", () => {
-    const result = loadSceneRecipes({ sources: [null, source()], bindingPaths: [null, "../demo.tsx", "src/flute/scenes/demo.tsx"] });
+    const result = loadSceneRecipes({ sources: [null, source()], bindingPaths: [null, "../demo.tsx", "src/velora/scenes/demo.tsx"] });
     expect(result.scenes).toHaveLength(1);
     expect(result.issues).toHaveLength(3);
   });

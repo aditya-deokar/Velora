@@ -15,7 +15,7 @@ velora frames --composition tour.composition.json --out stills --at 1600,1800 --
 velora check --frames stills --json
 ```
 
-Copy this directory's `src/flute/scenes/*` into a Velora host, keep the
+Copy this directory's `src/velora/scenes/*` into a Velora host, keep the
 composition at the project root, and run the commands above. Gap frames at
 1600ms and 1800ms render black void offline; the recorded 320x200 void SHA is
 `12584dd631965ce24404c87f727f96bc1a9e484115e30f355563c8e425ff3851`.

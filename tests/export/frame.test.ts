@@ -17,18 +17,18 @@ function compositionDoc(scenes: unknown = [{ id: "s1", recipe: "demo", startMs: 
   return { version: 1, id: "teaser", title: "Teaser", width: 128, height: 96, fps: 30, seed: 7, scenes, assets: [] };
 }
 async function setup(scenes?: unknown) {
-  root = await mkdtemp(path.join(tmpdir(), "flute-frame-"));
-  await mkdir(path.join(root, "src/flute/scenes"), { recursive: true });
-  await writeFile(path.join(root, "src/flute/scenes/demo.scene.json"), JSON.stringify(recipeDoc));
-  await writeFile(path.join(root, "src/flute/scenes/demo.tsx"), "export default function Demo() { return null; }");
+  root = await mkdtemp(path.join(tmpdir(), "velora-frame-"));
+  await mkdir(path.join(root, "src/velora/scenes"), { recursive: true });
+  await writeFile(path.join(root, "src/velora/scenes/demo.scene.json"), JSON.stringify(recipeDoc));
+  await writeFile(path.join(root, "src/velora/scenes/demo.tsx"), "export default function Demo() { return null; }");
   await writeFile(path.join(root, "teaser.composition.json"), JSON.stringify(compositionDoc(scenes)));
 }
 beforeEach(async () => {
   vi.clearAllMocks();
   await setup();
-  vi.mocked(executeRecipeCommand).mockResolvedValue({ success: true, data: { scenes: [], issues: [], selected: { ...recipeDoc, source: "src/flute/scenes/demo.scene.json", binding: "src/flute/scenes/demo.tsx" }, url: "http://127.0.0.1:5173/?flute-scene=demo" } } as never);
+  vi.mocked(executeRecipeCommand).mockResolvedValue({ success: true, data: { scenes: [], issues: [], selected: { ...recipeDoc, source: "src/velora/scenes/demo.scene.json", binding: "src/velora/scenes/demo.tsx" }, url: "http://127.0.0.1:5173/?velora-scene=demo" } } as never);
   snapshot.mockResolvedValue(png);
-  vi.mocked(openCapture).mockResolvedValue({ close, manifest: async () => ({ version: 1, durationMs: 100, selector: '[data-flute-capture="scene"]' }), snapshot, encode: vi.fn() } as Awaited<ReturnType<typeof openCapture>>);
+  vi.mocked(openCapture).mockResolvedValue({ close, manifest: async () => ({ version: 1, durationMs: 100, selector: '[data-velora-capture="scene"]' }), snapshot, encode: vi.fn() } as Awaited<ReturnType<typeof openCapture>>);
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 const run = (input: object, context: object = {}) => executeFrameRender({ composition: "teaser.composition.json", frame: 1, out: "frame.png", ...input }, { root, ...context });
@@ -70,7 +70,7 @@ describe("frame render", () => {
   });
   it("invalidates the cache when scene source changes", async () => {
     expect((await run({})).success).toBe(true);
-    await writeFile(path.join(root, "src/flute/scenes/demo.tsx"), "export default function Changed() { return null; }");
+    await writeFile(path.join(root, "src/velora/scenes/demo.tsx"), "export default function Changed() { return null; }");
     const second = await run({ out: "changed.png" });
     expect(second).toMatchObject({ success: true, data: { cached: false } });
     expect(snapshot).toHaveBeenCalledTimes(2);

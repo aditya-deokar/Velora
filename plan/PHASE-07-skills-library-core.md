@@ -32,7 +32,7 @@ Ship the **installable Velora Skills library skeleton** with the root entry poin
 - No `AGENTS.md`/`CLAUDE.md`/provider-config overwrite (same guard as `init-project`'s unrelated-file refusal).
 
 ### 07.3 First skill batch (4, each with: instructions, command-selection, prerequisites, workflow, working example, anti-patterns, troubleshooting, validation)
-1. `velora-init` — project init, `FLUTE.md`/`VELORA.md` handoff, `doctor`, framework adapters (Next/Vite/portable/Electron), `sync`. When NOT: don't re-init healthy projects.
+1. `velora-init` — project init, `VELORA.md`/`VELORA.md` handoff, `doctor`, framework adapters (Next/Vite/portable/Electron), `sync`. When NOT: don't re-init healthy projects.
 2. `velora-composition` — composition spec authoring, `inspect`, `validate`, assets, reusable scenes. Includes JSON example (from Phase 02 schema) + negative examples.
 3. `velora-scenes` — scene/timeline creation via recipes + `ScenePreview`/`Surface` rules (distills `getAuthoringGuide` + Phase 03 clock: one cursor, frame math, seed). States shot families (travel/plating/micro/floating) as options, not mandates.
 4. `velora-render` — `render/frames/shot/check --visual`, progress NDJSON, cache/parallel flags, manifest reading, fix-loop.

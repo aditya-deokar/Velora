@@ -1,6 +1,6 @@
 # Demo B — Starting Prompt (procedural / 3D path)
 
-> Read FLUTE.md and run `npx flute guide --json` in this project. Build a
+> Read VELORA.md and run `npx velora guide --json` in this project. Build a
 > determinism showcase: one seeded procedural stage (staggered depth entrances
 > compiled from cascade builders) reused across two segments joined by a
 > focus-pull transition, with a time-disciplined WebGL-style leaf driven only

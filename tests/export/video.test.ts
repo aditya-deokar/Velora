@@ -26,11 +26,11 @@ const recipeDoc = (id: string) => ({ version: 1, id, title: id, definition: { wi
 let root: string;
 let seeks: { url: string; timeMs: number }[];
 async function setup(files: Record<string, string | Buffer> = {}) {
-  root = await mkdtemp(path.join(tmpdir(), "flute-video-"));
-  await mkdir(path.join(root, "src/flute/scenes"), { recursive: true });
+  root = await mkdtemp(path.join(tmpdir(), "velora-video-"));
+  await mkdir(path.join(root, "src/velora/scenes"), { recursive: true });
   for (const id of ["demo-a", "demo-b"]) {
-    await writeFile(path.join(root, `src/flute/scenes/${id}.scene.json`), JSON.stringify(recipeDoc(id)));
-    await writeFile(path.join(root, `src/flute/scenes/${id}.tsx`), "export default function S() { return null; }");
+    await writeFile(path.join(root, `src/velora/scenes/${id}.scene.json`), JSON.stringify(recipeDoc(id)));
+    await writeFile(path.join(root, `src/velora/scenes/${id}.tsx`), "export default function S() { return null; }");
   }
   await writeFile(path.join(root, "teaser.composition.json"), JSON.stringify({
     version: 1, id: "teaser", title: "Teaser", width: 128, height: 96, fps: 30, seed: 3,
@@ -56,7 +56,7 @@ beforeEach(async () => {
   }) as never);
   vi.mocked(openCapture).mockImplementation(async (input: { url: string }) => ({
     close: vi.fn(),
-    manifest: async () => ({ version: 1, durationMs: 100, selector: '[data-flute-capture="scene"]' }),
+    manifest: async () => ({ version: 1, durationMs: 100, selector: '[data-velora-capture="scene"]' }),
     snapshot: vi.fn(async (timeMs: number) => {
       seeks.push({ url: input.url, timeMs });
       return png;
@@ -102,7 +102,7 @@ describe("composition video render", () => {
   it("re-renders only edited scenes", async () => {
     expect((await run({})).success).toBe(true);
     expect(seeks.length).toBe(6);
-    await writeFile(path.join(root, "src/flute/scenes/demo-b.tsx"), "export default function Changed() { return null; }");
+    await writeFile(path.join(root, "src/velora/scenes/demo-b.tsx"), "export default function Changed() { return null; }");
     expect((await run({ out: "edited.mp4" })).success).toBe(true);
     expect(seeks.length).toBe(9);
     expect(seeks.slice(6).every((s) => s.url.endsWith("/demo-b"))).toBe(true);

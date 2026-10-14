@@ -113,7 +113,7 @@ export const CLI_ERROR_CATALOG: Record<string, { hint: string; next: string[] }>
   "missing-installation": { hint: "Run npm install in the project root, then retry velora init.", next: ["velora doctor --json"] },
   "missing-dev-server": { hint: "Run npm run dev in the project, then retry with its loopback URL.", next: ["velora doctor --json"] },
   "wrong-dev-server": { hint: "Point --url at this project's running dev server origin.", next: ["velora doctor --json"] },
-  "manual-preview": { hint: "Mount src/flute/ProjectPreview.jsx, then open the renderer route with ?flute-preview=1.", next: ["velora guide --json"] },
+  "manual-preview": { hint: "Mount src/velora/ProjectPreview.jsx, then open the renderer route with ?velora-preview=1.", next: ["velora guide --json"] },
   "missing-ffmpeg": { hint: "Install FFmpeg and ensure ffmpeg is available on PATH.", next: ["velora doctor --json"] },
   "missing-chromium": { hint: "Install the browser: npm install playwright && npx playwright install chromium.", next: ["velora doctor --json"] },
   "missing-capture": { hint: "Open a scene with capture enabled and retry.", next: ["velora doctor --json"] },

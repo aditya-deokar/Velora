@@ -15,19 +15,19 @@ function compositionDoc(scenes: unknown) {
   return { version: 1, id: "teaser", title: "Teaser", width: 128, height: 96, fps: 30, seed: 0, scenes, assets: [] };
 }
 async function initialized() {
-  root = await mkdtemp(path.join(tmpdir(), "flute-effects-"));
+  root = await mkdtemp(path.join(tmpdir(), "velora-effects-"));
   await put("package.json", JSON.stringify({ name: "host", scripts: { dev: "vite" },
-    dependencies: { react: "^19.2.0", "react-dom": "^19.2.0", "@webprodigies/flute": "0.1.0" }, devDependencies: { vite: "^7.3.6" } }));
+    dependencies: { react: "^19.2.0", "react-dom": "^19.2.0", "velora": "0.1.0" }, devDependencies: { vite: "^7.3.6" } }));
   await put("package-lock.json", '{"lockfileVersion":3}');
   await put("index.html", '<div id="root"></div><script type="module" src="/src/main.tsx"></script>');
   await put("vite.config.ts", 'import {defineConfig} from "vite"; import react from "@vitejs/plugin-react"; export default defineConfig({plugins:[react()]});');
   await put("src/main.tsx", 'import { StrictMode } from "react";\nimport { createRoot } from "react-dom/client";\ncreateRoot(document.getElementById("root")!).render(<StrictMode><div/></StrictMode>);\n');
   await put("node_modules/react/package.json", '{"name":"react","version":"19.2.0"}');
   await put("node_modules/react-dom/package.json", '{"name":"react-dom","version":"19.2.0"}');
-  await put("node_modules/@webprodigies/flute/package.json", JSON.stringify({ name: "@webprodigies/flute", version: "0.1.0", exports: { "./preview": { import: "./preview.js" } } }));
-  await put("node_modules/@webprodigies/flute/preview.js", "export const ProjectPreview = () => null;");
-  await put("src/flute/scenes/demo.scene.json", JSON.stringify(recipeDoc));
-  await put("src/flute/scenes/demo.tsx", "export default function Demo() { return null; }");
+  await put("node_modules/velora/package.json", JSON.stringify({ name: "velora", version: "0.1.0", exports: { "./preview": { import: "./preview.js" } } }));
+  await put("node_modules/velora/preview.js", "export const ProjectPreview = () => null;");
+  await put("src/velora/scenes/demo.scene.json", JSON.stringify(recipeDoc));
+  await put("src/velora/scenes/demo.tsx", "export default function Demo() { return null; }");
   expect(await executeProjectCommand("init-project", {}, { root })).toMatchObject({ success: true });
 }
 const validate = (composition?: string) => executeProjectCommand("validate-project", composition ? { composition } : {}, { root });
@@ -46,7 +46,7 @@ describe("transition declarations", () => {
     const overrun = await validate("teaser.composition.json");
     expect(overrun.success).toBe(false);
     expect(!overrun.success && overrun.issues.map((i) => `${i.code} ${i.path}`)).toContain("ERR_TRANSITION_INVALID composition.scenes.0.transition.durationMs");
-    await put("src/flute/scenes/demo.scene.json", JSON.stringify({ ...recipeDoc, definition: { ...recipeDoc.definition, scene: { nodes: [] } } }));
+    await put("src/velora/scenes/demo.scene.json", JSON.stringify({ ...recipeDoc, definition: { ...recipeDoc.definition, scene: { nodes: [] } } }));
     await put("teaser.composition.json", JSON.stringify(compositionDoc([
       { id: "s1", recipe: "demo", startMs: 0, durationMs: 2000, transition: { type: "dissolve", durationMs: 500 } },
     ])));
@@ -63,14 +63,14 @@ describe("transition declarations", () => {
 describe("render-path clock discipline", () => {
   it("rejects ScrollTrigger, ticker and rAF clocks with file and line", async () => {
     await initialized();
-    await put("src/flute/scenes/demo.tsx", "import { ScrollTrigger } from 'gsap/ScrollTrigger';\nexport default function Demo() { return null; }");
+    await put("src/velora/scenes/demo.tsx", "import { ScrollTrigger } from 'gsap/ScrollTrigger';\nexport default function Demo() { return null; }");
     const scrolled = await validate();
     expect(scrolled.success).toBe(false);
-    expect(!scrolled.success && scrolled.issues).toMatchObject([{ code: "ERR_ANIMATION_CLOCK", path: "src/flute/scenes/demo.tsx:1" }]);
-    await put("src/flute/scenes/demo.tsx", "import { gsap } from 'gsap';\ngsap.ticker.add(() => {});\nexport default function Demo() { return null; }");
-    expect(await validate()).toMatchObject({ success: false, issues: [{ code: "ERR_ANIMATION_CLOCK", path: "src/flute/scenes/demo.tsx:2" }] });
-    await put("src/flute/scenes/demo.tsx", "export default function Demo() { return null; }");
-    await put("src/flute/components/helper.tsx", "export function loop() {\n requestAnimationFrame(loop);\n}\n");
-    expect(await validate()).toMatchObject({ success: false, issues: [{ code: "ERR_ANIMATION_CLOCK", path: "src/flute/components/helper.tsx:2" }] });
+    expect(!scrolled.success && scrolled.issues).toMatchObject([{ code: "ERR_ANIMATION_CLOCK", path: "src/velora/scenes/demo.tsx:1" }]);
+    await put("src/velora/scenes/demo.tsx", "import { gsap } from 'gsap';\ngsap.ticker.add(() => {});\nexport default function Demo() { return null; }");
+    expect(await validate()).toMatchObject({ success: false, issues: [{ code: "ERR_ANIMATION_CLOCK", path: "src/velora/scenes/demo.tsx:2" }] });
+    await put("src/velora/scenes/demo.tsx", "export default function Demo() { return null; }");
+    await put("src/velora/components/helper.tsx", "export function loop() {\n requestAnimationFrame(loop);\n}\n");
+    expect(await validate()).toMatchObject({ success: false, issues: [{ code: "ERR_ANIMATION_CLOCK", path: "src/velora/components/helper.tsx:2" }] });
   }, 60_000);
 });

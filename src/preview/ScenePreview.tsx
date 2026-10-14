@@ -13,7 +13,7 @@ import { previewTheme } from "./theme";
  * WHY: installed projects and the product entry share actual controls, not demo replicas.
  * WHERE: session owns lifecycle; core validates/evaluates; Scene renders original children.
  * Stable portals place the canvas inside the viewport and canonical recovery outside capture.
- * data-flute-preview-chrome marks overlay pixels for the export service to hide in its page.
+ * data-velora-preview-chrome marks overlay pixels for the export service to hide in its page.
  * Export opens upward in the scrollable overlay; no viewport space is reserved for controls.
  * Keep children referentially stable during playback. No clone, snapshot or host CSS reset.
  */
@@ -55,10 +55,10 @@ function ExportMenu({disabled, panelHost}: {disabled: boolean; panelHost: HTMLDi
   const [copyError, setCopyError] = useState(false);
   // Shell quoting is presentation only; the CLI owns request validation and file effects.
   const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
-  const command = `npx flute export --url ${quote(typeof location === "undefined" ? "http://localhost:5173" : location.href)} --output scene-${fps}.mp4 --fps ${fps}`;
-  return disabled ? <button className="flute-control" disabled><Glyph kind="export"/>Export</button> :
-    <details className="flute-export" ref={details} onToggle={event => setOpen(event.currentTarget.open)}><summary className="flute-control flute-primary" aria-controls={panelId}><Glyph kind="export"/>Export</summary>
-      {open && panelHost && createPortal(<div id={panelId} role="region" aria-label="Export your scene" className="flute-export-panel flute-chrome" onKeyDown={event => {
+  const command = `npx velora export --url ${quote(typeof location === "undefined" ? "http://localhost:5173" : location.href)} --output scene-${fps}.mp4 --fps ${fps}`;
+  return disabled ? <button className="velora-control" disabled><Glyph kind="export"/>Export</button> :
+    <details className="velora-export" ref={details} onToggle={event => setOpen(event.currentTarget.open)}><summary className="velora-control velora-primary" aria-controls={panelId}><Glyph kind="export"/>Export</summary>
+      {open && panelHost && createPortal(<div id={panelId} role="region" aria-label="Export your scene" className="velora-export-panel velora-chrome" onKeyDown={event => {
         if (event.key === "Escape" && details.current) {
           details.current.open = false;
           setOpen(false);
@@ -69,7 +69,7 @@ function ExportMenu({disabled, panelHost}: {disabled: boolean; panelHost: HTMLDi
         <label>Frame rate<select aria-label="Export frame rate" value={fps} onChange={event => {setFps(ExportFrameRateSchema.parse(Number(event.target.value)));setCopied(false);}}>
           {SUPPORTED_EXPORT_FPS.map(value => <option key={value} value={value}>{value} fps</option>)}
         </select></label><code>{command}</code>
-        <button className="flute-control flute-primary" onClick={async () => {
+        <button className="velora-control velora-primary" onClick={async () => {
           try { await navigator.clipboard.writeText(command);setCopied(true);setCopyError(false); }
           catch { setCopyError(true); }
         }}>{copied ? "Copied" : "Copy command"}</button>
@@ -107,20 +107,20 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
   const stateText = !connection.connected ? "Reconnecting to your app…" : connection.error ? "Source needs a correction" :
     connection.updating ? "Updating scene…" : renderError || session.issues.length ? "Scene needs a correction" :
     !definition ? "Waiting for a scene" : session.playing ? "Playing" : "Live preview";
-  return <main data-flute-preview="" data-flute-state={blocked ? "unavailable" : "ready"}>
+  return <main data-velora-preview="" data-velora-state={blocked ? "unavailable" : "ready"}>
     <style>{previewTheme}</style>
-    <div className="flute-viewport" ref={setViewport} aria-label="Scene preview">
-      {!definition && <div className="flute-empty flute-chrome">
-        <span className="flute-empty-symbol" aria-hidden="true">↗</span>
+    <div className="velora-viewport" ref={setViewport} aria-label="Scene preview">
+      {!definition && <div className="velora-empty velora-chrome">
+        <span className="velora-empty-symbol" aria-hidden="true">↗</span>
         <h1>A new perspective<br/>on your product.</h1>
-        <p>Your live scene will appear here. Open Flute inside your app, then ask your coding agent to compose its first scene.</p>
+        <p>Your live scene will appear here. Open Velora inside your app, then ask your coding agent to compose its first scene.</p>
       </div>}
     </div>
-    <div className="flute-bottom-blur" data-flute-preview-chrome="" aria-hidden="true"><i/><i/><i/></div>
-    <footer className="flute-footer flute-chrome" data-flute-preview-chrome="" aria-label="Scene controls">
-      <div className="flute-controls">
-        <div className="flute-export-slot" ref={setExportPanel}/>
-        {(session.issues.length > 0 || connection.error || !connection.connected) && <section className="flute-message flute-chrome" role="alert">
+    <div className="velora-bottom-blur" data-velora-preview-chrome="" aria-hidden="true"><i/><i/><i/></div>
+    <footer className="velora-footer velora-chrome" data-velora-preview-chrome="" aria-label="Scene controls">
+      <div className="velora-controls">
+        <div className="velora-export-slot" ref={setExportPanel}/>
+        {(session.issues.length > 0 || connection.error || !connection.connected) && <section className="velora-message velora-chrome" role="alert">
           <strong>{stateText}</strong>
           {session.issues.length > 0 && <><p>Your last valid scene settings are retained. Correct the source to continue.</p>
             <ul>{session.issues.map((issue,index) => <li key={index}>{issue.path}: {issue.message}</li>)}</ul></>}
@@ -130,7 +130,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
         {/* Recovery stays in the controls; only live scene content enters the capture viewport. */}
         <SceneErrorBoundary resetKey={resetKey} onError={failure} onReset={() => setRenderError("")}>
           {definition && viewport && createPortal(
-            <div className="flute-canvas" data-flute-capture="scene" data-flute-valid={blocked ? "false" : "true"}
+            <div className="velora-canvas" data-velora-capture="scene" data-velora-valid={blocked ? "false" : "true"}
               style={{width: "100%", height: "100%"}}>
               {/* One aspect-preserving cover frame fills preview and capture; overflow is cropped, never stretched. */}
               <div style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
@@ -142,30 +142,30 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
               <Capture durationMs={session.durationMs} seek={captureSeek}/>
             </div>, viewport)}
         </SceneErrorBoundary>
-        <div className="flute-header">
-          <div className="flute-heading">
-            {backHref ? <a className="flute-control" href={backHref} onClick={event => {
+        <div className="velora-header">
+          <div className="velora-heading">
+            {backHref ? <a className="velora-control" href={backHref} onClick={event => {
               if (onBack && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
                 event.preventDefault(); onBack();
               }
-            }}>{onBack ? "Back to scenes" : "Back to app"}</a> : onBack && <button className="flute-control" onClick={onBack}>Back to scenes</button>}
-            <h1 className="flute-title">{title}</h1>
+            }}>{onBack ? "Back to scenes" : "Back to app"}</a> : onBack && <button className="velora-control" onClick={onBack}>Back to scenes</button>}
+            <h1 className="velora-title">{title}</h1>
           </div>
           <ExportMenu disabled={blocked || !session.durationMs} panelHost={exportPanel}/>
         </div>
         {!definition && <GettingStarted/>}
-        <div className="flute-dock">
-          <button className="flute-control flute-primary flute-icon" disabled={blocked || !session.durationMs}
+        <div className="velora-dock">
+          <button className="velora-control velora-primary velora-icon" disabled={blocked || !session.durationMs}
             aria-label={session.playing ? "Pause" : session.timeMs >= session.durationMs && session.durationMs ? "Replay" : "Play"} onClick={session.toggle}>
             <Glyph kind={session.playing ? "pause" : "play"}/>
           </button>
-          <button className="flute-control flute-icon" aria-label="Restart" disabled={!definition} onClick={() => session.seek(0)}><Glyph kind="restart"/></button>
-          <input className="flute-timeline" aria-label="Scene time" aria-valuetext={timeLabel(session.timeMs)} type="range"
+          <button className="velora-control velora-icon" aria-label="Restart" disabled={!definition} onClick={() => session.seek(0)}><Glyph kind="restart"/></button>
+          <input className="velora-timeline" aria-label="Scene time" aria-valuetext={timeLabel(session.timeMs)} type="range"
             min={0} max={session.durationMs || 1} step={10} value={session.timeMs} disabled={blocked || !session.durationMs}
             onChange={event => session.seek(Number(event.target.value))}/>
-          <output className="flute-time" data-testid="scene-time">{timeLabel(session.timeMs)} / {timeLabel(session.durationMs)}</output>
+          <output className="velora-time" data-testid="scene-time">{timeLabel(session.timeMs)} / {timeLabel(session.durationMs)}</output>
         </div>
-        <div className="flute-preview-meta"><span className="flute-status" role="status"><span className="flute-status-dot"/>{stateText}</span><BrandAttribution/></div>
+        <div className="velora-preview-meta"><span className="velora-status" role="status"><span className="velora-status-dot"/>{stateText}</span><BrandAttribution/></div>
       </div>
     </footer>
   </main>;

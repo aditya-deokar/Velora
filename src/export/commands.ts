@@ -324,7 +324,7 @@ export async function executeVideoRender(
     if (!needsMux) {
       ffmpegArgs = (await services.encodeFrameBuffers(pngs, finalAbs, { fps, width, height, cwd: root, signal: context.signal })).ffmpegArgs;
     } else {
-      tmpDir = await services.makeTempDir(root, ".flute-video-");
+      tmpDir = await services.makeTempDir(root, ".velora-video-");
       const tmpVideo = `${tmpDir}/video.mp4`;
       await services.encodeFrameBuffers(pngs, tmpVideo, { fps, width, height, cwd: root, signal: context.signal });
       const tracks = [];
@@ -700,7 +700,7 @@ export async function executeCheck(
         if (mismatches.length) failures.push({ code: "ERR_VISUAL_MANIFEST", message: `Manifest disagrees with the video: ${mismatches.join("; ")}.` });
       }
       if (probe.video) {
-        tmpDir = await services.makeTempDir(root, ".flute-check-");
+        tmpDir = await services.makeTempDir(root, ".velora-check-");
         const samples = await services.decodeVideoSamples(abs, tmpDir, 16);
         {
           const bad: string[] = [];

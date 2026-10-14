@@ -44,8 +44,8 @@ describe("CLI error catalog", () => {
 
 describe("normalizeIssue", () => {
   it("backfills the catalog hint while preserving code/path/message", () => {
-    expect(normalizeIssue({ code: "conflict", path: "FLUTE.md", message: "Move it." })).toMatchObject({
-      code: "conflict", path: "FLUTE.md", message: "Move it.", hint: expect.any(String),
+    expect(normalizeIssue({ code: "conflict", path: "VELORA.md", message: "Move it." })).toMatchObject({
+      code: "conflict", path: "VELORA.md", message: "Move it.", hint: expect.any(String),
     });
   });
   it("keeps caller-supplied hints and coerces garbage to ERR_INTERNAL", () => {

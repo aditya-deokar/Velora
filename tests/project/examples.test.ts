@@ -23,11 +23,11 @@ const EXAMPLES = [
 describe.each(EXAMPLES.map((e) => [e.dir] as const))("example %s", (dir) => {
   const base = path.join(root, "tests/examples", dir);
   it("recipes validate and resolve against the composition", async () => {
-    const sceneDir = path.join(base, "src/flute/scenes");
+    const sceneDir = path.join(base, "src/velora/scenes");
     const sources: { path: string; document: unknown }[] = [];
     const bindingPaths: string[] = [];
     for (const file of (await readdir(sceneDir)).sort()) {
-      const rel = `src/flute/scenes/${file}`;
+      const rel = `src/velora/scenes/${file}`;
       if (file.endsWith(".scene.json")) sources.push({ path: rel, document: JSON.parse(await readFile(path.join(sceneDir, file), "utf8")) });
       else if (/\.[jt]sx$/.test(file)) bindingPaths.push(rel);
     }

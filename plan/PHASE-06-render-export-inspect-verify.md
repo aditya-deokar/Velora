@@ -26,7 +26,7 @@ Complete the **agent execution loop's evidence side**: render progress, frame ex
 ### 06.2 Frame extraction & inspection
 - `velora frames --composition FILE --out DIR [--every N | --at 0,1500,3000] --json` → PNG sequence + `manifest.json` (frame/timeMs/sceneId/sha per file). Reuses Phase 03 `render --frame` op in a loop with cache.
 - `velora shot --scene ID --time MS --out shot.png` (ergonomic alias over frame render for single scenes).
-- Screenshots exclude `data-flute-preview-chrome` (existing export behavior — preserve).
+- Screenshots exclude `data-velora-preview-chrome` (existing export behavior — preserve).
 
 ### 06.3 Automated visual checks (`velora check --visual`)
 - Technical-only suite (never artistic scores):

@@ -15,7 +15,7 @@ describe("installed React refresh module contract", () => {
     expect(adapted.text).toContain('{<Provider><App /></Provider>}');
     expect(adapted.text).not.toContain("import.meta.glob");
     expect(adapted.text).not.toContain("import.meta.hot");
-    expect(adapter.path).toBe(`src/flute/ProjectPreview.${entry.endsWith(".jsx") ? "jsx" : "tsx"}`);
+    expect(adapter.path).toBe(`src/velora/ProjectPreview.${entry.endsWith(".jsx") ? "jsx" : "tsx"}`);
     const parsed = ts.createSourceFile(adapter.path, adapter.text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const exports = parsed.statements.filter(statement => ts.canHaveModifiers(statement)
       && ts.getModifiers(statement)?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword));
@@ -24,7 +24,7 @@ describe("installed React refresh module contract", () => {
     const compiled = ts.transpileModule(adapter.text, {fileName: adapter.path, reportDiagnostics: true,
       compilerOptions: {jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}});
     expect(compiled.diagnostics).toEqual([]);
-    expect(compiled.outputText).toContain('export function FluteProjectPreview(props)');
+    expect(compiled.outputText).toContain('export function VeloraProjectPreview(props)');
     expect(compiled.outputText).toContain('import.meta.env.DEV ? import.meta.glob(');
     expect(compiled.outputText).toContain('hot: import.meta.hot');
     expect(compiled.outputText).not.toMatch(/hot\.(accept|on|dispose)|createRoot|window\./);
@@ -38,6 +38,6 @@ describe("installed React refresh module contract", () => {
     }
   });
   it("refuses an entry occupying the adapter target", () => {
-    expect(() => inspectEntry(original, "src/flute/ProjectPreview.tsx", projectId)).toThrow(expect.objectContaining({code: "conflict"}));
+    expect(() => inspectEntry(original, "src/velora/ProjectPreview.tsx", projectId)).toThrow(expect.objectContaining({code: "conflict"}));
   });
 });

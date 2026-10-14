@@ -19,7 +19,7 @@ describe("skills help", () => {
     const execute = vi.fn();
     const result = await runCli([command, "--help"], context, execute);
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain(`flute ${command}`);
+    expect(result.stdout).toContain(`velora ${command}`);
     expect(result.stdout).toContain("--json");
     expect(execute).not.toHaveBeenCalled();
   });
@@ -135,7 +135,7 @@ describe("inspect and assets wiring", () => {
   it("inspect reports project without mutation", async () => {
     const scratch = await mkdtemp(path.join(tmpdir(), "velora-inspect-"));
     try {
-      await mkdir(path.join(scratch, "src/flute/scenes"), { recursive: true });
+      await mkdir(path.join(scratch, "src/velora/scenes"), { recursive: true });
       const result = await runCli(["inspect", "--json"], { root: scratch });
       expect(result.code).toBe(0);
       expect(envelope(result.stdout)).toMatchObject({ success: true, command: "inspect" });

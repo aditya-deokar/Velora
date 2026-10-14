@@ -19,7 +19,7 @@ export function validateIdentity(manifest, {repository, tag, publishing = false}
   assert.equal(manifest.license, 'MIT');
   assert.equal(manifest.publishConfig?.access, 'public');
   assert.equal(manifest.publishConfig?.registry, 'https://registry.npmjs.org/');
-  assert.equal(manifest.bin?.flute, './dist/cli/flute.js');
+  assert.equal(manifest.bin?.velora, './dist/cli/velora.js');
   assert.ok(!manifest.scripts?.install && !manifest.scripts?.postinstall && !manifest.scripts?.preinstall,
     'Consumer installation must not execute package lifecycle scripts');
   if (publishing || repository) {
@@ -39,7 +39,7 @@ export function validateRelease(manifest, files, options = {}) {
     assert.ok(/^(package\.json|README\.md|LICENSE|dist\/(library|cli)\/.+\.(js|map|ts)|skills\/velora\/SKILL\.md|skills\/velora\/(REFERENCE|COMPATIBILITY)\.md|skills\/velora\/templates\/[^/]+\/[^/]+\.(json|tsx|jsx|md|srt|txt)|skills\/velora\/scripts\/[A-Za-z0-9-]+\.mjs|skills\/velora-[a-z0-9-]+\/SKILL\.md)$/.test(name),
       'Unexpected packed file: ' + name);
   }
-  const required = ['package.json','README.md','LICENSE',manifest.bin.flute.slice(2)];
+  const required = ['package.json','README.md','LICENSE',manifest.bin.velora.slice(2)];
   for (const entry of Object.values(manifest.exports)) {
     assert.equal(typeof entry.types, 'string');
     assert.equal(typeof entry.import, 'string');
@@ -103,9 +103,9 @@ export async function inspectArtifact({publishing = false} = {}) {
     publishing, repository:process.env.GITHUB_REPOSITORY,
     tag:process.env.GITHUB_REF_TYPE === 'tag' ? process.env.GITHUB_REF_NAME : undefined
   });
-  const cli = await readFile(path.join(root,manifest.bin.flute),'utf8');
+  const cli = await readFile(path.join(root,manifest.bin.velora),'utf8');
   assert.ok(cli.startsWith('#!/usr/bin/env node'), 'CLI must have executable Node shebang');
-  const cliEntry = artifact.files.find(file=>file.path===manifest.bin.flute.slice(2));
+  const cliEntry = artifact.files.find(file=>file.path===manifest.bin.velora.slice(2));
   // Windows packs cannot record executable bits; the shebang above plus npm's
   // bin handling at install time carry the guarantee there. Stay strict on POSIX.
   if (process.platform === 'win32' && !(cliEntry.mode & 0o111))

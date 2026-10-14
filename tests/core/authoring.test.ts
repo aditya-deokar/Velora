@@ -26,9 +26,9 @@ describe('canonical authoring system',()=>{
  });
  it.each([['guide','--json','--json'],['guide','--project','/x'],['guide','anything']])('rejects malformed guide args %j',async(...args)=>{expect((await runCli(args,{root:'/x'})).code).toBe(2)});
  it('makes the guide discoverable at help and successful installation',async()=>{
-  expect((await runCli([],{root:'/x'})).stdout).toContain('flute guide');
+  expect((await runCli([],{root:'/x'})).stdout).toContain('velora guide');
   const execute=vi.fn().mockResolvedValue({success:true,data:{project:{version:1,projectId:'00000000-0000-4000-8000-000000000000',entry:'src/main.tsx',packageManager:'npm'}}});
-  expect((await runCli(['init'],{root:'/x'},execute)).stdout).toContain('npx flute guide');
+  expect((await runCli(['init'],{root:'/x'},execute)).stdout).toContain('npx velora guide');
  });
  it('validates technical structure and targets without demanding a particular shot',()=>{
   const valid=reviewAuthoring({scene,motion});expect(valid.valid).toBe(true);expect(valid.requiresVisualReview).toBe(true);

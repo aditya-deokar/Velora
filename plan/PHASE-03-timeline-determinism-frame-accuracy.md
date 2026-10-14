@@ -27,12 +27,12 @@ Turn single-scene playback into a **deterministic, frame-accurate multi-scene ti
 - `sampleFrameTime(durationMs, frame, fps)` exists — promote to canonical frame sampler; preview scrub + export both call it.
 
 ### 03.3 Multi-scene preview session
-- Extend `usePreviewSession` / `presentPreview` to accept optional `timeline`: single cursor still shared by playback/seek/replay/capture; `SceneLibrary` deep-links (`?flute-scene=`) keep working; timeline mode adds segment boundary seeking (`next/prev segment` ops for CLI-driven agents).
+- Extend `usePreviewSession` / `presentPreview` to accept optional `timeline`: single cursor still shared by playback/seek/replay/capture; `SceneLibrary` deep-links (`?velora-scene=`) keep working; timeline mode adds segment boundary seeking (`next/prev segment` ops for CLI-driven agents).
 - `ScenePreview` props: optional `timelinePosition?` (global ms) — no second clock, no second capture bridge (architecture invariant preserved).
 - Reduced-motion: start paused + seeking available (existing behavior — extend to timeline).
 
 ### 03.4 Frame-accuracy primitives (CLI-visible, export-consumed in Phase 06)
-- `velora render --composition FILE --frame N --out frame.png --json` → seeks exact `timeAtFrame(N)` in headless Chromium, captures `[data-flute-capture="scene"]` viewport only, writes PNG + manifest `{frame, timeMs, fps, seed, sceneId, sha}`.
+- `velora render --composition FILE --frame N --out frame.png --json` → seeks exact `timeAtFrame(N)` in headless Chromium, captures `[data-velora-capture="scene"]` viewport only, writes PNG + manifest `{frame, timeMs, fps, seed, sceneId, sha}`.
 - `velora render --time MS` variant (resolves to nearest frame, reports both). Errors: `ERR_FRAME_OUT_OF_RANGE, ERR_CAPTURE_NO_BRIDGE, ERR_SCENE_INVALID`.
 - Both reuse `executeSceneSnapshot`'s seek+exclude-chrome bridge — generalize, don't duplicate.
 

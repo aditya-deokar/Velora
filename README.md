@@ -41,7 +41,7 @@ import { VeloraProjectPreview } from "./velora/ProjectPreview";
 
 For production bundle exclusion, have your agent load the generated module only behind your bundler’s compile-time development condition. The `enabled` prop is a runtime guard, not a substitute for removing development imports. Next and Vite automatic connections include their native compile-time guards.
 
-Use your host's actual development flag, then open its route with `?velora-preview=1` (or `?flute-preview=1`). For a dedicated route, pass `active`. This uses the existing React renderer, including Electron's renderer process; no changes to main/preload, security settings or build tools. A React Native application without browser DOM is not supported.
+Use your host's actual development flag, then open its route with `?velora-preview=1`. For a dedicated route, pass `active`. This uses the existing React renderer, including Electron's renderer process; no changes to main/preload, security settings or build tools. A React Native application without browser DOM is not supported.
 
 The underlying `ProjectPreview` export accepts `projectId`, `enabled`, optional `active`, `sceneModules` (lazy module loaders) and `children`. This is the shared integration contract; named framework connections are conveniences, not renderer dependencies. Next.js scene bindings are client components: keep server-only imports in the host's server layer and supply their data through that boundary.
 
@@ -94,7 +94,7 @@ Not supported: React Native without DOM, hosted rendering service, accounts or
 licensing, a visual builder or focus-position editor, text-to-speech and
 transcription, and universal quality or performance promises (evidence is
 device- and scene-specific). Ewmotion integration is deferred until a real
-source exists to integrate. The dual command name `flute`/`velora` runs the
+source exists to integrate. The command name `velora` runs the
 same CLI; recipe files stay at version 1 and scenes at focus version 3, and
 older wrappers are upgraded by re-running `velora init` (never hand-edited).
 
@@ -140,7 +140,7 @@ npm run dev
 
 The separate `local-project/` exercises installation with real scenes; it is not shipped in the package. The unconnected product opens with an honest empty scene list.
 
-Read [architecture](docs/architecture.md) for canonical code owners and [product](docs/product.md) for scope. The installed `velora guide` (or `flute guide`) is the authoritative authoring reference. Build and boundary checks reject architectural drift.
+Read [architecture](docs/architecture.md) for canonical code owners and [product](docs/product.md) for scope. The installed `velora guide` is the authoritative authoring reference. Build and boundary checks reject architectural drift.
 
 ## Maintainer release
 

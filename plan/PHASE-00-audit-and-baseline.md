@@ -22,7 +22,7 @@ Produce a frozen, evidenced baseline of the Velora MVP so all later phases prese
 ### 00.1 Capability inventory
 1. Enumerate CLI surface from `src/cli/index.ts:runCli`: `guide, init, open, sync, scenes, load, validate, snapshot, export, --version, --help` + flag matrix + aliases (`init→init-project`, etc.).
 2. For each: record human output vs `--json` output shape, exit code path (0/1/2), and covering test file under `tests/cli/`, `tests/project/`, `tests/export/`.
-3. Enumerate `RESOURCES` keys in `src/core/resources.ts` and `FLUTE_BRAND` consumers.
+3. Enumerate `RESOURCES` keys in `src/core/resources.ts` and `VELORA_BRAND` consumers.
 4. Output: `plan/artifacts/` is OPTIONAL — otherwise record table in the Phase 00 exit note / PR description. Do not add product fixtures outside `tests/`.
 
 ### 00.2 Architecture & purity check

@@ -53,7 +53,7 @@ export const ProjectResultSchema = z.discriminatedUnion("success", [
     validation:ValidationSummarySchema.optional(),
     integration:z.strictObject({kind:z.string(),component:z.string(),route:z.string().optional(),instructions:z.string()}).optional(),
     handoff:z.strictObject({
-      path:z.literal("FLUTE.md"), guideCommand:z.literal("npx flute guide --json"),
+      path:z.literal("VELORA.md"), guideCommand:z.literal("npx velora guide --json"),
       guideVersion:z.number().int().positive(), prompt:z.string().min(1),
     }).optional(),
   }),warnings:z.array(ProjectIssueSchema).optional(),next:z.array(z.string()).optional()}),

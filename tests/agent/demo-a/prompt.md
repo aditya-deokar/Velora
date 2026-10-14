@@ -1,6 +1,6 @@
 # Demo A — Starting Prompt (product teaser, live-UI path)
 
-> Read FLUTE.md and run `npx flute guide --json` in this project. Create a
+> Read VELORA.md and run `npx velora guide --json` in this project. Create a
 > 4.5-second product teaser from the existing dashboard page: open with a
 > camera survey of the live page, then settle into a two-word kinetic title.
 > Add a dissolve-style entrance on the second scene, narration audio, and

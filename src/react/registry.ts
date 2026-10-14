@@ -54,7 +54,7 @@ function uncoveredContent(root:Element):boolean {
   for (const child of root.childNodes) {
     if (child.nodeType===3 && child.textContent?.trim()) return true;
     if (!(child instanceof Element)) continue;
-    if (child.hasAttribute("data-flute-id") || child.hasAttribute("data-flute-content") || child.matches('svg[width="0"],script,style,template')) continue;
+    if (child.hasAttribute("data-velora-id") || child.hasAttribute("data-velora-content") || child.matches('svg[width="0"],script,style,template')) continue;
     const css=getComputedStyle(child);
     if(css.display==='none'||css.visibility==='hidden') continue;
     if(child.matches('img,svg,canvas,video,input,textarea,select') || (css.backgroundImage && css.backgroundImage!=='none')) return true;
@@ -126,11 +126,11 @@ export function createRegistry() {
       stage = element;
       if(typeof MutationObserver!=="undefined") {
         mutations=new MutationObserver(records=>{
-          if(records.some(r=>!(r.target instanceof Element ? r.target : r.target.parentElement)?.closest('[data-flute-content],svg[width="0"]'))) {
+          if(records.some(r=>!(r.target instanceof Element ? r.target : r.target.parentElement)?.closest('[data-velora-content],svg[width="0"]'))) {
             coverageDirty=true; refresh();
           }
         });
-        mutations.observe(element,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:["data-flute-content"]});
+        mutations.observe(element,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:["data-velora-content"]});
       }
       if (typeof ResizeObserver !== "undefined") {
         observer = new ResizeObserver(refresh);

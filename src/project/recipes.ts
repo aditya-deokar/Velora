@@ -38,9 +38,9 @@ export async function executeRecipeCommand(
     if (operation === "open-scene" && "url" in parsed.data) {
       const opened = await executeProjectCommand("open-preview", { url: parsed.data.url, launch: false }, { root });
       if (!opened.success) return { success: false, issues: opened.issues.map(issue => ({ path: issue.path ?? "url", message: issue.message })) };
-      if (!opened.data.url) return { success: false, issues: [{ path: "url", message: "Preview verification returned no URL. Run flute validate and retry." }] };
+      if (!opened.data.url) return { success: false, issues: [{ path: "url", message: "Preview verification returned no URL. Run velora validate and retry." }] };
       const url = new URL(opened.data.url);
-      url.searchParams.set("flute-scene", catalog.selected!.id);
+      url.searchParams.set("velora-scene", catalog.selected!.id);
       if (parsed.data.launch) await services.openBrowser(root, url.href);
       return { success: true, data: { ...catalog, url: url.href } };
     }

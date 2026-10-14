@@ -34,7 +34,7 @@ Adopt one `ProjectResult` shape for ALL commands:
 ### 01.3 Discoverability
 1. `velora --help` / `velora <cmd> --help`: per-command usage (args, flags, examples, exit codes, `--json` shape pointer). Keep top-level `usage` string as the single source in `src/cli/index.ts`.
 2. `velora guide --json` stays versioned (`AuthoringGuideSchema.version`); add `cliVersion`, `commands[]` (name, description, flags, example, skill pointer stub for Phase 07).
-3. New `velora doctor [--json] [--project DIR]`: checks Node peer deps (React 18.2+/19), FFmpeg, Chromium, dev-server reachability, `src/flute/scenes` health. Emits issues with codes above. This is the agent's first diagnostic (skills will call it before `init`).
+3. New `velora doctor [--json] [--project DIR]`: checks Node peer deps (React 18.2+/19), FFmpeg, Chromium, dev-server reachability, `src/velora/scenes` health. Emits issues with codes above. This is the agent's first diagnostic (skills will call it before `init`).
 
 ### 01.4 Non-interactive guarantee
 - No command prompts for input. Ever. TTY-only presentation (Amethyst lettering, progress) is output-only; pipes/`NO_COLOR`/narrow terminals stay plain (extend existing `terminal.ts` tests).

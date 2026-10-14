@@ -28,14 +28,14 @@ Prove **an AI agent can create, render, inspect, and refine a complete video usi
 
 ### 09.3 Gates + release readiness
 1. Wire gates: every phase's tests fold into `verify:launch → verify:iterate → verify:reuse → verify:agent → verify:release`; update `scripts/check-*.mjs` (skills lint, determinism, transcript replay) without breaking `lint:architecture`.
-2. Branding/attribution intact (`FLUTE_BRAND`, creator link — checker-enforced owner).
+2. Branding/attribution intact (`VELORA_BRAND`, creator link — checker-enforced owner).
 3. `prepack`/`release.mjs` include skills + templates + reference + schemas; package excludes tests/fixtures/demo MP4s (allowlist check).
 4. Version-bump flow documented: maintainer runs `verify:release` locally → pushes `main` → GitHub OIDC publishes (existing workflow — no new CI jobs per product stance).
 
 ### 09.4 Adoption docs
 - README section: *Install (`npm i velora`) → `npx velora init` → `npx velora guide` → skills install → first `render`* (5-minute path, copy-pasteable, `--json`-first).
 - Compatibility matrix (agents × React × Node × FFmpeg/Chromium) + *"bring your own agent subscription"* (Velora owns no AI auth — per product doc).
-- Migration notes: `flute`↔`velora` dual-name, recipe v1/scene-v3 compat, legacy wrapper migration (already owned by project layer — surface it).
+- Migration notes: `velora`↔`velora` dual-name, recipe v1/scene-v3 compat, legacy wrapper migration (already owned by project layer — surface it).
 
 ## Files to create/modify
 - `tests/agent/<demo-a>/`, `tests/agent/<demo-b>/` (prompts, transcripts, manifests, frames — small; MP4s git-ignored with hashes recorded, or LFS-free tiny fixtures).

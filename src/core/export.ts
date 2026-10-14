@@ -23,7 +23,7 @@ export const ExportVideoSchema = z.strictObject({
 export const CaptureManifestSchema = z.strictObject({
   version: z.literal(1),
   durationMs: z.number().nonnegative().max(120_000),
-  selector: z.literal('[data-flute-capture="scene"]'),
+  selector: z.literal('[data-velora-capture="scene"]'),
 });
 export const ExportIssueSchema = z.strictObject({
   code: z.string(),

@@ -14,11 +14,11 @@ const recipeDoc = (id: string) => ({ version: 1, id, title: id, definition: { wi
 let root: string;
 const snapshot = vi.fn();
 async function setup() {
-  root = await mkdtemp(path.join(tmpdir(), "flute-stills-"));
-  await mkdir(path.join(root, "src/flute/scenes"), { recursive: true });
+  root = await mkdtemp(path.join(tmpdir(), "velora-stills-"));
+  await mkdir(path.join(root, "src/velora/scenes"), { recursive: true });
   for (const id of ["demo-a", "demo-b"]) {
-    await writeFile(path.join(root, `src/flute/scenes/${id}.scene.json`), JSON.stringify(recipeDoc(id)));
-    await writeFile(path.join(root, `src/flute/scenes/${id}.tsx`), "export default function S() { return null; }");
+    await writeFile(path.join(root, `src/velora/scenes/${id}.scene.json`), JSON.stringify(recipeDoc(id)));
+    await writeFile(path.join(root, `src/velora/scenes/${id}.tsx`), "export default function S() { return null; }");
   }
   await writeFile(path.join(root, "teaser.composition.json"), JSON.stringify({
     version: 1, id: "teaser", title: "Teaser", width: 128, height: 96, fps: 30, seed: 0,
@@ -35,7 +35,7 @@ beforeEach(async () => {
     success: true, data: { url: `http://127.0.0.1:9/${(input as { sceneId: string }).sceneId}` },
   }) as never);
   snapshot.mockResolvedValue(png);
-  vi.mocked(openCapture).mockResolvedValue({ close: vi.fn(), manifest: async () => ({ version: 1, durationMs: 100, selector: '[data-flute-capture="scene"]' }), snapshot, encode: vi.fn() } as Awaited<ReturnType<typeof openCapture>>);
+  vi.mocked(openCapture).mockResolvedValue({ close: vi.fn(), manifest: async () => ({ version: 1, durationMs: 100, selector: '[data-velora-capture="scene"]' }), snapshot, encode: vi.fn() } as Awaited<ReturnType<typeof openCapture>>);
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 

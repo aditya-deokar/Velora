@@ -34,9 +34,9 @@ async function put(file: string, content: string | Buffer) {
   await writeFile(path.join(root, file), content);
 }
 async function mediaHost() {
-  root = await mkdtemp(path.join(tmpdir(), "flute-media-"));
-  await put("src/flute/scenes/demo.scene.json", JSON.stringify(recipeDoc));
-  await put("src/flute/scenes/demo.tsx", "export default function Demo() { return null; }");
+  root = await mkdtemp(path.join(tmpdir(), "velora-media-"));
+  await put("src/velora/scenes/demo.scene.json", JSON.stringify(recipeDoc));
+  await put("src/velora/scenes/demo.tsx", "export default function Demo() { return null; }");
   await put("assets/tone.wav", toneWav());
   await put("subs.srt", goodSrt);
   await put("teaser.composition.json", JSON.stringify(compositionDoc()));
@@ -99,15 +99,15 @@ describe("captions ops", () => {
 describe("validate folding", () => {
   async function initialized() {
     await put("package.json", JSON.stringify({ name: "host", scripts: { dev: "vite" },
-      dependencies: { react: "^19.2.0", "react-dom": "^19.2.0", "@webprodigies/flute": "0.1.0" }, devDependencies: { vite: "^7.3.6" } }));
+      dependencies: { react: "^19.2.0", "react-dom": "^19.2.0", "velora": "0.1.0" }, devDependencies: { vite: "^7.3.6" } }));
     await put("package-lock.json", '{"lockfileVersion":3}');
     await put("index.html", '<div id="root"></div><script type="module" src="/src/main.tsx"></script>');
     await put("vite.config.ts", 'import {defineConfig} from "vite"; import react from "@vitejs/plugin-react"; export default defineConfig({plugins:[react()]});');
     await put("src/main.tsx", 'import { StrictMode } from "react";\nimport { createRoot } from "react-dom/client";\ncreateRoot(document.getElementById("root")!).render(<StrictMode><div/></StrictMode>);\n');
     await put("node_modules/react/package.json", '{"name":"react","version":"19.2.0"}');
     await put("node_modules/react-dom/package.json", '{"name":"react-dom","version":"19.2.0"}');
-    await put("node_modules/@webprodigies/flute/package.json", JSON.stringify({ name: "@webprodigies/flute", version: "0.1.0", exports: { "./preview": { import: "./preview.js" } } }));
-    await put("node_modules/@webprodigies/flute/preview.js", "export const ProjectPreview = () => null;");
+    await put("node_modules/velora/package.json", JSON.stringify({ name: "velora", version: "0.1.0", exports: { "./preview": { import: "./preview.js" } } }));
+    await put("node_modules/velora/preview.js", "export const ProjectPreview = () => null;");
     const inited = await executeProjectCommand("init-project", {}, { root });
     expect(inited).toMatchObject({ success: true });
   }
@@ -135,13 +135,13 @@ describe("validate folding", () => {
   }, 60_000);
   it("classifies recipe diagnostics to stable codes", async () => {
     await initialized();
-    await rm(path.join(root, "src/flute/scenes/demo.tsx"));
+    await rm(path.join(root, "src/velora/scenes/demo.tsx"));
     expect(await validate()).toMatchObject({ success: false, issues: [{ code: "ERR_BINDING_MISSING" }] });
-    await put("src/flute/scenes/demo.tsx", "export default function Demo() { return null; }");
-    await put("src/flute/scenes/demo.scene.json", JSON.stringify({ ...recipeDoc, definition: { ...recipeDoc.definition, focus: { distance: 10, fStop: 8, focalLength: 50, maxBlur: 6 } } }));
+    await put("src/velora/scenes/demo.tsx", "export default function Demo() { return null; }");
+    await put("src/velora/scenes/demo.scene.json", JSON.stringify({ ...recipeDoc, definition: { ...recipeDoc.definition, focus: { distance: 10, fStop: 8, focalLength: 50, maxBlur: 6 } } }));
     expect(await validate()).toMatchObject({ success: false, issues: [{ code: "ERR_FOCUS_INVALID" }] });
-    await put("src/flute/scenes/demo.scene.json", JSON.stringify(recipeDoc));
-    await put("src/flute/scenes/other.scene.json", JSON.stringify({ ...recipeDoc }));
+    await put("src/velora/scenes/demo.scene.json", JSON.stringify(recipeDoc));
+    await put("src/velora/scenes/other.scene.json", JSON.stringify({ ...recipeDoc }));
     const dupes = await validate();
     expect(dupes.success).toBe(false);
     expect(!dupes.success && dupes.issues.map((i) => i.code)).toContain("ERR_SCENE_INVALID");

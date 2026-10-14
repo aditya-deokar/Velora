@@ -1,5 +1,5 @@
 import { RESOURCES } from "../core/resources";
-import { FLUTE_BRAND } from "../core/branding";
+import { VELORA_BRAND } from "../core/branding";
 import {
   CLI_COMMANDS,
   hintForCode,
@@ -38,80 +38,80 @@ type FramesRenderer = typeof executeFramesRender;
 type ShotRenderer = typeof executeShotRender;
 type CheckRunner = typeof executeCheck;
 export type CliResult = { code: number; stdout: string; stderr: string };
-const usage = `${FLUTE_BRAND.title} — cinematic 3D motion from your real application UI.
-${FLUTE_BRAND.url}
-Start with npx flute guide to learn spatial composition, camera, focus and motion.
+const usage = `${VELORA_BRAND.title} — cinematic 3D motion from your real application UI.
+${VELORA_BRAND.url}
+Start with npx velora guide to learn spatial composition, camera, focus and motion.
 
-flute --version
-flute help [command]
-flute guide [--json]
-flute init [--adapter auto|react] [--project DIR] [--package TARBALL] [--url ORIGIN] [--no-open]
-flute open [--scene ID] [--project DIR] [--url ORIGIN] [--no-open]
-flute sync [--project DIR]
-flute scenes [--project DIR] [--json]
-flute snapshot --scene ID --url ORIGIN [--time MS] [--project DIR] [--json]
-flute load [--scene ID] [--project DIR] [--json]
-flute validate [--project DIR] [--composition FILE] [--json]
-flute inspect [--project DIR] [--scene ID | --composition FILE] [--json]
-flute assets ls [--project DIR] [--json]
-flute assets check [--project DIR] [--json]
-flute assets add --as SOURCE --id ID [--project DIR] [--json]
-flute assets rm --id ID --yes [--project DIR] [--json]
-flute export --url URL --output FILE [--fps 30|60|120] [--width N --height N] [--audio FILE] [--captions FILE] [--project DIR] [--json]
-flute doctor [--project DIR] [--url ORIGIN] [--json]
-flute render --composition FILE --frame N --out PNG [--url ORIGIN] [--no-cache] [--project DIR] [--json]
-flute render --composition FILE --out MP4 [--parallel N] [--fps N] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]
-flute frames --composition FILE --out DIR [--every N | --at MS,...] [--url ORIGIN] [--project DIR] [--json]
-flute shot --scene ID --time MS --out PNG [--url ORIGIN] [--project DIR] [--json]
-flute check --frames DIR [--budget-ms MS] [--project DIR] [--json]
-flute check --video FILE [--manifest FILE] [--budget-ms MS] [--project DIR] [--json]
-flute audio ls --composition FILE [--project DIR] [--json]
-flute audio check --composition FILE [--project DIR] [--json]
-flute captions validate --file FILE [--project DIR] [--json]
-flute captions check --composition FILE [--project DIR] [--json]
-flute transitions ls [--json]
-flute transitions describe --type TYPE [--json]
-flute skills install --dir PATH [--agent claude|codex|cursor|generic] [--source PATH] [--json]
-flute skills ls [--dir PATH] [--source PATH] [--json]
-flute skills check [--dir PATH] [--source PATH] [--json]
+velora --version
+velora help [command]
+velora guide [--json]
+velora init [--adapter auto|react] [--project DIR] [--package TARBALL] [--url ORIGIN] [--no-open]
+velora open [--scene ID] [--project DIR] [--url ORIGIN] [--no-open]
+velora sync [--project DIR]
+velora scenes [--project DIR] [--json]
+velora snapshot --scene ID --url ORIGIN [--time MS] [--project DIR] [--json]
+velora load [--scene ID] [--project DIR] [--json]
+velora validate [--project DIR] [--composition FILE] [--json]
+velora inspect [--project DIR] [--scene ID | --composition FILE] [--json]
+velora assets ls [--project DIR] [--json]
+velora assets check [--project DIR] [--json]
+velora assets add --as SOURCE --id ID [--project DIR] [--json]
+velora assets rm --id ID --yes [--project DIR] [--json]
+velora export --url URL --output FILE [--fps 30|60|120] [--width N --height N] [--audio FILE] [--captions FILE] [--project DIR] [--json]
+velora doctor [--project DIR] [--url ORIGIN] [--json]
+velora render --composition FILE --frame N --out PNG [--url ORIGIN] [--no-cache] [--project DIR] [--json]
+velora render --composition FILE --out MP4 [--parallel N] [--fps N] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]
+velora frames --composition FILE --out DIR [--every N | --at MS,...] [--url ORIGIN] [--project DIR] [--json]
+velora shot --scene ID --time MS --out PNG [--url ORIGIN] [--project DIR] [--json]
+velora check --frames DIR [--budget-ms MS] [--project DIR] [--json]
+velora check --video FILE [--manifest FILE] [--budget-ms MS] [--project DIR] [--json]
+velora audio ls --composition FILE [--project DIR] [--json]
+velora audio check --composition FILE [--project DIR] [--json]
+velora captions validate --file FILE [--project DIR] [--json]
+velora captions check --composition FILE [--project DIR] [--json]
+velora transitions ls [--json]
+velora transitions describe --type TYPE [--json]
+velora skills install --dir PATH [--agent claude|codex|cursor|generic] [--source PATH] [--json]
+velora skills ls [--dir PATH] [--source PATH] [--json]
+velora skills check [--dir PATH] [--source PATH] [--json]
 
-After installing velora locally, run npx velora init (or npx flute init) in your React DOM app (React 18.2+ or 19). Next.js and Vite have automatic connections; other hosts get a portable React wrapper.
---package is optional when Flute is already installed; it accepts a local .tgz for setup.
-init preserves the existing root/providers and creates FLUTE.md for your coding agent.
+After installing velora locally, run npx velora init (or npx velora init) in your React DOM app (React 18.2+ or 19). Next.js and Vite have automatic connections; other hosts get a portable React wrapper.
+--package is optional when Velora is already installed; it accepts a local .tgz for setup.
+init preserves the existing root/providers and creates VELORA.md for your coding agent.
 Add --url to initialize and open in one command.
 open reuses your running dev server (APP_PORT / PORT / 5173); it never starts another server.
 --no-open verifies and prints the preview URL without launching a browser.
 --json prints the canonical command result for scripts.
-Every command supports --help (for example: flute export --help). Commands never
+Every command supports --help (for example: velora export --help). Commands never
 prompt for input; pipes and NO_COLOR stay plain. Exit 0 on success, 1 on
 operational failure (see issues[].code/hint with --json), 2 on usage errors.
 `;
 const commandUsage: Record<string, string> = {
-  guide: "flute guide [--json]\n\nPrint the versioned authoring guide: cinematic concepts, workflow and API.\n--json prints the canonical guide document plus cliVersion and the commands[] index.",
-  init: "flute init [--adapter auto|react] [--project DIR] [--package TARBALL] [--url ORIGIN] [--no-open] [--json]\n\nInitialize the project connection and create FLUTE.md for the coding agent.\n--adapter react selects the portable connection explicitly. --package accepts a local .tgz.",
-  open: "flute open [--scene ID] [--project DIR] [--url ORIGIN] [--no-open] [--json]\n\nVerify the running dev server (APP_PORT / PORT / 5173) and print or open the preview URL.\n--scene ID opens that scene directly. --no-open verifies without launching a browser.",
-  sync: "flute sync [--project DIR] [--json]\n\nRefresh the scene registry after adding or removing recipe/component files.",
-  scenes: "flute scenes [--project DIR] [--json]\n\nList the validated scene recipes in the project catalog.",
-  load: "flute load [--scene ID] [--project DIR] [--json]\n\nLoad one scene recipe source (without --scene, report project status).",
-  validate: "flute validate [--project DIR] [--composition FILE] [--json]\n\nValidate the project, scene recipes and bindings; with --composition, validate that timeline plus assets, audio, captions and transitions.\nReports actionable diagnostics with stable codes.",
-  inspect: "flute inspect [--project DIR] [--scene ID | --composition FILE] [--json]\n\nInspect the project, one scene or one composition file without mutating anything.\nWithout flags, report project identity plus recipe/asset counts.",
-  assets: "flute assets ls [--project DIR] [--json]\nflute assets check [--project DIR] [--json]\nflute assets add --as SOURCE --id ID [--project DIR] [--json]\nflute assets rm --id ID --yes [--project DIR] [--json]\n\nManage project assets in assets/ (list, check, add a file under an ID, remove with confirmation).",
-  snapshot: "flute snapshot --scene ID --url ORIGIN [--time MS] [--project DIR] [--json]\n\nCapture one frame PNG into the scene recipe at --time milliseconds (default midpoint).",
-  export: "flute export --url URL --output FILE [--fps 30|60|120] [--width N --height N] [--audio FILE] [--captions FILE] [--project DIR] [--json]\n\nRender the live scene to a project-relative MP4 through the capture bridge.\n--audio mixes a project-relative audio file; --captions burns a project-relative .srt/.vtt file.\nRequires FFmpeg and Playwright Chromium; does not start the app server.",
-  doctor: "flute doctor [--project DIR] [--url ORIGIN] [--json]\n\nCheck Node, npm package, React, toolkit, scene catalog, FFmpeg and Chromium.\n--url also probes dev-server reachability. Exit 0 when every check passes, 1 otherwise.",
-  render: "flute render --composition FILE [--frame N | --time MS] --out PNG [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\nflute render --composition FILE --out MP4 [--parallel 1-4] [--fps 30|60|120] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]\n\nRender one exact timeline frame to PNG plus a manifest, or the whole timeline to MP4.\nFrame mode needs exactly one of --frame/--time with a .png --out; video mode needs an .mp4 --out.\n--json streams newline-delimited progress lines ending with the result envelope (--no-stream prints only the envelope).",
-  frames: "flute frames --composition FILE --out DIR [--every N | --at MS,...] [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\n\nExtract a PNG sequence plus manifest.json. Defaults to one frame per second.\nExactly one of --every (frame step) or --at (comma-separated milliseconds) may be given.",
-  shot: "flute shot --scene ID --time MS --out PNG [--url ORIGIN] [--project DIR] [--json]\n\nCapture one still from a single scene without a composition.",
-  check: "flute check --frames DIR [--budget-ms MS] [--project DIR] [--json]\nflute check --video FILE [--manifest FILE] [--budget-ms MS] [--project DIR] [--json]\n\nRun automated visual checks over rendered evidence (technical checks only, never artistic scores).\nExactly one of --frames or --video is required; --manifest cross-checks video records.",
-  audio: "flute audio ls --composition FILE [--project DIR] [--json]\nflute audio check --composition FILE [--project DIR] [--json]\n\nList composition audio tracks with frame-snapped placement, or validate them\nagainst discovered assets (existence, type, size, codec, fades, ducking).",
-  captions: "flute captions validate --file FILE [--project DIR] [--json]\nflute captions check --composition FILE [--project DIR] [--json]\n\nValidate a .srt/.vtt file, or check a composition's captions against its timeline span.",
-  transitions: "flute transitions ls [--json]\nflute transitions describe --type TYPE [--json]\n\nList the entering-side transition catalog, or show one transition with example tracks.\nTransitions declare segment entrances; builders emit tracks to paste into recipe motion.",
-  skills: "flute skills install --dir PATH [--agent claude|codex|cursor|generic] [--source PATH] [--json]\nflute skills ls [--dir PATH] [--source PATH] [--json]\nflute skills check [--dir PATH] [--source PATH] [--json]\n\nInstall the Velora skills library (idempotent; differing files are ERR_SKILL_CONFLICT), list available/installed skills with version drift, or check front-matter and cross-links.\n--agent prints the registration snippet for that agent without writing config files.",
+  guide: "velora guide [--json]\n\nPrint the versioned authoring guide: cinematic concepts, workflow and API.\n--json prints the canonical guide document plus cliVersion and the commands[] index.",
+  init: "velora init [--adapter auto|react] [--project DIR] [--package TARBALL] [--url ORIGIN] [--no-open] [--json]\n\nInitialize the project connection and create VELORA.md for the coding agent.\n--adapter react selects the portable connection explicitly. --package accepts a local .tgz.",
+  open: "velora open [--scene ID] [--project DIR] [--url ORIGIN] [--no-open] [--json]\n\nVerify the running dev server (APP_PORT / PORT / 5173) and print or open the preview URL.\n--scene ID opens that scene directly. --no-open verifies without launching a browser.",
+  sync: "velora sync [--project DIR] [--json]\n\nRefresh the scene registry after adding or removing recipe/component files.",
+  scenes: "velora scenes [--project DIR] [--json]\n\nList the validated scene recipes in the project catalog.",
+  load: "velora load [--scene ID] [--project DIR] [--json]\n\nLoad one scene recipe source (without --scene, report project status).",
+  validate: "velora validate [--project DIR] [--composition FILE] [--json]\n\nValidate the project, scene recipes and bindings; with --composition, validate that timeline plus assets, audio, captions and transitions.\nReports actionable diagnostics with stable codes.",
+  inspect: "velora inspect [--project DIR] [--scene ID | --composition FILE] [--json]\n\nInspect the project, one scene or one composition file without mutating anything.\nWithout flags, report project identity plus recipe/asset counts.",
+  assets: "velora assets ls [--project DIR] [--json]\nvelora assets check [--project DIR] [--json]\nvelora assets add --as SOURCE --id ID [--project DIR] [--json]\nvelora assets rm --id ID --yes [--project DIR] [--json]\n\nManage project assets in assets/ (list, check, add a file under an ID, remove with confirmation).",
+  snapshot: "velora snapshot --scene ID --url ORIGIN [--time MS] [--project DIR] [--json]\n\nCapture one frame PNG into the scene recipe at --time milliseconds (default midpoint).",
+  export: "velora export --url URL --output FILE [--fps 30|60|120] [--width N --height N] [--audio FILE] [--captions FILE] [--project DIR] [--json]\n\nRender the live scene to a project-relative MP4 through the capture bridge.\n--audio mixes a project-relative audio file; --captions burns a project-relative .srt/.vtt file.\nRequires FFmpeg and Playwright Chromium; does not start the app server.",
+  doctor: "velora doctor [--project DIR] [--url ORIGIN] [--json]\n\nCheck Node, npm package, React, toolkit, scene catalog, FFmpeg and Chromium.\n--url also probes dev-server reachability. Exit 0 when every check passes, 1 otherwise.",
+  render: "velora render --composition FILE [--frame N | --time MS] --out PNG [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\nvelora render --composition FILE --out MP4 [--parallel 1-4] [--fps 30|60|120] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]\n\nRender one exact timeline frame to PNG plus a manifest, or the whole timeline to MP4.\nFrame mode needs exactly one of --frame/--time with a .png --out; video mode needs an .mp4 --out.\n--json streams newline-delimited progress lines ending with the result envelope (--no-stream prints only the envelope).",
+  frames: "velora frames --composition FILE --out DIR [--every N | --at MS,...] [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\n\nExtract a PNG sequence plus manifest.json. Defaults to one frame per second.\nExactly one of --every (frame step) or --at (comma-separated milliseconds) may be given.",
+  shot: "velora shot --scene ID --time MS --out PNG [--url ORIGIN] [--project DIR] [--json]\n\nCapture one still from a single scene without a composition.",
+  check: "velora check --frames DIR [--budget-ms MS] [--project DIR] [--json]\nvelora check --video FILE [--manifest FILE] [--budget-ms MS] [--project DIR] [--json]\n\nRun automated visual checks over rendered evidence (technical checks only, never artistic scores).\nExactly one of --frames or --video is required; --manifest cross-checks video records.",
+  audio: "velora audio ls --composition FILE [--project DIR] [--json]\nvelora audio check --composition FILE [--project DIR] [--json]\n\nList composition audio tracks with frame-snapped placement, or validate them\nagainst discovered assets (existence, type, size, codec, fades, ducking).",
+  captions: "velora captions validate --file FILE [--project DIR] [--json]\nvelora captions check --composition FILE [--project DIR] [--json]\n\nValidate a .srt/.vtt file, or check a composition's captions against its timeline span.",
+  transitions: "velora transitions ls [--json]\nvelora transitions describe --type TYPE [--json]\n\nList the entering-side transition catalog, or show one transition with example tracks.\nTransitions declare segment entrances; builders emit tracks to paste into recipe motion.",
+  skills: "velora skills install --dir PATH [--agent claude|codex|cursor|generic] [--source PATH] [--json]\nvelora skills ls [--dir PATH] [--source PATH] [--json]\nvelora skills check [--dir PATH] [--source PATH] [--json]\n\nInstall the Velora skills library (idempotent; differing files are ERR_SKILL_CONFLICT), list available/installed skills with version drift, or check front-matter and cross-links.\n--agent prints the registration snippet for that agent without writing config files.",
 };
 function commandHelpText(command: string): string {
   const entry = CLI_COMMANDS.find((item) => item.name === command);
   const body = commandUsage[command] ?? usage;
-  return `${FLUTE_BRAND.title}\n${FLUTE_BRAND.url}\n\n${body}\n\nSkill: ${entry?.skill ?? "velora-debug"}\nExit 0 on success, 1 on operational failure, 2 on usage errors. Add --json for machine-readable output.\n`;
+  return `${VELORA_BRAND.title}\n${VELORA_BRAND.url}\n\n${body}\n\nSkill: ${entry?.skill ?? "velora-debug"}\nExit 0 on success, 1 on operational failure, 2 on usage errors. Add --json for machine-readable output.\n`;
 }
 function humanIssue(issue: CliIssue): string {
   const head = `${issue.code}${issue.path ? ` (${issue.path})` : ""}: ${issue.message}`;
@@ -141,18 +141,18 @@ function output(result: ProjectResult, json: boolean, command: string, onboardin
   }
   if (onboarding && !json) return {code:0, stdout:formatOnboarding(result, onboarding.terminal, !onboarding.streamed), stderr:""};
   const message = result.data.url ?? (result.data.project
-    ? `Project ${result.data.integration?.kind === "react" ? "connection generated" : "ready"}: ${result.data.project.entry}${result.data.changed ? " (initialized)" : ""}.\nUse your running dev server, or start it with npm run dev. Then run npx flute open --url <origin printed by your app>.`
+    ? `Project ${result.data.integration?.kind === "react" ? "connection generated" : "ready"}: ${result.data.project.entry}${result.data.changed ? " (initialized)" : ""}.\nUse your running dev server, or start it with npm run dev. Then run npx velora open --url <origin printed by your app>.`
     : "Project command completed.");
   const handoff = result.data.handoff;
   const next = handoff
     ? `\nAgent handoff: ${handoff.path}\nCopy this prompt into your coding agent (replace <page route or component path>):\n${handoff.prompt}`
-    : "\nScene authoring: run npx flute guide before composing animations.";
+    : "\nScene authoring: run npx velora guide before composing animations.";
   const warnings = result.warnings?.map(normalizeIssue);
   return {
     code: 0,
     stdout: (json
       ? JSON.stringify({ success: true, command, data: result.data, ...(warnings?.length ? { warnings } : {}), ...(result.next ? { next: result.next } : {}) })
-      : `${FLUTE_BRAND.title}\n${FLUTE_BRAND.url}\n${message}${result.data.integration ? "\n" + result.data.integration.instructions : ""}${next}`) + "\n",
+      : `${VELORA_BRAND.title}\n${VELORA_BRAND.url}\n${message}${result.data.integration ? "\n" + result.data.integration.instructions : ""}${next}`) + "\n",
     stderr: !json && warnings?.length ? warnings.map(humanIssue).join("\n") + "\n" : "",
   };
 }
@@ -167,7 +167,7 @@ function recipeOutput(result: RecipeCommandResult, json: boolean, command: strin
   }
   const text = result.data.url ?? (result.data.selected ? JSON.stringify(result.data.selected, null, 2)
     : result.data.scenes.length ? result.data.scenes.map(scene => `${scene.id}\t${scene.title}`).join("\n")
-      : "No local scenes found. Add a recipe and matching component in src/flute/scenes.");
+      : "No local scenes found. Add a recipe and matching component in src/velora/scenes.");
   return {
     code: 0,
     stdout: (json ? JSON.stringify(withCommand(result, command)) : text) + "\n",
@@ -178,7 +178,7 @@ function humanDoctor(result: DoctorResult, unicode: boolean): string {
   const mark = (pass: boolean) => (pass ? (unicode ? "✓" : "+") : (unicode ? "✗" : "x"));
   const checks = result.data?.checks ?? [];
   const lines = checks.map((check) => `${mark(check.pass)} ${check.label}${check.detail ? `: ${check.detail}` : ""}${!check.pass && check.hint ? ` (Hint: ${check.hint})` : ""}`);
-  if (result.success) return `${FLUTE_BRAND.title}\nDoctor: every check passed.\n${lines.join("\n")}`;
+  if (result.success) return `${VELORA_BRAND.title}\nDoctor: every check passed.\n${lines.join("\n")}`;
   const issues = result.issues.map(humanIssue).join("\n");
   return `${lines.join("\n")}\n${issues}`;
 }
@@ -497,10 +497,10 @@ export async function runCli(argv: string[], environment: Environment, execute: 
   }
   if(command === "guide") {
     if (args.length === 1 && ["--help", "-h"].includes(args[0])) return { code: 0, stdout: commandHelpText("guide"), stderr: "" };
-    if(args.length>1 || (args.length===1 && args[0]!=="--json"))return fail("Usage: flute guide [--json]", "ERR_UNKNOWN_OPTION", "guide");
+    if(args.length>1 || (args.length===1 && args[0]!=="--json"))return fail("Usage: velora guide [--json]", "ERR_UNKNOWN_OPTION", "guide");
     const guide=RESOURCES["authoring-guide"]({cliVersion: environment.terminal?.version ?? "development"});
     const text=[guide.purpose,guide.creativeFreedom,...guide.concepts.map(c=>`## ${c.title}\n${c.meaning}\nHow it works: ${c.mechanism}\nCreative choices: ${c.choices}\nWatch for: ${c.pitfalls}\nVerify: ${c.verify}`),"## Workflow\n"+guide.workflow.map((s,i)=>`${i+1}. ${s}`).join("\n"),"## Installed API and defaults\n"+JSON.stringify(guide.capabilities,null,2)].join("\n\n");
-    return {code:0,stdout:(args[0]==="--json"?JSON.stringify({...guide,command:"guide"}):`${FLUTE_BRAND.title}\n${FLUTE_BRAND.url}\n\n${text}`)+"\n",stderr:""};
+    return {code:0,stdout:(args[0]==="--json"?JSON.stringify({...guide,command:"guide"}):`${VELORA_BRAND.title}\n${VELORA_BRAND.url}\n\n${text}`)+"\n",stderr:""};
   }
   const aliases = { init: "init-project", sync: "sync-project", open: "open-preview", load: "load-project", validate: "validate-project" } as const;
   if (command !== "snapshot" && command !== "export" && command !== "scenes" && command !== "doctor" && command !== "render" && command !== "audio" && command !== "captions" && command !== "transitions" && command !== "frames" && command !== "shot" && command !== "check" && command !== "skills" && command !== "inspect" && command !== "assets" && !Object.hasOwn(aliases, command)) return fail(`Unknown command: ${command}`, "ERR_UNKNOWN_COMMAND");
@@ -541,7 +541,7 @@ export async function runCli(argv: string[], environment: Environment, execute: 
   if (flags.has("--scene") && !["load", "open", "snapshot", "shot"].includes(command)) return fail("--scene is only valid for load, open, shot or snapshot.", "ERR_INVALID_FLAG_COMBINATION", command);
   if (["load", "validate", "scenes", "sync", "doctor"].includes(command) && flags.has("--no-open")) return fail("Preview options require init or open.", "ERR_INVALID_FLAG_COMBINATION", command);
   if (["load", "validate", "scenes", "sync"].includes(command) && flags.has("--url")) return fail("Preview options require init or open.", "ERR_INVALID_FLAG_COMBINATION", command);
-  if (command === "init" && flags.has("--no-open") && !flags.has("--url")) return fail("init --no-open requires --url. To initialize without opening a browser, run npx flute init.", "ERR_INVALID_FLAG_COMBINATION", command);
+  if (command === "init" && flags.has("--no-open") && !flags.has("--url")) return fail("init --no-open requires --url. To initialize without opening a browser, run npx velora init.", "ERR_INVALID_FLAG_COMBINATION", command);
   const context = { root: flags.get("--project") as string ?? environment.root };
   const json = flags.has("--json");
   if (command === "doctor") {
@@ -787,6 +787,6 @@ export async function runCli(argv: string[], environment: Environment, execute: 
     const failure = output(opened, json, command);
     return json ? failure : { ...failure, stdout: output(result, false, command, onboarding).stdout };
   } catch {
-    return operationalFailure(command, [{code:"ERR_INTERNAL", message:"Project command failed unexpectedly. Your setup may be incomplete; run flute validate, correct the reported issue and retry."}], json);
+    return operationalFailure(command, [{code:"ERR_INTERNAL", message:"Project command failed unexpectedly. Your setup may be incomplete; run velora validate, correct the reported issue and retry."}], json);
   }
 }

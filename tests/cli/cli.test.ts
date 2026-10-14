@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("../../src/project/commands", () => ({executeProjectCommand: vi.fn()}));
 import { runCli } from "../../src/cli";
 import type { ProjectResult } from "../../src/core";
-import { FLUTE_BRAND } from "../../src/core/branding";
+import { VELORA_BRAND } from "../../src/core/branding";
 import { RESOURCES } from "../../src/core/resources";
 const ready: ProjectResult = {success:true,data:{project:{version:1,projectId:"00000000-0000-4000-8000-000000000000",entry:"src/main.tsx",packageManager:"npm"}}};
 const context = {root:"/project"};
@@ -10,7 +10,7 @@ describe("CLI adapter", () => {
   it("has side-effect-free help", async () => {
     const execute = vi.fn();
     const help = (await runCli(["--help"], context, execute)).stdout;
-    for (const text of ["npx flute init", FLUTE_BRAND.title, FLUTE_BRAND.url, "--package is optional", "FLUTE.md"])
+    for (const text of ["npx velora init", VELORA_BRAND.title, VELORA_BRAND.url, "--package is optional", "VELORA.md"])
       expect(help).toContain(text);
     expect(execute).not.toHaveBeenCalled();
   });
@@ -20,13 +20,13 @@ describe("CLI adapter", () => {
     expect(execute).not.toHaveBeenCalled();
   });
   it("initializes then opens through the same command boundary", async () => {
-    const execute=vi.fn().mockResolvedValueOnce(ready).mockResolvedValueOnce({success:true,data:{url:"http://127.0.0.1:6199/?flute-preview=1"}});
+    const execute=vi.fn().mockResolvedValueOnce(ready).mockResolvedValueOnce({success:true,data:{url:"http://127.0.0.1:6199/?velora-preview=1"}});
     const r=await runCli(["init","--project","/host","--package","/tmp/pkg.tgz","--url","http://127.0.0.1:6199","--no-open","--json"],context,execute);
     expect(execute.mock.calls).toEqual([
       ["init-project",{packageSource:"/tmp/pkg.tgz"},{root:"/host"}],
       ["open-preview",{url:"http://127.0.0.1:6199",launch:false},{root:"/host"}],
     ]);
-    expect(r.code).toBe(0);expect(JSON.parse(r.stdout).data.url).toContain("flute-preview");
+    expect(r.code).toBe(0);expect(JSON.parse(r.stdout).data.url).toContain("velora-preview");
   });
   it("does not open after failed init", async () => {
     const execute=vi.fn().mockResolvedValue({success:false,issues:[{code:"unsupported",message:"Use a Vite React project."}]});
@@ -51,23 +51,23 @@ describe("CLI adapter", () => {
 });
 
 describe("agent onboarding CLI", () => {
-  const handoff = { path: "FLUTE.md" as const, guideCommand: "npx flute guide --json" as const,
+  const handoff = { path: "VELORA.md" as const, guideCommand: "npx velora guide --json" as const,
     guideVersion: RESOURCES["authoring-guide"]().version,
-    prompt: "Read FLUTE.md and run npx flute guide --json. Animate this host page: <page route or component path>." };
+    prompt: "Read VELORA.md and run npx velora guide --json. Animate this host page: <page route or component path>." };
   const initialized: ProjectResult = { success: true, data: { ...ready.success && ready.data, changed: true, handoff } };
   it("prints the exact command-owned prompt for a locally installed package", async () => {
     const execute = vi.fn().mockResolvedValue(initialized);
     const result = await runCli(["init"], context, execute);
     expect(execute).toHaveBeenCalledExactlyOnceWith("init-project", {}, context);
     expect(result.code).toBe(0);
-    for (const text of [handoff.prompt, FLUTE_BRAND.title, FLUTE_BRAND.url, "npm run dev", "npx flute open", "replace <page route or component path>"])
+    for (const text of [handoff.prompt, VELORA_BRAND.title, VELORA_BRAND.url, "npm run dev", "npx velora open", "replace <page route or component path>"])
       expect(result.stdout).toContain(text);
   });
   it("preserves handoff metadata when init also opens the preview", async () => {
-    const execute = vi.fn().mockResolvedValueOnce(initialized).mockResolvedValueOnce({ success: true, data: { url: "http://localhost:5173/?flute-preview=1" } });
+    const execute = vi.fn().mockResolvedValueOnce(initialized).mockResolvedValueOnce({ success: true, data: { url: "http://localhost:5173/?velora-preview=1" } });
     const result = await runCli(["init", "--url", "http://localhost:5173", "--no-open", "--json"], context, execute);
-    expect(JSON.parse(result.stdout).data).toMatchObject({ handoff, changed: true, url: "http://localhost:5173/?flute-preview=1" });
-    expect(result.stdout).not.toContain(FLUTE_BRAND.title);
+    expect(JSON.parse(result.stdout).data).toMatchObject({ handoff, changed: true, url: "http://localhost:5173/?velora-preview=1" });
+    expect(result.stdout).not.toContain(VELORA_BRAND.title);
   });
   it("keeps completed onboarding visible when the existing server is unavailable", async () => {
     const execute = vi.fn().mockResolvedValueOnce(initialized).mockResolvedValueOnce({ success: false, issues: [{ code: "missing-dev-server", message: "Run npm run dev and retry." }] });
@@ -77,10 +77,10 @@ describe("agent onboarding CLI", () => {
     expect(result.stderr).toContain("Run npm run dev");
   });
   it("prints file conflicts with their actionable path and keeps JSON canonical", async () => {
-    const failure = { success: false, issues: [{ code: "conflict", path: "FLUTE.md", message: "Move or rename the document and retry." }] };
+    const failure = { success: false, issues: [{ code: "conflict", path: "VELORA.md", message: "Move or rename the document and retry." }] };
     const execute = vi.fn().mockResolvedValue(failure);
     const human = await runCli(["init"], context, execute);
-    expect(human.stderr).toContain("conflict (FLUTE.md): Move or rename");
+    expect(human.stderr).toContain("conflict (VELORA.md): Move or rename");
     expect(human.stdout).toBe("");
     const json = await runCli(["init", "--json"], context, execute);
     expect(JSON.parse(json.stderr)).toMatchObject(failure);
@@ -89,8 +89,8 @@ describe("agent onboarding CLI", () => {
   });
   it("prints brand on the human guide while returning the canonical guide as JSON", async () => {
     const human = await runCli(["guide"], context);
-    expect(human.stdout).toContain(FLUTE_BRAND.title);
-    expect(human.stdout).toContain(FLUTE_BRAND.url);
+    expect(human.stdout).toContain(VELORA_BRAND.title);
+    expect(human.stdout).toContain(VELORA_BRAND.url);
     const json = await runCli(["guide", "--json"], context);
     expect(JSON.parse(json.stdout)).toMatchObject(RESOURCES["authoring-guide"]());
     expect(JSON.parse(json.stdout)).toMatchObject({ command: "guide" });
@@ -117,7 +117,7 @@ describe("video CLI", () => {
 });
 
 it('routes snapshot arguments through the shared operation and preserves validation failures',async()=>{
- const snapshotter=vi.fn().mockResolvedValue({success:true,data:{sceneId:'demo',source:'src/flute/scenes/demo.scene.json',timeMs:100}});
+ const snapshotter=vi.fn().mockResolvedValue({success:true,data:{sceneId:'demo',source:'src/velora/scenes/demo.scene.json',timeMs:100}});
  const result=await runCli(['snapshot','--scene','demo','--url','http://localhost:5173','--time','100','--json'],{root:'/project'},undefined,undefined,undefined,snapshotter);
  expect(result.code).toBe(0);expect(snapshotter).toHaveBeenCalledWith({sceneId:'demo',url:'http://localhost:5173',timeMs:100},{root:'/project'});
  expect((await runCli(['snapshot','--scene','demo'],{root:'/project'})).code).toBe(2);

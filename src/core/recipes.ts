@@ -10,7 +10,7 @@ import type { SceneIssue } from "./scene";
  * WHY: CLI and browser reopen identical metadata without executing component source.
  * WHERE: project/recipes supplies scoped files; the browser supplies JSON and binding paths.
  */
-export const SCENE_RECIPE_DIRECTORY = "src/flute/scenes";
+export const SCENE_RECIPE_DIRECTORY = "src/velora/scenes";
 export const SceneRecipeIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use a lowercase scene slug containing letters, digits and single hyphens.");
 /** SOURCE OF TRUTH: ListScenesSchema, LoadSceneSchema, OpenSceneSchema.
  * WHAT: runtime contracts for trusted recipe operations.
@@ -26,7 +26,7 @@ export const SnapshotSceneSchema=z.strictObject({
 });
 // A bounded, inert PNG is local cached imagery, not an executing scene or remote URL.
 export const SceneSnapshotSchema=z.strictObject({
- image:z.string().max(128_000).regex(/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/,"Use a Flute-generated PNG snapshot."),
+ image:z.string().max(128_000).regex(/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/,"Use a Velora-generated PNG snapshot."),
  timeMs:z.number().finite().nonnegative().max(120_000),
 });
 export const SceneRecipeSchema = z.strictObject({
@@ -62,8 +62,8 @@ const CatalogInputSchema = z.strictObject({
   sceneId: z.string().optional(),
 });
 const SourceSchema = z.strictObject({ path: z.string(), document: z.unknown() });
-const sourcePattern = /^src\/flute\/scenes\/([a-z0-9]+(?:-[a-z0-9]+)*)\.scene\.json$/;
-const bindingPattern = /^src\/flute\/scenes\/[a-z0-9]+(?:-[a-z0-9]+)*\.[jt]sx$/;
+const sourcePattern = /^src\/velora\/scenes\/([a-z0-9]+(?:-[a-z0-9]+)*)\.scene\.json$/;
+const bindingPattern = /^src\/velora\/scenes\/[a-z0-9]+(?:-[a-z0-9]+)*\.[jt]sx$/;
 const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 
 export function loadSceneRecipes(input: unknown): SceneCatalog {

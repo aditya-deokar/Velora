@@ -80,7 +80,7 @@ describe("usage errors", () => {
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain("Unknown command: wat");
-    expect(result.stderr).toContain("flute --version");
+    expect(result.stderr).toContain("velora --version");
     expect(() => JSON.parse(result.stderr)).toThrow();
   });
 });
@@ -91,7 +91,7 @@ describe("discoverability", () => {
     const execute = vi.fn();
     const result = await runCli([command, "--help"], context, execute);
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain(command === "guide" ? "flute guide" : `flute ${command}`);
+    expect(result.stdout).toContain(command === "guide" ? "velora guide" : `velora ${command}`);
     expect(result.stdout).toContain("--json");
     expect(execute).not.toHaveBeenCalled();
   });
@@ -109,7 +109,7 @@ describe("discoverability", () => {
   });
   it("advertises doctor and non-interactive guarantees in top-level help", async () => {
     const help = (await runCli(["--help"], context, vi.fn())).stdout;
-    for (const text of ["flute doctor", "flute help", "never", "prompt", "Exit 0"])
+    for (const text of ["velora doctor", "velora help", "never", "prompt", "Exit 0"])
       expect(help).toContain(text);
   });
 });

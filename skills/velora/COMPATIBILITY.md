@@ -48,5 +48,5 @@ transcription, no universal quality or performance promises (evidence is
 device- and scene-specific), and no artistic scoring (`velora check` is
 technical; handoff always records `requiresVisualReview: true`). Ewmotion
 integration is deferred until a real source exists. The dual command name
-`flute`/`velora` runs the same CLI; recipes stay at version 1 with focus
+`velora` CLI; recipes stay at version 1 with focus
 version 3, and older wrappers upgrade via `velora init`.

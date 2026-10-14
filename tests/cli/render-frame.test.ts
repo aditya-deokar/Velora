@@ -73,10 +73,10 @@ describe("render command", () => {
     const viaHelp = await runCli(["help", "render"], context, vi.fn());
     expect(viaHelp.stdout).toBe(help.stdout);
     const top = await runCli(["--help"], context, vi.fn());
-    expect(top.stdout).toContain("flute render");
+    expect(top.stdout).toContain("velora render");
   });
   it("fails closed on missing compositions without a browser", async () => {
-    const empty = await mkdtemp(path.join(tmpdir(), "flute-render-empty-"));
+    const empty = await mkdtemp(path.join(tmpdir(), "velora-render-empty-"));
     try {
       const result = await runCli(["render", "--composition", "nope.composition.json", "--frame", "0", "--out", "f.png", "--json"], { root: empty });
       expect(result.code).toBe(1);

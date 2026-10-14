@@ -1,7 +1,7 @@
 # Velora — AI-Agent-Native CLI-First Remotion Alternative: Implementation Plan
 
 Source brief: `prompt.md` (4107 chars, single vision statement).
-Repo audited: `2026-10-13`. Current version: `velora@0.1.2` (`flute` alias).
+Repo audited: `2026-10-13`. Current version: `velora@0.1.2` (`velora` alias).
 
 ## 1. Vision (from prompt.md)
 
@@ -26,8 +26,8 @@ Everything built must serve that loop with **real, verified functionality — no
 | Rendering engine | Live-DOM cinematic renderer: black void, camera (xyz + rotate + perspective), thin-lens focus v3 (`distance/fStop/focalLength/maxBlur`), `Surface` leaves + `preserve-3d` groups, native CSS filter approximation | `src/core/scene.ts`, `spatial.ts`, `motion.ts`, `choreography.ts`, `src/react/index.tsx`, `registry.ts`, `FocusFilter.tsx`, `capture.ts` |
 | Preview / studio | Shared `ScenePreview` + `usePreviewSession` (single elapsed cursor, pause-on-edit, seek/replay/capture), `SceneLibrary` credits-scroll list, aspect-cover framing, snapshot tiles | `src/preview/*`, `src/core/preview.ts`, `app/main.tsx` |
 | Authoring contract | `SceneSchema` / `MotionSchema` / `PreviewDefinitionSchema` / `SceneRecipeSchema` v1 + `getAuthoringGuide()` v2 + `reviewAuthoring()` advisory check | `src/core/authoring.ts`, `recipes.ts` |
-| CLI (dual name `velora`/`flute`) | `guide, init, open, sync, scenes, load, validate, snapshot, export`, `--json`, exit codes 0/1/2, TTY/No-color handling, `--version/--help` | `src/cli/index.ts`, `main.ts`, `terminal.ts`, `vite.cli.config.ts`, `scripts/finalize-cli.mjs` |
-| Project layer | `executeProjectCommand` (`init-project, open-preview, sync-project, load/validate-project`), portable Next/Vite/Electron adapters, `FLUTE.md`/`VELORA.md` handoff, `discovery.ts`, scoped services | `src/project/*`, `src/core/project.ts`, `resources.ts` |
+| CLI (dual name `velora`/`velora`) | `guide, init, open, sync, scenes, load, validate, snapshot, export`, `--json`, exit codes 0/1/2, TTY/No-color handling, `--version/--help` | `src/cli/index.ts`, `main.ts`, `terminal.ts`, `vite.cli.config.ts`, `scripts/finalize-cli.mjs` |
+| Project layer | `executeProjectCommand` (`init-project, open-preview, sync-project, load/validate-project`), portable Next/Vite/Electron adapters, `VELORA.md`/`VELORA.md` handoff, `discovery.ts`, scoped services | `src/project/*`, `src/core/project.ts`, `resources.ts` |
 | Export | `executeVideoExport` + `executeSceneSnapshot` via Playwright Chromium + FFmpeg, `CaptureManifestSchema`, FPS 30/60/120 | `src/export/commands.ts`, `services.ts`, `src/core/export.ts` |
 | Skills | 22 installed GSAP + Three.js + motion-engineer skills under `skills/` (not yet Velora-specific); no root `SKILL.md`, no installable Velora library | `skills/`, `skills-lock.json` |
 | Tests / gates | `verify:*` chains (motion → launch → iterate → reuse → agent → release), Playwright browser + performance, architecture checker, `local-project/` installed-host fixture | `tests/`, `scripts/check-*.mjs`, `verify-mvp.mjs`, `playwright*.config.ts` |
@@ -36,7 +36,7 @@ Everything built must serve that loop with **real, verified functionality — no
 ### Highest-impact gaps (prioritized)
 
 1. **CLI is human-readable first, not agent-first** — partial `--json`, no uniform envelope, no machine error codes catalog, no `inspect/describe`, no progress streaming, no non-interactive guarantee.
-2. **No Velora Skills library** — agents only have `flute guide` text; no progressive-discovery `SKILL.md` tree, no per-domain skills, no command↔skill routing table.
+2. **No Velora Skills library** — agents only have `velora guide` text; no progressive-discovery `SKILL.md` tree, no per-domain skills, no command↔skill routing table.
 3. **No first-class timeline/composition spec** — recipes are single-scene JSON+TSX; no multi-scene timeline, no reusable components catalog, no asset management, no schema-validated composition file.
 4. **Determinism + frame accuracy missing** — wall-clock preview, no seeded RNG, no frame-time manifest, no `render --frame` / `--time` extraction contract beyond snapshot.
 5. **Audio/subtitles/typography/transitions/procedural/2D-3D are concepts, not CLI capabilities** — no audio mix schema, no SRT/VTT pipeline, no kinetic-text helper, no transition library, no GSAP/Three.js bridge commands.

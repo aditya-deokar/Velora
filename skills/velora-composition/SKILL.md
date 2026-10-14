@@ -6,7 +6,7 @@ version: 0.1.2
 when-to-use: Writing a .composition.json file, inspecting project state, listing assets, or checking reusable scenes before rendering.
 prerequisites:
 - velora-init completed (velora doctor --json green)
-- Scene recipes present in src/flute/scenes
+- Scene recipes present in src/velora/scenes
 commands:
 - scenes
 - load

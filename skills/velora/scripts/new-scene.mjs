@@ -27,7 +27,7 @@ if (!id || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) {
   process.exit(2);
 }
 if (!out) {
-  process.stderr.write('Pass --out as the scenes directory (for example --out src/flute/scenes).\n');
+  process.stderr.write('Pass --out as the scenes directory (for example --out src/velora/scenes).\n');
   process.exit(2);
 }
 if (!Number.isInteger(width) || !Number.isInteger(height) || width < 64 || height < 64) {

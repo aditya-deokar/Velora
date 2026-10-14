@@ -15,7 +15,7 @@ test-results/
 .test-dist/
 
 .local-package/
-local-project/.flute/init-pending.json
+local-project/.velora/init-pending.json
 
 .release/
 .git_backup/

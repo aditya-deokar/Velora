@@ -15,22 +15,22 @@ let url: string;
 // Deterministic fixture scene: the box color flips at t=40 and slides with t.
 // Same seek time must rasterize byte-identically on every run.
 beforeAll(async () => {
-  root = await mkdtemp(path.join(tmpdir(), "flute-frame-live-"));
-  await mkdir(path.join(root, "src/flute/scenes"), { recursive: true });
-  await writeFile(path.join(root, "src/flute/scenes/demo.scene.json"),
+  root = await mkdtemp(path.join(tmpdir(), "velora-frame-live-"));
+  await mkdir(path.join(root, "src/velora/scenes"), { recursive: true });
+  await writeFile(path.join(root, "src/velora/scenes/demo.scene.json"),
     JSON.stringify({ version: 1, id: "demo", title: "Demo", definition: { width: 128, height: 96, scene: { nodes: [] } } }));
-  await writeFile(path.join(root, "src/flute/scenes/demo.tsx"), "export default function Demo() { return null; }");
+  await writeFile(path.join(root, "src/velora/scenes/demo.tsx"), "export default function Demo() { return null; }");
   await writeFile(path.join(root, "teaser.composition.json"), JSON.stringify({
     version: 1, id: "teaser", title: "Teaser", width: 128, height: 96, fps: 30, seed: 7,
     scenes: [{ id: "s1", recipe: "demo", startMs: 0, durationMs: 100 }], assets: [],
   }));
   server = createServer((req, res) => {
     res.setHeader("content-type", "text/html");
-    res.end(`<style>body{margin:0}#scene{width:127px;height:95px;background:black}#box{width:32px;height:32px;background:red}</style><div id="scene" data-flute-capture="scene"><div id="box"></div></div><script>window.__FLUTE_CAPTURE__={version:1,durationMs:100,selector:'[data-flute-capture="scene"]',seek(t){document.getElementById('box').style.background=t<40?'red':'blue';document.getElementById('box').style.transform='translateX('+t+'px)'}}</script>`);
+    res.end(`<style>body{margin:0}#scene{width:127px;height:95px;background:black}#box{width:32px;height:32px;background:red}</style><div id="scene" data-velora-capture="scene"><div id="box"></div></div><script>window.__VELORA_CAPTURE__={version:1,durationMs:100,selector:'[data-velora-capture="scene"]',seek(t){document.getElementById('box').style.background=t<40?'red':'blue';document.getElementById('box').style.transform='translateX('+t+'px)'}}</script>`);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  vi.mocked(executeRecipeCommand).mockResolvedValue({ success: true, data: { scenes: [], issues: [], selected: { id: "demo" }, url: `${url}/?flute-scene=demo` } } as never);
+  vi.mocked(executeRecipeCommand).mockResolvedValue({ success: true, data: { scenes: [], issues: [], selected: { id: "demo" }, url: `${url}/?velora-scene=demo` } } as never);
 });
 afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));

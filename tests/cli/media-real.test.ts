@@ -14,7 +14,7 @@ function envelope(text: string) {
 // against disposable directories (no dev server needed for validation).
 describe("captions validation without mocks", () => {
   it("validates a real caption file", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "flute-captions-cli-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "velora-captions-cli-"));
     try {
       await writeFile(path.join(dir, "s.srt"), "1\n00:00:01,000 --> 00:00:02,000\nHi\n");
       const result = await runCli(["captions", "validate", "--file", "s.srt", "--project", dir, "--json"], { root: dir });
@@ -25,7 +25,7 @@ describe("captions validation without mocks", () => {
     }
   });
   it("fails closed on missing caption files", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "flute-captions-cli-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "velora-captions-cli-"));
     try {
       const result = await runCli(["captions", "validate", "--file", "gone.srt", "--project", dir, "--json"], { root: dir });
       expect(result.code).toBe(1);

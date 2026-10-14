@@ -16,7 +16,7 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `inspect` | `--project`, `--scene`, `--composition`, `--json` | `velora inspect --scene demo --json` |
 | `assets` | `--as`, `--id`, `--yes`, `--project`, `--json` | `velora assets ls --json` |
 | `snapshot` | `--scene`, `--url`, `--time`, `--project`, `--json` | `velora snapshot --scene demo --url http://127.0.0.1:5173 --json` |
-| `export` | `--url`, `--output`, `--fps`, `--width`, `--height`, `--audio`, `--captions`, `--project`, `--json` | `velora export --url http://127.0.0.1:5173/?flute-preview=1 --output clip.mp4 --json` |
+| `export` | `--url`, `--output`, `--fps`, `--width`, `--height`, `--audio`, `--captions`, `--project`, `--json` | `velora export --url http://127.0.0.1:5173/?velora-preview=1 --output clip.mp4 --json` |
 | `doctor` | `--project`, `--url`, `--json` | `velora doctor --json` |
 | `render` | `--composition`, `--frame`, `--time`, `--out`, `--parallel`, `--no-cache`, `--cache-dir`, `--fps`, `--width`, `--height`, `--url`, `--project`, `--json`, `--no-stream` | `velora render --composition teaser.composition.json --out teaser.mp4 --json` |
 | `frames` | `--composition`, `--out`, `--every`, `--at`, `--no-cache`, `--cache-dir`, `--url`, `--project`, `--json` | `velora frames --composition teaser.composition.json --out stills --every 30 --json` |

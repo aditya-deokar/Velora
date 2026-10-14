@@ -12,11 +12,11 @@ describe("offline gap extraction", () => {
   let root: string;
   afterEach(async () => { await rm(root, { recursive: true, force: true }); });
   it("renders void frames with no server", async () => {
-    root = await mkdtemp(path.join(tmpdir(), "flute-offline-"));
-    await mkdir(path.join(root, "src/flute/scenes"), { recursive: true });
-    await writeFile(path.join(root, "src/flute/scenes/demo.scene.json"),
+    root = await mkdtemp(path.join(tmpdir(), "velora-offline-"));
+    await mkdir(path.join(root, "src/velora/scenes"), { recursive: true });
+    await writeFile(path.join(root, "src/velora/scenes/demo.scene.json"),
       JSON.stringify({ version: 1, id: "demo", title: "Demo", definition: { width: 64, height: 64, scene: { nodes: [] } } }));
-    await writeFile(path.join(root, "src/flute/scenes/demo.tsx"), "export default function Demo() { return null; }");
+    await writeFile(path.join(root, "src/velora/scenes/demo.tsx"), "export default function Demo() { return null; }");
     await writeFile(path.join(root, "gap.composition.json"), JSON.stringify({
       version: 1, id: "gap", title: "Gap", width: 64, height: 64, fps: 30, seed: 0,
       scenes: [

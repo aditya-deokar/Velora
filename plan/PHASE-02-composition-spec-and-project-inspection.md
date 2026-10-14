@@ -46,9 +46,9 @@ Define `CompositionSchema` v1 (Zod, strict):
 - Guards: path/symlink checks + journaled writes (same ownership model as `portable.ts` generated files); never overwrite unrelated files.
 
 ### 02.4 Reusable scene components
-- Extend recipe dir `src/flute/scenes/` (keep `SCENE_RECIPE_DIRECTORY`): allow `*.scene.json` + sibling `.{tsx,jsx}` + optional `*.thumb.png` (snapshot-owned).
+- Extend recipe dir `src/velora/scenes/` (keep `SCENE_RECIPE_DIRECTORY`): allow `*.scene.json` + sibling `.{tsx,jsx}` + optional `*.thumb.png` (snapshot-owned).
 - Add `velora scene create --id <slug> --from <template>` (templates land in Phase 08; stub with 1 minimal template now) and `velora scene ls --json` (alias of `scenes --json` with richer fields: duration, node count, snapshot freshness).
-- Shared-component convention: `src/flute/components/*` for reusable Surface wrappers; `inspect --scene` reports their binding paths. No second validator — all through `loadSceneRecipes`.
+- Shared-component convention: `src/velora/components/*` for reusable Surface wrappers; `inspect --scene` reports their binding paths. No second validator — all through `loadSceneRecipes`.
 
 ### 02.5 `validate` upgrade
 - `velora validate [--composition FILE] --json`: validates recipes + bindings + assets + composition in one pass; returns categorized `issues[]` + `advice[]` (reuse `reviewAuthoring` shape + `requiresVisualReview:true`).

@@ -22,7 +22,7 @@ async function healthyHost() {
   roots.push(root);
   await put(root, "package.json", JSON.stringify({
     name: "host", scripts: { dev: "vite" },
-    dependencies: { react: "^19.2.0", "react-dom": "^19.2.0", "@webprodigies/flute": "0.1.0" },
+    dependencies: { react: "^19.2.0", "react-dom": "^19.2.0", "@webprodigies/velora": "0.1.0" },
     devDependencies: { vite: "^7.3.6" },
   }));
   await put(root, "package-lock.json", '{"lockfileVersion":3}');
@@ -31,8 +31,8 @@ async function healthyHost() {
   await put(root, "src/main.tsx", "export {};\n");
   await put(root, "node_modules/react/package.json", '{"name":"react","version":"19.2.0"}');
   await put(root, "node_modules/react-dom/package.json", '{"name":"react-dom","version":"19.2.0"}');
-  await put(root, "node_modules/@webprodigies/flute/package.json", JSON.stringify({ name: "@webprodigies/flute", version: "0.1.0", exports: { "./preview": { import: "./preview.js" } } }));
-  await put(root, "node_modules/@webprodigies/flute/preview.js", "export const ProjectPreview = () => null;");
+  await put(root, "node_modules/@webprodigies/velora/package.json", JSON.stringify({ name: "@webprodigies/velora", version: "0.1.0", exports: { "./preview": { import: "./preview.js" } } }));
+  await put(root, "node_modules/@webprodigies/velora/preview.js", "export const ProjectPreview = () => null;");
   return root;
 }
 async function loopbackServer() {

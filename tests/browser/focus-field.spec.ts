@@ -4,7 +4,7 @@ test("camera depth creates a progressive focus transition across a tilted plane"
 }) => {
   await page.setViewportSize({ width: 800, height: 400 });
   await page.goto("/tests/fixtures/focus.html");
-  await expect(page.locator("[data-flute-content]")).toHaveCSS("filter", /url/);
+  await expect(page.locator("[data-velora-content]")).toHaveCSS("filter", /url/);
   // Sample rendered pixels, not the same blur math or a DOM style assertion.
   const shot = await page.screenshot();
   const contrasts = await page.evaluate(
@@ -61,7 +61,7 @@ test("camera travel carries the focal plane and focus distance can rack independ
       { data: "data:image/png;base64," + shot.toString("base64"), x },
     );
   };
-  await expect(page.locator("[data-flute-content]")).toHaveCSS("filter", /url/);
+  await expect(page.locator("[data-velora-content]")).toHaveCSS("filter", /url/);
   await page.getByRole("button", { name: "Move surface" }).click();
   expect(await contrast(496)).toBeGreaterThan(220);
   expect(await contrast(400)).toBeLessThan(180);
@@ -87,5 +87,5 @@ test("equal-depth screen-separated leaves are sharp while a registered backgroun
   },{data:'data:image/png;base64,'+shot.toString('base64'),x:Math.round(box!.x+box!.width/2),y:Math.round(box!.y+box!.height/2)}));
  }
  expect(values[0]).toBeGreaterThan(220);expect(values[1]).toBeGreaterThan(220);expect(values[2]).toBeLessThan(25);
- await expect(page.locator('[data-flute-diagnostics]')).toHaveCount(0);
+ await expect(page.locator('[data-velora-diagnostics]')).toHaveCount(0);
 });

@@ -13,7 +13,7 @@ const definition: PreviewDefinitionInput = {
     {target: {kind: "camera"}, property: "x", keyframes: [{timeMs: 0, value: 0}, {timeMs: 4000, value: 100}]},
   ]},
 };
-const bridge = () => (window as typeof window & {__FLUTE_CAPTURE__: CaptureBridge}).__FLUTE_CAPTURE__;
+const bridge = () => (window as typeof window & {__VELORA_CAPTURE__: CaptureBridge}).__VELORA_CAPTURE__;
 const controls = () => screen.getByRole("contentinfo", {name: "Scene controls"});
 beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1000);
@@ -21,7 +21,7 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
   vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(500);
   vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockImplementation(function(this: HTMLElement) {
-    return this.parentElement?.closest("[data-flute-stage]") ?? null;
+    return this.parentElement?.closest("[data-velora-stage]") ?? null;
   });
 });
 afterEach(() => {cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals();});
@@ -49,14 +49,14 @@ it("keeps every preview action in the bottom region and preserves host context, 
   const capture = document.querySelector(bridge().selector)!;
   expect(capture.contains(host)).toBe(true);
   expect(capture.contains(region)).toBe(false);
-  const chrome = document.querySelectorAll("[data-flute-preview-chrome]");
+  const chrome = document.querySelectorAll("[data-velora-preview-chrome]");
   expect(chrome).toHaveLength(2);
   expect(Array.from(chrome).some(element => element === region)).toBe(true);
   expect(Array.from(chrome).every(element => !capture.contains(element))).toBe(true);
   const slider = within(region).getByRole("slider", {name: "Scene time"});
   fireEvent.change(slider, {target: {value: "2000"}});
   expect(within(region).getByTestId("scene-time").textContent).toBe("0:02 / 0:08");
-  const stage = document.querySelector<HTMLElement>("[data-flute-stage]")!;
+  const stage = document.querySelector<HTMLElement>("[data-velora-stage]")!;
   const transform = stage.style.transform;
   view.rerender(app({...definition, width: -1}));
   expect(within(region).getByRole("alert").textContent).toContain("last valid");
@@ -67,7 +67,7 @@ it("keeps every preview action in the bottom region and preserves host context, 
   expect(within(region).queryByRole("alert")).toBeNull();
   expect(screen.getByRole("button", {name: "Host data: 1"})).toBe(host);
   expect(document.querySelector(bridge().selector)).toBe(capture);
-  expect(document.querySelectorAll("[data-flute-id]")).toHaveLength(1);
+  expect(document.querySelectorAll("[data-velora-id]")).toHaveLength(1);
   expect(mounted).toHaveBeenCalledTimes(1);
   fireEvent.click(within(region).getByRole("button", {name: "Restart"}));
   expect((slider as HTMLInputElement).value).toBe("0");
@@ -83,7 +83,7 @@ it("renders the canonical error and retry outside capture in the controls region
   render(<ScenePreview definition={definition} backHref="/app"><Host/></ScenePreview>);
   const alert = within(controls()).getByRole("alert");
   expect(alert.textContent).toContain("Host unavailable");
-  expect(document.querySelector(".flute-viewport")!.contains(alert)).toBe(false);
+  expect(document.querySelector(".velora-viewport")!.contains(alert)).toBe(false);
   expect(within(controls()).getByRole("link", {name: "Back to app"})).toBeTruthy();
   broken = false;
   fireEvent.click(within(alert).getByRole("button", {name: "Retry scene"}));

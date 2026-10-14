@@ -56,9 +56,9 @@ export async function openCapture(input: Pick<ExportVideo,"url"|"width"|"height"
     await page.goto(input.url, { waitUntil: "load", timeout: 30_000 });
     // Product chrome can visually overlap the capture rectangle. Hide its semantic
     // marker and host development-tools portal only in this private export page; the user's preview stays untouched.
-    await page.addStyleTag({content:'[data-flute-preview-chrome],nextjs-portal{visibility:hidden!important}'});
-    try { await page.waitForFunction(() => typeof (window as unknown as { __FLUTE_CAPTURE__?: CaptureBridge }).__FLUTE_CAPTURE__?.seek === "function", undefined, { timeout: 5000 }); }
-    catch { throw fault("missing-capture", "This page has no ready Flute capture bridge. Open a scene with capture enabled and retry."); }
+    await page.addStyleTag({content:'[data-velora-preview-chrome],nextjs-portal{visibility:hidden!important}'});
+    try { await page.waitForFunction(() => typeof (window as unknown as { __VELORA_CAPTURE__?: CaptureBridge }).__VELORA_CAPTURE__?.seek === "function", undefined, { timeout: 5000 }); }
+    catch { throw fault("missing-capture", "This page has no ready Velora capture bridge. Open a scene with capture enabled and retry."); }
     await page.evaluate(async () => {
       await Promise.race([
         Promise.all([document.fonts.ready, ...Array.from(document.images).map(image => image.decode().catch(() => {}))]),
@@ -68,7 +68,7 @@ export async function openCapture(input: Pick<ExportVideo,"url"|"width"|"height"
     return {
       close,
       manifest: () => page.evaluate(() => {
-        const bridge = (window as unknown as { __FLUTE_CAPTURE__: CaptureBridge }).__FLUTE_CAPTURE__;
+        const bridge = (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__;
         return { version: bridge.version, durationMs: bridge.durationMs, selector: bridge.selector };
       }),
       async snapshot(timeMs:number, manifest:CaptureManifest){
@@ -77,7 +77,7 @@ export async function openCapture(input: Pick<ExportVideo,"url"|"width"|"height"
         await page.evaluate(()=>document.fonts.ready.then(()=>{}));
         const locator=page.locator(manifest.selector);
         if(await locator.count()!==1)throw fault("invalid-capture","Capture must identify exactly one scene viewport.");
-        await page.evaluate(elapsed=>(window as unknown as {__FLUTE_CAPTURE__:CaptureBridge}).__FLUTE_CAPTURE__.seek(elapsed),timeMs);
+        await page.evaluate(elapsed=>(window as unknown as {__VELORA_CAPTURE__:CaptureBridge}).__VELORA_CAPTURE__.seek(elapsed),timeMs);
         const rect=await locator.boundingBox();
         if(!rect||rect.width<1||rect.height<1||rect.width>3840||rect.height>3840)throw fault("invalid-capture","Scene viewport must be visible and bounded.");
         const png=await page.screenshot({clip:rect,type:"png",animations:"disabled",timeout:10_000});check();
@@ -95,7 +95,7 @@ export async function openCapture(input: Pick<ExportVideo,"url"|"width"|"height"
           const target = await scopedPath(scope.root, scope.output);
           await mkdir(path.dirname(target), { recursive: true });
           await scopedPath(scope.root, scope.output);
-          temporary = await mkdtemp(path.join(path.dirname(target), ".flute-export-"));
+          temporary = await mkdtemp(path.join(path.dirname(target), ".velora-export-"));
           const video = path.join(temporary, "video.mp4");
           encoder = spawn("ffmpeg", videoEncodeArgs({ fps: options.fps, width: options.width, height: options.height, frames }, video), { cwd: scope.root, shell: false, stdio: ["pipe", "ignore", "pipe"] });
           const timeout = setTimeout(() => encoder?.kill("SIGKILL"), 15 * 60_000);
@@ -109,7 +109,7 @@ export async function openCapture(input: Pick<ExportVideo,"url"|"width"|"height"
           encoder.stdin!.on("error", () => {});
           for (let i = 0; i < frames; i++) {
             check();
-            await page.evaluate(elapsed => (window as unknown as { __FLUTE_CAPTURE__: CaptureBridge }).__FLUTE_CAPTURE__.seek(elapsed), i * 1000 / options.fps);
+            await page.evaluate(elapsed => (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__.seek(elapsed), i * 1000 / options.fps);
             const png = await page.screenshot({clip:rect, type: "png", animations: "disabled", timeout: 10_000 });
             if(i>0 && i % (options.fps*2)===0) process.stderr.write(`Captured ${i}/${frames} frames\n`);
             await Promise.race([new Promise<void>((resolve, reject) => encoder!.stdin!.write(png, error => error ? reject(error) : resolve())), finished.then(() => { throw fault("encoding-failed", "Encoder stopped before all scene frames were written."); })]);
@@ -596,7 +596,7 @@ export async function resolveMediaFile(root: string, target: string): Promise<st
 // Stage a temp output for the silent master when a post-pass follows. The
 // caller encodes into scope and always runs cleanup, like encode temporaries.
 export async function stageTempVideo(scope: { root: string; output: string }): Promise<{ scope: { root: string; output: string }; cleanup: () => Promise<void> }> {
-  const temporary = await mkdtemp(path.join(scope.root, ".flute-mux-"));
+  const temporary = await mkdtemp(path.join(scope.root, ".velora-mux-"));
   return {
     scope: { root: scope.root, output: path.relative(scope.root, path.join(temporary, "silent.mp4")) },
     cleanup: async () => { await rm(temporary, { recursive: true, force: true }); },
@@ -610,7 +610,7 @@ export async function mixPostAudioCaptions(
   silentOutput: string,
   input: { audio?: string; captions?: string },
 ): Promise<{ audio?: { file: string; codec: string; driftMs: number; peakDb: number | null }; captions?: { file: string; cues: number; burnIn: boolean } }> {
-  const temporary = await mkdtemp(path.join(scope.root, ".flute-captions-"));
+  const temporary = await mkdtemp(path.join(scope.root, ".velora-captions-"));
   try {
     const silentAbs = await scopedPath(scope.root, silentOutput);
     let captionsFile: string | undefined;

@@ -2,21 +2,21 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {validateRelease, publicationStatus} from '../scripts/release.mjs';
 const manifest = {name:'@owner/scene',version:'1.2.3',license:'MIT',publishConfig:{access:'public',registry:'https://registry.npmjs.org/'},
- repository:{type:'git',url:'git+https://github.com/owner/flute.git'},bin:{flute:'./dist/cli/flute.js'},
+ repository:{type:'git',url:'git+https://github.com/aditya-deokar/velora.git'},bin:{velora:'./dist/cli/velora.js'},
  exports:{'.':{types:'./dist/library/types/index.d.ts',import:'./dist/library/index.js'}}};
-const files = ['package.json','README.md','LICENSE','dist/cli/flute.js','dist/library/index.js','dist/library/types/index.d.ts','dist/library/chunk.js'].map(path=>({path}));
-test('accepts a public tagged artifact for its repository',()=>validateRelease(manifest,files,{publishing:true,repository:'owner/flute',tag:'v1.2.3'}));
+const files = ['package.json','README.md','LICENSE','dist/cli/velora.js','dist/library/index.js','dist/library/types/index.d.ts','dist/library/chunk.js'].map(path=>({path}));
+test('accepts a public tagged artifact for its repository',()=>validateRelease(manifest,files,{publishing:true,repository:'aditya-deokar/velora',tag:'v1.2.3'}));
 const skillsFiles = ['skills/velora/SKILL.md','skills/velora/REFERENCE.md','skills/velora/COMPATIBILITY.md','skills/velora/templates/scene-minimal/minimal.scene.json','skills/velora/templates/scene-minimal/minimal.tsx','skills/velora/templates/scene-minimal/README.md','skills/velora/scripts/new-scene.mjs','skills/velora-init/SKILL.md','skills/velora-verify/SKILL.md'].map(path=>({path}));
-test('accepts the skills library, templates and scripts',()=>validateRelease(manifest,[...files,...skillsFiles],{publishing:true,repository:'owner/flute',tag:'v1.2.3'}));
+test('accepts the skills library, templates and scripts',()=>validateRelease(manifest,[...files,...skillsFiles],{publishing:true,repository:'aditya-deokar/velora',tag:'v1.2.3'}));
 test('accepts the unscoped public package name',()=>validateRelease({...manifest,name:'velora',repository:{type:'git',url:'git+https://github.com/aditya-deokar/velora.git'}},files,{publishing:true,repository:'aditya-deokar/velora',tag:'v1.2.3'}));
 for (const name of ['.env','dist/library/.env','local-project/index.html','tests/fixture.ts','dist/library/../../secret.js','dist/cli/token.json','tests/agent/demo-a/host/package.json','tests/examples/saas-tour/tour.composition.json','skills/velora/templates/scene-minimal/evil.js','skills/other/SKILL.md','skills/velora/SKILL.md.bak'])
   test('rejects unintended packed file '+name,()=>assert.throws(()=>validateRelease(manifest,[...files,{path:name}])));
 for (const [name,change] of [
  ['private',{private:true}],['restricted',{publishConfig:{access:'restricted'}}],['lifecycle',{scripts:{postinstall:'run-me'}}],
- ['missing repository',{repository:undefined}],['wrong CLI',{bin:{flute:'wrong.js'}}],['prerelease',{version:'1.2.3-beta.1'}]
+ ['missing repository',{repository:undefined}],['wrong CLI',{bin:{velora:'wrong.js'}}],['prerelease',{version:'1.2.3-beta.1'}]
 ]) test('rejects '+name,()=>assert.throws(()=>validateRelease({...manifest,...change},files,{publishing:true})));
 test('rejects wrong tag',()=>assert.throws(()=>validateRelease(manifest,files,{tag:'v1.2.4'})));
-test('rejects wrong repository',()=>assert.throws(()=>validateRelease(manifest,files,{repository:'other/flute'})));
+test('rejects wrong repository',()=>assert.throws(()=>validateRelease(manifest,files,{repository:'other/velora'})));
 test('rejects incomplete artifact',()=>assert.throws(()=>validateRelease(manifest,files.filter(f=>!f.path.endsWith('index.d.ts')))));
 test('rejects duplicate packed paths',()=>assert.throws(()=>validateRelease(manifest,[...files,files[0]])));
 
@@ -26,7 +26,7 @@ const published = (version='1.2.2') => ({
 const registry = data => async () => Response.json(data);
 test('new version is publishable after checking registry identity',async()=>{
  let requested;
- const result=await publicationStatus(manifest,{repository:'owner/flute',fetchRegistry:async(url,options)=>{
+ const result=await publicationStatus(manifest,{repository:'aditya-deokar/velora',fetchRegistry:async(url,options)=>{
   requested=url;assert.ok(options.signal instanceof AbortSignal);return Response.json(published());
  }});
  assert.equal(requested,'https://registry.npmjs.org/@owner%2fscene');
@@ -58,7 +58,7 @@ for(const data of [
 });
 test('wrong repository is rejected before any registry request',async()=>{
  let requests=0;
- await assert.rejects(publicationStatus(manifest,{repository:'other/flute',fetchRegistry:async()=>{requests++;return Response.json(published())}}));
+ await assert.rejects(publicationStatus(manifest,{repository:'other/velora',fetchRegistry:async()=>{requests++;return Response.json(published())}}));
  assert.equal(requests,0);
 });
 test('new release cannot move latest backwards',async()=>{
