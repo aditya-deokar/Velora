@@ -12,7 +12,7 @@ From your existing app's directory, **create a separate Git branch before instal
 
 ```sh
 git switch -c velora-scenes
-npm install velora
+npm install @adityadeokar/velora
 npx velora init
 npm run dev
 ```
@@ -56,7 +56,7 @@ The guide explains concepts, tradeoffs, exact APIs and a tested file-pair exampl
 ## Five-minute path (CLI + skills, `--json`-first)
 
 ```sh
-npm install velora
+npm install @adityadeokar/velora
 npx velora init
 npx velora guide --json
 npx velora skills install --dir .skills --json
