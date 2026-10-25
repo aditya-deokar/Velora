@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../node_modules/@adityadeokar/velora/schemas/scene-recipe.schema.json",
   "version": 1,
   "id": "stage",
   "title": "WebGL stage",
@@ -6,10 +7,24 @@
     "width": 1280,
     "height": 720,
     "scene": {
-      "camera": { "perspective": 1400 },
-      "focus": { "distance": 1400, "fStop": 8, "focalLength": 50, "maxBlur": 6 },
-      "nodes": [{ "id": "gl" }]
+      "camera": {
+        "perspective": 1400
+      },
+      "focus": {
+        "distance": 1400,
+        "fStop": 8,
+        "focalLength": 50,
+        "maxBlur": 6
+      },
+      "nodes": [
+        {
+          "id": "gl"
+        }
+      ]
     },
-    "motion": { "durationMs": 2000, "tracks": [] }
+    "motion": {
+      "durationMs": 2000,
+      "tracks": []
+    }
   }
 }

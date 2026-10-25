@@ -1,16 +1,18 @@
 import type { ProjectState } from "../core/project";
+import { VELORA_PACKAGE } from "../core/branding";
 
 /** SOURCE OF TRUTH: portableIntegration, portableCatalog, framework connection source.
  * WHAT: generate additive host files around the same public ProjectPreview contract.
  * WHY: rendering/catalog policy belongs to React/core; build tools only connect imports and routes.
  * WHERE: project commands validate and write these files; arbitrary React hosts supply their own dev flag.
  */
-export function portableIntegration(project: ProjectState, catalog: string): Record<string,string> {
+// preview defaults to the published identity; commands pass a legacy specifier only to recognize earlier bytes.
+export function portableIntegration(project: ProjectState, catalog: string, preview: string = VELORA_PACKAGE.preview): Record<string,string> {
   const files: Record<string,string> = {
     "src/velora/catalog.js": catalog,
     "src/velora/ProjectPreview.jsx": `"use client";
 import React from "react";
-import { ProjectPreview } from "velora/preview";
+import { ProjectPreview } from "${preview}";
 import { sceneModules } from "./catalog";
 // Host-owned development flag: no process, Vite or Electron globals in this adapter.
 export function VeloraProjectPreview({ children, enabled, active, ...props }) {

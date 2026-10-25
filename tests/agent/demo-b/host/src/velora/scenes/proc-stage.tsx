@@ -1,4 +1,4 @@
-import { Surface } from 'velora';
+import { Surface } from '@adityadeokar/velora';
 
 // Time-disciplined WebGL-style leaf: a pure function of video time plus seed.
 // No requestAnimationFrame, no ticker, no wall clock.

@@ -1,4 +1,4 @@
-import { Surface } from 'velora';
+import { Surface } from '@adityadeokar/velora';
 
 // Bars rise on a fixed stagger (seed 99 recorded in story.composition.json).
 // Replace the heights with real series data; keep the stagger deterministic.

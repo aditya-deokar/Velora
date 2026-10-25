@@ -1,3 +1,3 @@
 # WebGL Stage Template
 
-Time-disciplined canvas stub driven from `timeMs` plus `seed` with no `requestAnimationFrame`. Mount inside a `Surface id="gl"` leaf, supply fallback content, then run `velora validate --json` and `velora render --composition <file> --frame 0 --out proof.png --json`.
+Time-disciplined WebGL leaf: `stage.tsx` mounts `WebGLSurface` inside `Surface id="gl"` and paints a pure function of `useSceneTime()` plus `seed`, with no `requestAnimationFrame`. Keep the fallback content for devices without WebGL, then run `velora validate --json` and `velora shot --scene stage --time 1000 --out proof.png --json`.

@@ -1,27 +1,41 @@
 import { z } from "zod";
 import { MotionTrackSchema, type MotionTrack } from "./motion";
+import type { Easing } from "./easing";
 
 /** SOURCE OF TRUTH: GSAP easing map, timeline converter, clock detection.
- * WHAT: lossy-but-explicit GSAP→Velora mappings plus forbidden-clock detection.
+ * WHAT: GSAP ease names mapped onto Velora easings, a tween converter and forbidden-clock detection.
  * WHY: agents reuse GSAP knowledge without smuggling page-scroll clocks into renders.
  * WHERE: validate rejects forbidden clocks; authors paste converter output into recipes.
- * Reference, don't reimplement: deep GSAP API lives in the installed gsap-*
- * skills. Only three easings exist here (linear, easeInOut, cinematic); GSAP
- * easings without an equivalent are rejected, never silently remapped.
+ * Reference, don't reimplement: deep GSAP API lives in the installed gsap-* skills. Every
+ * easing is a pure function of progress, so back, elastic, bounce and steps replay exactly on
+ * the frame clock. Only parameterized configs and GSAP plugin eases (rough, slow, expoScale,
+ * CustomEase) have no equivalent and are rejected, never silently remapped.
  * ScrollTrigger, ticker clocks and rAF loops are forbidden in render paths:
  * video time comes only from the canonical frame clock.
  */
-export const GSAP_EASING_MAP: Record<string, "linear" | "easeInOut" | "cinematic"> = {
-  "linear": "linear", "none": "linear", "power0.out": "linear",
-  "power1.inOut": "easeInOut", "power1.in": "easeInOut", "power2.in": "easeInOut", "power2.inOut": "easeInOut",
-  "sine.in": "easeInOut", "sine.inOut": "easeInOut", "quad.inOut": "easeInOut", "cubic.inOut": "easeInOut",
-  "power1.out": "cinematic", "power2.out": "cinematic", "power3.out": "cinematic", "power4.out": "cinematic",
-  "expo.out": "cinematic", "sine.out": "cinematic", "circ.out": "cinematic",
+const powers: Record<string, string> = { power1: "quad", power2: "cubic", power3: "quart", power4: "quint", quad: "quad", cubic: "cubic", quart: "quart", quint: "quint", strong: "quint" };
+const families = new Set(["sine", "expo", "circ", "back", "elastic", "bounce"]);
+// Common literal names, kept for agents and skills that look up a fixed table.
+export const GSAP_EASING_MAP: Record<string, Easing> = {
+  linear: "linear", none: "linear", "power0.in": "linear", "power0.out": "linear", "power0.inOut": "linear",
+  "power1.out": "quad.out", "power2.out": "cubic.out", "power3.out": "quart.out", "power4.out": "quint.out",
+  "power1.inOut": "quad.inOut", "power2.inOut": "cubic.inOut", "power3.inOut": "quart.inOut", "power4.inOut": "quint.inOut",
+  "expo.out": "expo.out", "sine.inOut": "sine.inOut", "back.out": "back.out", "elastic.out": "elastic.out", "bounce.out": "bounce.out",
 };
-export function mapGsapEasing(ease: string): { easing: "linear" | "easeInOut" | "cinematic" } | { issue: string } {
-  const mapped = GSAP_EASING_MAP[ease.trim()];
-  if (!mapped) return { issue: `GSAP easing "${ease}" has no Velora equivalent (elastic, bounce, back, rough and stepped easings cannot replay on the frame clock). Pick linear, easeInOut or cinematic.` };
-  return { easing: mapped };
+export function mapGsapEasing(ease: string): { easing: Easing } | { issue: string } {
+  const name = ease.trim();
+  if (GSAP_EASING_MAP[name]) return { easing: GSAP_EASING_MAP[name] };
+  const steps = /^steps\((\d+)\)$/.exec(name);
+  if (steps && Number(steps[1]) >= 1 && Number(steps[1]) <= 240) return { easing: { steps: Number(steps[1]), jump: "end" } };
+  const match = /^([a-z0-9]+)(?:\.(in|out|inOut))?$/.exec(name);
+  if (match) {
+    const direction = match[2] ?? "out";
+    if (match[1] === "power0") return { easing: "linear" };
+    const family = powers[match[1]] ?? (families.has(match[1]) ? match[1] : undefined);
+    if (family) return { easing: `${family}.${direction}` as Easing };
+  }
+  if (/\(/.test(name)) return { issue: `GSAP easing "${ease}" uses a parameterized config Velora does not replay. Use the default ${name.split("(")[0]}, a {cubicBezier:[x1,y1,x2,y2]} or a {spring:{stiffness,damping,mass}} easing.` };
+  return { issue: `GSAP easing "${ease}" has no Velora equivalent (rough, slow, expoScale and CustomEase are plugin eases). Use a named family, cubicBezier or spring easing.` };
 }
 export const GsapTweenSchema = z.strictObject({
   target: z.string().min(1),

@@ -23,7 +23,8 @@ describe("captions validation without mocks", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+    // The first real CLI call in a run pays the cold module-graph import.
+  }, 30_000);
   it("fails closed on missing caption files", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "velora-captions-cli-"));
     try {

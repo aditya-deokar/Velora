@@ -35,6 +35,8 @@ export const CompositionCaptionsSchema = z.strictObject({
 });
 export type CompositionCaptions = z.output<typeof CompositionCaptionsSchema>;
 export const CompositionSchema = z.strictObject({
+  // Editor autocomplete: points at the JSON Schema shipped in the package's schemas/ directory.
+  $schema: z.string().max(512).optional(),
   version: z.literal(1),
   id: CompositionSlugSchema,
   title: z.string().trim().min(1).max(200),

@@ -32,9 +32,10 @@ describe("kinetic presets", () => {
     expect(() => buildKineticTracks("fade-slide", { surfaceIds: ["a", "a"], durationMs })).toThrow();
     expect(() => buildKineticTracks("fade-slide", { surfaceIds: ["a"], durationMs: -5 })).toThrow();
   });
-  it("wipes along x while fades rise along y", () => {
+  it("reveals through a true mask while fades rise along y", () => {
     const wipe = valid("mask-reveal", ["m"], { distance: 300 });
-    expect(wipe.tracks.find((t) => t.property === "x")?.keyframes[0].value).toBe(300);
+    expect(wipe.tracks).toMatchObject([{ target: { kind: "surface", id: "m" }, property: "clipRight" }]);
+    expect(wipe.tracks[0].keyframes.map((k) => k.value)).toEqual([100, 0]);
     const fade = valid("fade-slide", ["f"], { distance: 50 });
     expect(fade.tracks.find((t) => t.property === "y")?.keyframes[0].value).toBe(50);
   });

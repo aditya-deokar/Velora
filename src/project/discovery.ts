@@ -1,3 +1,4 @@
+import { parseJsonDocument } from "../core/json";
 import {RESOURCES} from "../core/resources";
 import { SCENE_RECIPE_DIRECTORY, type SceneCatalog } from "../core/recipes";
 import {
@@ -37,7 +38,7 @@ export async function discoverRecipes(root: string, sceneId?: string): Promise<S
           continue;
         }
         let document: unknown;
-        try { document = JSON.parse(text); }
+        try { document = parseJsonDocument(text); }
         catch {
           issues.push({ path, message: "Invalid recipe JSON. Correct its syntax and reload the scene list." });
           continue;
@@ -92,7 +93,7 @@ export async function discoverAssets(root: string): Promise<AssetDiscovery> {
     if (text !== undefined) {
       manifest = { present: true, aliases: {} };
       let document: unknown;
-      try { document = JSON.parse(text); }
+      try { document = parseJsonDocument(text); }
       catch { issues.push({ code: "invalid-file", path: ASSET_MANIFEST, message: "Invalid manifest JSON. Correct its syntax." }); }
       if (document !== undefined) {
         const validated = validateAssetManifest(document);
@@ -135,7 +136,7 @@ export async function loadComposition(root: string, file: string): Promise<{ com
   if (text === undefined)
     return { issues: [{ code: "ERR_COMPOSITION_INVALID", path: file, message: `Composition file ${file} was not found.` }] };
   let document: unknown;
-  try { document = JSON.parse(text); }
+  try { document = parseJsonDocument(text); }
   catch {
     return { issues: [{ code: "ERR_COMPOSITION_INVALID", path: file, message: `Invalid composition JSON in ${file}. Correct its syntax.` }] };
   }

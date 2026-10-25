@@ -26,7 +26,7 @@ import {
   type SceneIssue,
   type TransformInput,
 } from "../core";
-import { type MotionInput } from "../core/motion";
+import { SURFACE_VISUAL_PROPERTIES, type MotionInput, type MotionState, type SurfaceVisualProperty } from "../core/motion";
 import { FocusFilter } from "./FocusFilter";
 import { createRegistry, type Registry } from "./registry";
 
@@ -44,13 +44,17 @@ import { createRegistry, type Registry } from "./registry";
  * and put clipping, opacity and decoration on content leaves. Layout styles belong
  * on wrappers. Arbitrary host layout shifts require resize or a React commit.
  */
+type SurfaceVisuals = Partial<Record<SurfaceVisualProperty, number>>;
 type SceneContextValue = {
   registry: Registry;
   nodes: Map<string, EvaluatedNode>;
   transforms: Map<string, TransformInput>;
-  opacities: Map<string, number>;
+  visuals: Map<string, SurfaceVisuals>;
+  channels: Readonly<Record<string, number>>;
   timeMs: number;
 };
+const visualKeys: ReadonlySet<string> = new Set(SURFACE_VISUAL_PROPERTIES);
+const emptyMotion: MotionState = { surfaces: {}, camera: {}, focus: {}, channels: {}, issues: [] };
 const SceneContext = createContext<SceneContextValue | null>(null);
 const ParentContext = createContext<symbol | undefined>(undefined);
 const useLayout = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -96,9 +100,7 @@ export function Scene({
   });
   const result = useMemo(() => {
     const bindings = Array.from(registry.entries.values());
-    const state = motion
-      ? RESOURCES["evaluate-motion"](motion, timeMs)
-      : { surfaces: {}, camera: {}, focus: {}, issues: [] };
+    const state = motion ? RESOURCES["evaluate-motion"](motion, timeMs) : emptyMotion;
     const input = {
       camera: { ...camera, ...state.camera },
       focus: { ...focus, ...state.focus },
@@ -109,9 +111,10 @@ export function Scene({
           : undefined,
         transform: {
           ...binding.transform,
+          // Visual properties style the content leaf; only transform keys reach the spatial node.
           ...Object.fromEntries(
             Object.entries(state.surfaces[binding.id] ?? {}).filter(
-              ([key]) => key !== "opacity",
+              ([key]) => !visualKeys.has(key),
             ),
           ),
         },
@@ -147,12 +150,13 @@ export function Scene({
     () => ({
       registry,
       timeMs: motion ? motionTime(motion, timeMs) : Number.isFinite(timeMs) ? timeMs : 0,
-      opacities: new Map(
+      visuals: new Map(
         Object.entries(result.state.surfaces).map(([id, s]) => [
           id,
-          s.opacity ?? 1,
+          Object.fromEntries(Object.entries(s).filter(([key]) => visualKeys.has(key))) as SurfaceVisuals,
         ]),
       ),
+      channels: result.state.channels,
       nodes: new Map(result.evaluation.nodes.map((node) => [node.id, node])),
       transforms: new Map(
         result.validated.success
@@ -275,11 +279,12 @@ export function Surface({
     node.focus.maxBlur > 0 &&
     (content !== undefined || !grouped);
   const uniformBlur = filtering ? uniformFocusBlur(node.focus, node.width, node.height) : 0;
+  const visual = context.visuals.get(id) ?? {};
   const leafStyle: CSSProperties = {
     pointerEvents: style?.pointerEvents ?? "auto",
-    opacity: context.opacities.get(id) ?? 1,
-    filter: !filtering || uniformBlur === 0 ? "none"
-      : uniformBlur !== undefined ? `blur(${uniformBlur}px)` : `url(#${filterId})`,
+    opacity: visual.opacity ?? 1,
+    filter: leafFilter(!filtering || uniformBlur === 0 ? "none" : uniformBlur !== undefined ? uniformBlur : `url(#${filterId})`, visual.blur ?? 0),
+    ...(leafClip(visual) ? { clipPath: leafClip(visual) } : {}),
   };
   return (
     <ParentContext.Provider value={token}>
@@ -325,11 +330,33 @@ export function Surface({
   );
 }
 
+// Depth-of-field and artistic blur compose: two Gaussians combine in quadrature, and a
+// depth kernel filter chains the artistic blur after it.
+function leafFilter(focus: "none" | number | string, artistic: number): string {
+  if (artistic <= 0) return focus === "none" ? "none" : typeof focus === "number" ? `blur(${focus}px)` : focus;
+  if (focus === "none") return `blur(${artistic}px)`;
+  if (typeof focus === "number") return `blur(${Math.hypot(focus, artistic)}px)`;
+  return `${focus} blur(${artistic}px)`;
+}
+// True masks on the visual leaf: a circle (iris) takes precedence over an inset (wipe).
+function leafClip(visual: SurfaceVisuals): string | undefined {
+  if (visual.clipRadius !== undefined) return `circle(${visual.clipRadius}% at 50% 50%)`;
+  const { clipTop: top, clipRight: right, clipBottom: bottom, clipLeft: left } = visual;
+  if (top === undefined && right === undefined && bottom === undefined && left === undefined) return undefined;
+  return `inset(${top ?? 0}% ${right ?? 0}% ${bottom ?? 0}% ${left ?? 0}%)`;
+}
 /** Opt-in component adapters read the same explicit time used by spatial tracks. */
 export function useSceneTime(): number {
   const context = useContext(SceneContext);
   if (!context) throw new Error("useSceneTime requires a Velora Scene.");
   return context.timeMs;
+}
+/** A named channel's value at the current scene time (cursor paths, counters, scroll offsets).
+ * Channels come from recipe motion tracks, so components follow the one eased clock. */
+export function useChannel(id: string, fallback = 0): number {
+  const context = useContext(SceneContext);
+  if (!context) throw new Error("useChannel requires a Velora Scene.");
+  return Object.hasOwn(context.channels, id) ? context.channels[id] : fallback;
 }
 /** Motion shares Surface registration; Scene supplies canonical evaluated tracks. */
 export const Motion = Surface;

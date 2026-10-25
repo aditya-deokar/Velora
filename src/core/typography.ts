@@ -73,9 +73,16 @@ export function buildKineticTracks(
     });
     return { tracks, warnings };
   }
-  // fade-slide: gentle rise + fade. mask-reveal: horizontal wipe approximated
-  // with travel + fade (true clipping masks belong to host CSS, not tracks).
-  const axis = preset === "mask-reveal" ? "x" : "y";
+  if (preset === "mask-reveal") {
+    // True mask: each line reveals left to right as its right inset closes.
+    for (const id of surfaceIds)
+      tracks.push(track({ target: { kind: "surface", id }, property: "clipRight", keyframes: [
+        { timeMs: 0, value: 100 }, { timeMs: durationMs, value: 0 },
+      ] }));
+    return { tracks, warnings };
+  }
+  // fade-slide: gentle rise + fade.
+  const axis = "y";
   for (const id of surfaceIds) {
     tracks.push(track({ target: { kind: "surface", id }, property: "opacity", keyframes: [
       { timeMs: 0, value: 0 }, { timeMs: durationMs, value: 1 },

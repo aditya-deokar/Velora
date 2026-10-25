@@ -17,7 +17,7 @@
     "test:performance": "playwright test --config playwright.performance.config.ts",
     "lint:architecture": "node scripts/check-architecture.mjs",
     "build:cli": "vite build --config vite.cli.config.ts && node scripts/finalize-cli.mjs",
-    "test:launch": "vitest run tests/project tests/preview tests/cli --fileParallelism=false",
+    "test:launch": "vitest run tests/project tests/preview tests/cli tests/docs --fileParallelism=false",
     "test:installed": "node scripts/check-installed.mjs",
     "verify:launch": "npm run verify:motion && npm run test:launch && npm run test:installed",
     "test:export": "vitest run tests/export tests/cli --fileParallelism=false",
@@ -41,7 +41,8 @@
     "verify:release": "npm run verify:agent && npm run test:release && node scripts/release.mjs check",
     "test:published": "node scripts/check-published.mjs",
     "release:publish": "npm run verify:release && node scripts/release.mjs publish",
-    "build:package": "npm run build:library && npm run build:cli",
+    "build:package": "npm run build:library && npm run build:cli && npm run build:schemas",
+    "build:schemas": "node scripts/build-schemas.mjs",
     "test:portable:app": "node scripts/check-portable.mjs app",
     "test:portable:pages": "node scripts/check-portable.mjs pages",
     "test:portable:react": "node scripts/check-portable.mjs react"
@@ -78,6 +79,7 @@
   "files": [
     "dist/library",
     "dist/cli",
+    "schemas",
     "skills/velora",
     "skills/velora-*/SKILL.md"
   ],

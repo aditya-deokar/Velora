@@ -18,7 +18,7 @@ const owners = new Map([
   ['executeRecipeCommand','src/project/recipes.ts'],['SceneLibrary','src/preview/SceneLibrary.tsx'],
   ["PreviewDefinitionSchema","src/core/preview.ts"], ["presentPreview","src/core/preview.ts"],
   ["ScenePreview","src/preview/ScenePreview.tsx"], ["usePreviewSession","src/preview/session.ts"],
-  ...["VELORA_BRAND"].map(name=>[name,"src/core/branding.ts"]),
+  ...["VELORA_BRAND","VELORA_PACKAGE"].map(name=>[name,"src/core/branding.ts"]),
   ...["getAuthoringGuide","reviewAuthoring","AuthoringGuideSchema"].map(name=>[name,"src/core/authoring.ts"]),
   ['ExportVideoSchema','src/core/export.ts'], ['CaptureManifestSchema','src/core/export.ts'], ['executeVideoExport','src/export/commands.ts'], ['executeSceneSnapshot','src/export/commands.ts'],
   ['executeProjectCommand', 'src/project/commands.ts'],
@@ -27,9 +27,14 @@ const owners = new Map([
   ['uniformFocusBlur','src/core/spatial.ts'], ['focusForSurface','src/core/spatial.ts'], ['sampleFocus','src/core/spatial.ts'], ['focusMask','src/core/spatial.ts'], ['cameraToCss','src/core/spatial.ts'],
   ...['motionDuration','motionTime','cinematicProgress','cinematicTimeAtProgress','sampleFrameTime'].map(name=>[name,'src/core/motion.ts']),
   ['CascadeSchema','src/core/choreography.ts'], ['createCascadeTracks','src/core/choreography.ts'],
-  ['MotionSchema','src/core/motion.ts'], ['evaluateMotion','src/core/motion.ts'],
+  ['MotionSchema','src/core/motion.ts'], ['evaluateMotion','src/core/motion.ts'], ['loopSeam','src/core/motion.ts'],
+  ['applyEasing','src/core/easing.ts'],
+  ['NoiseSchema','src/core/noise.ts'], ['sampleNoise','src/core/noise.ts'],
+  ...['perspectiveForFocalLength','focalLengthForPerspective','lensFor'].map(name=>[name,'src/core/lens.ts']),
   ['evaluateScene', 'src/core/spatial.ts'], ['transformToCss', 'src/core/spatial.ts'],
 ]);
+// Inert identity records are frozen object literals rather than schemas or functions.
+const frozenMetadata = new Set(['VELORA_BRAND', 'VELORA_PACKAGE']);
 const layers = {
   core: { local: ['core'], external: ['zod'] },
   runtime: { local: ['core', 'runtime'], external: ['zod'] },
@@ -134,7 +139,7 @@ export function checkArchitecture(input, { compilerOptions = {} } = {}) {
         const exported = statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword);
         const ambient = statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.DeclareKeyword);
         let implemented = false;
-        if (symbol === 'VELORA_BRAND' && ts.isVariableDeclaration(node) && node.initializer) {
+        if (frozenMetadata.has(symbol) && ts.isVariableDeclaration(node) && node.initializer) {
           const value=node.initializer;
           implemented=ts.isCallExpression(value) && value.expression.getText(file)==='Object.freeze' && value.arguments.length===1 && ts.isObjectLiteralExpression(value.arguments[0]);
         } else if (symbol.endsWith('Schema') && ts.isVariableDeclaration(node) && node.initializer) {
@@ -158,7 +163,7 @@ export function checkArchitecture(input, { compilerOptions = {} } = {}) {
           implemented = !!body && (!ts.isBlock(body) || body.statements.length > 0);
         }
         if (exported && !ambient && implemented && statement.parent === file) implementations.get(symbol).push(node);
-        else add(file, identifier, 'canonical-implementation', `${symbol} needs an exported runtime ${symbol==='VELORA_BRAND' ? 'frozen metadata object' : symbol.endsWith('Schema') ? 'Zod object schema' : 'function body'} in its owner.`);
+        else add(file, identifier, 'canonical-implementation', `${symbol} needs an exported runtime ${frozenMetadata.has(symbol) ? 'frozen metadata object' : symbol.endsWith('Schema') ? 'Zod object schema' : 'function body'} in its owner.`);
       }
     }
 

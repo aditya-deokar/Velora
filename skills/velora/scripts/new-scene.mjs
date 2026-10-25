@@ -34,7 +34,9 @@ if (!Number.isInteger(width) || !Number.isInteger(height) || width < 64 || heigh
   process.stderr.write('Width and height must be integers >= 64.\n');
   process.exit(2);
 }
+// $schema gives editors autocomplete from the installed package (src/velora/scenes -> project root).
 const recipe = {
+  $schema: '../../../node_modules/@adityadeokar/velora/schemas/scene-recipe.schema.json',
   version: 1,
   id,
   title,
@@ -49,7 +51,7 @@ const recipe = {
     motion: { durationMs: 2000, tracks: [] },
   },
 };
-const component = `import { Surface } from 'velora';\n\nexport default function ${id.split('-').map((s) => s[0].toUpperCase() + s.slice(1)).join('')}() {\n  return (\n    <Surface id="main" style={{ width: ${width}, height: ${height} }}>\n      <div style={{ color: '#fff', background: '#111', width: '100%', height: '100%' }}>${title}</div>\n    </Surface>\n  );\n}\n`;
+const component = `import { Surface } from '@adityadeokar/velora';\n\nexport default function ${id.split('-').map((s) => s[0].toUpperCase() + s.slice(1)).join('')}() {\n  return (\n    <Surface id="main" style={{ width: ${width}, height: ${height} }}>\n      <div style={{ color: '#fff', background: '#111', width: ${width}, height: ${height} }}>${title}</div>\n    </Surface>\n  );\n}\n`;
 await mkdir(out, { recursive: true });
 await writeFile(path.join(out, `${id}.scene.json`), JSON.stringify(recipe, null, 2) + '\n');
 await writeFile(path.join(out, `${id}.tsx`), component);

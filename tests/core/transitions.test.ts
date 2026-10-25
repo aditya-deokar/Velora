@@ -30,9 +30,14 @@ describe("transition catalog", () => {
     const pull = valid("focus-pull", [], { focusFrom: 2200, focusTo: 1400 });
     expect(pull.tracks).toMatchObject([{ target: { kind: "focus" }, property: "distance" }]);
     expect(pull.tracks[0].keyframes.map((k) => k.value)).toEqual([2200, 1400]);
+    // Wipe and iris are true masks on the entering leaves, not travel/fade approximations.
     const iris = valid("iris-mask", ["a"]);
-    expect(iris.tracks.some((t) => t.property === "scale")).toBe(true);
-    expect(iris.warnings.map((w) => w.code)).toContain("transition-approx");
+    expect(iris.tracks).toMatchObject([{ target: { kind: "surface", id: "a" }, property: "clipRadius" }]);
+    expect(iris.tracks[0].keyframes.map((k) => k.value)).toEqual([0, 75]);
+    const wipe = valid("wipe-mask", ["a"]);
+    expect(wipe.tracks).toMatchObject([{ property: "clipRight" }]);
+    expect(wipe.tracks[0].keyframes.map((k) => k.value)).toEqual([100, 0]);
+    expect([...iris.warnings, ...wipe.warnings]).toEqual([]);
   });
   it("fits cascades inside the duration and rejects bad input", () => {
     const cascade = valid("cascade-handoff", ["a", "b", "c"]);

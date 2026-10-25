@@ -55,6 +55,7 @@ describe("explicit scene time motion", () => {
       },
       camera: {},
       focus: {},
+      channels: {},
       issues: [],
     });
   });
@@ -73,6 +74,7 @@ describe("explicit scene time motion", () => {
       surfaces: {},
       camera: { x: 0, y: 0, z: 0, rotateX: 0, rotateY: 0, rotateZ: 0 },
       focus: { distance:1200, fStop:8, focalLength:50, maxBlur:16 },
+      channels: {},
       issues: [],
     });
   });
@@ -117,6 +119,7 @@ describe("explicit scene time motion", () => {
       surfaces: {},
       camera: {},
       focus: {},
+      channels: {},
       issues: [],
     });
     const input = {
@@ -200,6 +203,7 @@ describe("motion validation boundary", () => {
         surfaces: {},
         camera: {},
         focus: {},
+        channels: {},
         issues: [
           { path: "timeMs", message: "Scene time must be a finite number." },
         ],

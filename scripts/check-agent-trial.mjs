@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { loadSceneRecipes, reviewAuthoring, evaluateMotion, motionDuration, matrixFor } from '../dist/library/index.js';
+import { loadSceneRecipes, reviewAuthoring, evaluateMotion, motionDuration, matrixFor, VELORA_PACKAGE } from '../dist/library/index.js';
 
 // SOURCE OF TRUTH: installed agent acceptance, loadSceneRecipes, reviewAuthoring.
 // WHAT: verify the independently authored artifacts and the requested revision.
@@ -13,6 +13,9 @@ const initial = JSON.parse(read('initial.scene.json'));
 const revised = JSON.parse(read('revised.scene.json'));
 const trial = JSON.parse(read('trial.json'));
 const binding = read('scene.tsx.txt');
+// The trial predates the published npm name; accept it or an earlier package name it was recorded with.
+const bindingPackage = [VELORA_PACKAGE.name, ...VELORA_PACKAGE.legacyNames].find(name => binding.includes(`from '${name}'`));
+assert(bindingPackage, 'Trial binding imports a recognized Velora package');
 const sourcePath = 'src/velora/scenes/agent-survey.scene.json';
 const bindingPath = 'src/velora/scenes/agent-survey.tsx';
 const catalogInput = document => ({ sources: [{ path: sourcePath, document }], bindingPaths: [bindingPath] });
@@ -82,8 +85,7 @@ function inspectBinding(source) {
     ts.forEachChild(node, walk);
   }
   walk(ast);
-  const expectedPkg = binding.includes("from 'velora'") ? 'velora' : '@webprodigies/velora';
-  assert.deepEqual(imports, [[expectedPkg, ['Surface']], ['../../App', ['App', 'DashboardProvider']]]);
+  assert.deepEqual(imports, [[bindingPackage, ['Surface']], ['../../App', ['App', 'DashboardProvider']]]);
   assert.deepEqual(tags, ['DashboardProvider', 'Surface', 'App']);
   assert.deepEqual(ids, ['revenue-dashboard']);
   const functions = ast.statements.filter(ts.isFunctionDeclaration);
@@ -111,7 +113,7 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 assert.equal(hash(read('initial.scene.json')), trial.evidenceHashes.initialSha256);
 // The independent trial predates the public npm namespace. Normalize only its
 // single package import; the original hash still rejects every other source edit.
-const pkgSpecifier = binding.includes("from 'velora'") ? "from 'velora'" : "from '@webprodigies/velora'";
+const pkgSpecifier = `from '${bindingPackage}'`;
 assert.equal(binding.split(pkgSpecifier).length, 2);
 assert.equal(hash(binding.replace(pkgSpecifier, "from '@flute/scene'")), trial.evidenceHashes.bindingSha256);
 console.log('Agent trial passed: public recipe/review validation, retimed rail, deeper focus, original binding, negative cases and TSX transpilation. Browser/export evidence belongs to parent verification.');

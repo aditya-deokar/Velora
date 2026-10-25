@@ -50,6 +50,17 @@ Preview and capture run through the app dev server; rendering proofs use `velora
 6. Run `velora scenes --json`, then `velora snapshot --scene <id> --url <origin> --json` to save the thumbnail.
 7. Scrub `ScenePreview`, then prove with `velora shot --scene <id> --time <ms> --out <png> --json`.
 
+Motion vocabulary (details in `velora guide --json` capabilities):
+
+- **Smooth camera rails:** a multi-waypoint camera track with `"interpolation": "smooth"` and `"ease": "cinematic"` passes every waypoint without stopping, then accelerates and settles once. Segment tracks stop at each cinematic keyframe.
+- **Lens language:** `lensFor(mm, frameHeight)` maps 24/35/50/85/135 mm to `camera.perspective` (frameHeight × mm / 24) plus the matching `focus.focalLength`. Wide lenses exaggerate depth; long lenses compress it. `perspective` is animatable: hold the subject on the projection plane and widen the lens for a dolly zoom.
+- **Easing:** keyframes accept named families (`expo.out`, `back.out`), `{ cubicBezier: [...] }`, `{ spring: {...} }`, `{ steps: n }` and `hold`. Keep overshoot off camera tracks.
+- **Handheld texture:** `"noise": { "amplitude": 6, "frequency": 0.6, "seed": 1 }` on camera position or rotation tracks adds seeded, replayable shake. Use it sparingly, never on loops or text-heavy close-ups.
+- **Leaf visuals:** surface `blur` composes with depth of field; `clipTop/Right/Bottom/Left` (percent insets) and `clipRadius` (iris) are true masks on the visual leaf.
+- **Channels:** a `{ "kind": "channel", "id": "revenue" }` track drives component state; read it with `useChannel("revenue")` instead of a component clock.
+- **Loops:** `motion.loop: true` wraps preview playback. End every track on its starting value, or `reviewAuthoring` reports `loop-seam`.
+- **Editor autocomplete:** add `"$schema": "../../../node_modules/@adityadeokar/velora/schemas/scene-recipe.schema.json"` to a recipe.
+
 ## Worked Example
 
 Recipe `src/velora/scenes/page-survey.scene.json`:
@@ -87,7 +98,7 @@ Recipe `src/velora/scenes/page-survey.scene.json`:
 Binding `src/velora/scenes/page-survey.tsx`:
 
 ```tsx
-import { Surface } from 'velora';
+import { Surface } from '@adityadeokar/velora';
 import { App, DashboardProvider } from '../../App';
 
 export default function PageSurvey() {

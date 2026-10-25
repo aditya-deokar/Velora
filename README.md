@@ -144,17 +144,17 @@ Read [architecture](docs/architecture.md) for canonical code owners and [product
 
 ## Maintainer release
 
-All tests run locally. GitHub Actions only builds and publishes a new npm version; it does not run verification suites or upload artifacts.
+GitHub Actions runs `ci.yml` on every push and pull request: fast gates (typecheck, architecture, core, React, skills, release) on Linux, Windows and macOS with Node 22.12 and 24, plus a Linux browser/export/installed-app tier. Hardware timing and `verify:release` stay local. The separate publish workflow only builds and publishes a new npm version.
 
 1. Update the package version with `npm version patch --no-git-tag-version`. Every `skills/velora*/SKILL.md` front-matter `version` and `skills-lock.json` must pin the same version; `npm run test:skills` enforces it.
 2. Run `npm ci`, install Chromium and FFmpeg, then run `npm run verify:release` locally. This includes architecture, browser, installed-app, export, agent-demo transcript replay (`test:agent-demos`), and hardware checks. Logs remain in `.release/logs/`. `npm run release:local` plus `node scripts/release.mjs check` must accept the artifact (skills ship, tests and demo MP4s do not).
 3. Commit the verified version and lockfile, then push to `main`. The publishing workflow checks npm first. If that version already exists, it stops before installing or building. Otherwise it runs `npm run build:package` and publishes through OIDC. npm versions are immutable; changing source without a version bump does not update the public package.
 4. Run `npm run test:published` locally after publication to check the exact public version in a fresh installed app.
 
-The public source is [aditya-deokar/velora](https://github.com/aditya-deokar/velora), and the package is `velora`. npm's trusted publisher uses GitHub repository `velora`, workflow `publish.yml`, environment `npm`, with direct `npm publish` permission. The GitHub environment permits the `main` branch. Never commit npm tokens.
+The public source is [aditya-deokar/velora](https://github.com/aditya-deokar/velora), and the package is `@adityadeokar/velora` (owned in source by `VELORA_PACKAGE`). npm's trusted publisher uses GitHub repository `velora`, workflow `publish.yml`, environment `npm`, with direct `npm publish` permission. The GitHub environment permits the `main` branch. Never commit npm tokens.
 
-Code-only and documentation-only pushes do not start a workflow. Package/lockfile or publishing-workflow changes can trigger the small version lookup. A failed release can be retried through Actions → Publish npm package → Run workflow on `main`; an existing npm version will safely skip. There is no automatic tag-based or pull-request test workflow.
+Code-only and documentation-only pushes do not start a workflow. Package/lockfile or publishing-workflow changes can trigger the small version lookup. A failed release can be retried through Actions → Publish npm package → Run workflow on `main`; an existing npm version will safely skip. Publication is never tag-triggered; test results come from `ci.yml` and the local release gate.
 
-`verify:ci` remains a local alternative without hardware timing checks; `verify:release` retains the full hardware gate. GitHub does not enforce those local results, so the maintainer is responsible for running them before pushing a release version.
+`verify:ci` remains a local alternative without hardware timing checks; `verify:release` retains the full hardware gate. CI does not run the hardware gate, so the maintainer still runs `verify:release` before pushing a release version.
 
 For manual publication, run `npm run release:publish` locally from the clean committed candidate and complete npm's private authentication prompt. For source-only testing, `npm run release:local` builds a tarball in `.release/`; `npm run setup:local` installs it in the isolated local host.

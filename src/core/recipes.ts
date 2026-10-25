@@ -30,6 +30,8 @@ export const SceneSnapshotSchema=z.strictObject({
  timeMs:z.number().finite().nonnegative().max(120_000),
 });
 export const SceneRecipeSchema = z.strictObject({
+  // Editor autocomplete: points at the JSON Schema shipped in the package's schemas/ directory.
+  $schema: z.string().max(512).optional(),
   version: z.literal(1),
   id: SceneRecipeIdSchema,
   title: z.string().trim().min(1),

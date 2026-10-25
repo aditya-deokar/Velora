@@ -65,7 +65,7 @@ Always start on a clean git branch:
 git switch -c velora-scenes
 
 # 2. Install the package
-npm install velora
+npm install @adityadeokar/velora
 
 # 3. Initialize Velora in your project
 npx velora init
@@ -130,7 +130,7 @@ The agent inspects your component (e.g., `src/components/DashboardAnalytics.tsx`
    - Declares the motion keyframes (camera tracking shots, smooth pans, zooms).
 
 2. **`dashboard.tsx`** — The React Scene Component:
-   - Imports `{ Surface } from 'velora'`.
+   - Imports `{ Surface } from '@adityadeokar/velora'`.
    - Mounts your real application component inside `<Surface id="page">` or multiple nested surfaces (`<Surface id="card-1">`, `<Surface id="chart">`).
    - Wraps any needed providers (`<ThemeProvider>`, `<QueryClientProvider>`) so your UI looks 100% authentic.
 
@@ -138,7 +138,7 @@ The agent inspects your component (e.g., `src/components/DashboardAnalytics.tsx`
 
 ```tsx
 // src/velora/scenes/dashboard.tsx
-import { Surface } from 'velora';
+import { Surface } from '@adityadeokar/velora';
 import { DashboardAnalytics } from '../../components/DashboardAnalytics';
 import { ThemeProvider } from '../../context/ThemeContext';
 
@@ -204,17 +204,17 @@ export default function DashboardScene() {
 
 ### Step 5: Live Preview & Interactive Scrubbing
 
-As soon as the agent saves the files, Velora's Vite/Next.js integration automatically discovers them without restarting the server:
+As soon as the agent saves the files, Vite hosts discover new scene pairs automatically. In Next.js and other hosts, run `npx velora sync` after adding or removing scene files. Edits to existing files hot-reload without restarting the server:
 
 1. Click on the scene in the **Scene Library**.
 2. The scene opens in **Scene Preview**:
    - The scene plays smoothly in full viewport cover mode.
    - Real-time Gaussian depth of field blurs elements further away from the lens focal plane.
    - At the bottom of the screen, a translucent control bar gives you:
-     - **Play / Pause** toggle (or spacebar).
+     - **Play / Pause** toggle.
      - **Restart** button.
      - **Timeline Scrubber**: Drag through time to inspect exact frames.
-     - **Time Readout**: Displays elapsed milliseconds and minutes.
+     - **Time Readout**: Displays elapsed and total time (m:ss).
      - **Back button**: Returns to the Scene Library.
 3. If you want to change something (e.g., *"Tilt the camera more to the left"* or *"Make the blur stronger on the background"*), ask your agent. The scene updates in real time via Hot Module Replacement (HMR).
 
@@ -228,7 +228,7 @@ To give your scene a crisp thumbnail in the Scene Library credits list:
 npx velora snapshot --scene dashboard --url http://localhost:3000
 ```
 
-Velora launches a headless Chromium instance, seeks to the optimal frame, takes a snapshot, and caches it inside the recipe metadata.
+Velora launches headless Chromium, seeks to the scene's midpoint (or the `--time <ms>` you choose), captures one frame and caches it inside the recipe metadata.
 
 ---
 
@@ -236,18 +236,20 @@ Velora launches a headless Chromium instance, seeks to the optimal frame, takes 
 
 When your animation looks perfect:
 
+The studio's **Export** menu prints the exact command for the open scene. For a Vite app on port 5173 it looks like this (in Next.js the scene URL is `http://localhost:3000/velora?velora-preview=1&velora-scene=dashboard`):
+
 ```bash
 # Export standard 60 FPS MP4 video
-npx velora export --url "http://localhost:3000/?velora-scene=dashboard" --output dashboard.mp4 --fps 60
+npx velora export --url "http://localhost:5173/?velora-preview=1&velora-scene=dashboard" --output dashboard.mp4 --fps 60
 
 # Or export ultra-smooth 120 FPS
-npx velora export --url "http://localhost:3000/?velora-scene=dashboard" --output dashboard-120fps.mp4 --fps 120
+npx velora export --url "http://localhost:5173/?velora-preview=1&velora-scene=dashboard" --output dashboard-120fps.mp4 --fps 120
 ```
 
 #### How Video Export Works Behind the Scenes:
 - Velora uses Playwright and a dedicated capture clock (`__VELORA_CAPTURE__`).
-- It freezes animation frames deterministically, captures each uncompressed frame directly from the GPU buffer, and pipes them straight into FFmpeg.
-- There are no dropped frames, no mouse cursor artifacts, and no UI chrome overlay. You get a pristine, broadcast-ready MP4.
+- It seeks the scene to each exact frame time, captures the scene viewport as a lossless PNG screenshot, and pipes the frames into FFmpeg to encode an H.264 MP4.
+- Because every frame is sampled at an exact time, there are no dropped frames, no mouse cursor and no studio controls in the output.
 
 ---
 
@@ -255,7 +257,7 @@ npx velora export --url "http://localhost:3000/?velora-scene=dashboard" --output
 
 You can string multiple scenes together into a complete product launch video:
 
-1. Create a `composition.json`:
+1. Put media in `assets/` (an asset's ID is its filename without the extension, so `assets/music.mp3` is `music`; `npx velora assets ls` lists them). Then create `product-launch.composition.json` in the project root. Composition files must end in `.composition.json`:
    ```json
    {
      "version": 1,
@@ -266,16 +268,22 @@ You can string multiple scenes together into a complete product launch video:
      "fps": 60,
      "scenes": [
        { "id": "intro", "recipe": "hero-card", "startMs": 0, "durationMs": 4000 },
-       { "id": "details", "recipe": "dashboard", "startMs": 4000, "durationMs": 6000 }
+       { "id": "details", "recipe": "dashboard", "startMs": 4000, "durationMs": 6000,
+         "transition": { "type": "focus-pull", "durationMs": 800 } }
      ],
      "assets": [
-       { "id": "bg-music", "kind": "audio", "path": "assets/music.mp3", "volume": 0.8 }
-     ]
+       { "id": "music", "path": "assets/music.mp3", "type": "audio" }
+     ],
+     "audio": [
+       { "id": "bed", "assetId": "music", "startMs": 0, "gain": 0.8, "fadeOutMs": 1500 }
+     ],
+     "captions": { "file": "subs.srt", "burnIn": false }
    }
    ```
-2. Render the whole video with synchronized audio and captions:
+2. Validate it, then render the whole video with synchronized audio and captions:
    ```bash
-   npx velora render --composition composition.json --out final-video.mp4
+   npx velora validate --composition product-launch.composition.json --json
+   npx velora render --composition product-launch.composition.json --out product-launch.mp4
    ```
 
 ---

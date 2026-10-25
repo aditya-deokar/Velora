@@ -33,7 +33,7 @@ Use this skill at segment boundaries. Pick a catalog type, fit it inside the seg
 - `velora validate --json`: checks span fit and leaf-targeted declarations.
 - `velora render --composition teaser.composition.json --frame 0 --out proof.png --json`: proves the entrance replays.
 
-Catalog: `cut` (no tracks), `dissolve` (fade), `slide-push` (x travel), `wipe-mask` (x travel plus fade approximation), `iris-mask` (scale pop plus fade approximation), `depth-dolly` (camera z), `focus-pull` (focus distance), `cascade-handoff` (staggered depth plus opacity).
+Catalog: `cut` (no tracks), `dissolve` (fade), `slide-push` (x travel), `wipe-mask` (true left-to-right reveal through a `clipRight` inset mask on each entering leaf), `iris-mask` (true circular reveal through a `clipRadius` mask), `depth-dolly` (camera z), `focus-pull` (focus distance), `cascade-handoff` (staggered depth plus opacity).
 
 ## Prerequisites
 
@@ -94,5 +94,5 @@ Group opacity does not fade descendants; animate the actual visual leaves.
 ## When NOT to Use This Skill
 
 - Do not use this skill for camera rails or kinetic text; load `velora-scenes` or `velora-typography`.
-- Do not promise A/B compositing; document the approximation honestly.
+- Do not promise A/B compositing between scenes: transitions animate the entering scene only. Wipes and irises are true masks on its leaves, not crossfades with the previous scene.
 - Do not skip `velora validate --json` span checks.

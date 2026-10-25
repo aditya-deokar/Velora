@@ -4,14 +4,16 @@ import path from "node:path";
 import {tmpdir} from "node:os";
 import {executeProjectCommand as command} from "../../src/project/commands";
 import * as services from "../../src/project/services";
+import {VELORA_PACKAGE} from "../../src/core/branding";
+const TOOLKIT=VELORA_PACKAGE.name;
 const roots:string[]=[];
 async function put(root:string,file:string,text:string){await mkdir(path.dirname(path.join(root,file)),{recursive:true});await writeFile(path.join(root,file),text);}
 async function host(kind="next-app",react="19.1.0"){
  const root=await mkdtemp(path.join(tmpdir(),"velora-portable-"));roots.push(root);
- await put(root,"package.json",JSON.stringify({dependencies:{react,"react-dom":react,"velora":"0.1.0",...(kind.startsWith("next")?{next:"16.3.5"}:{})},scripts:{dev:"custom-server --anything"}}));
+ await put(root,"package.json",JSON.stringify({dependencies:{react,"react-dom":react,[TOOLKIT]:"0.1.0",...(kind.startsWith("next")?{next:"16.3.5"}:{})},scripts:{dev:"custom-server --anything"}}));
  for(const name of ["react","react-dom"])await put(root,"node_modules/"+name+"/package.json",JSON.stringify({name,version:react}));
- await put(root,"node_modules/velora/package.json",JSON.stringify({name:"velora",exports:{"./preview":{import:"./preview.js"}}}));
- await put(root,"node_modules/velora/preview.js","export {}");
+ await put(root,`node_modules/${TOOLKIT}/package.json`,JSON.stringify({name:TOOLKIT,exports:{"./preview":{import:"./preview.js"}}}));
+ await put(root,`node_modules/${TOOLKIT}/preview.js`,"export {}");
  if(kind==="next-app")await put(root,"app/layout.tsx",'export default function Layout({children}) { return <html><body>{children}</body></html> }');
  if(kind==="next-src")await put(root,"src/app/layout.jsx",'export default function Layout({children}) { return <html><body>{children}</body></html> }');
  if(kind==="next-pages")await put(root,"pages/_app.tsx",'export default function App({Component,pageProps}) { return <Component {...pageProps}/> }');
@@ -34,7 +36,7 @@ describe("portable host connections",()=>{
   expect((await readdir(path.join(root,".velora"))).sort()).toEqual(["integration.json","project.json"]);
   const wrapper=await readFile(path.join(root,"src/velora/ProjectPreview.jsx"),"utf8");
   expect(wrapper).not.toMatch(/import\.meta|process\.|next\//);
-  expect(wrapper).toContain('from "velora/preview"');
+  expect(wrapper).toContain(`from "${VELORA_PACKAGE.preview}"`);
  });
  it.each(["18.2.0","18.3.1","19.0.0","19.1.0","19.2.0"])("uses supported installed React %s without installing Vite",async react=>{
   const root=await host("custom",react);success(await run(root));expect(await readdir(root)).not.toContain("vite.config.ts");
@@ -66,6 +68,36 @@ describe("portable host connections",()=>{
   const root=await host();const actual=services.atomicWrite;let failed=false;
   vi.spyOn(services,"atomicWrite").mockImplementation(async(...args)=>{if(args[1]==="src/velora/Studio.jsx"&&!failed){failed=true;throw Error("interrupted");}return actual(...args)});
   expect((await run(root)).success).toBe(false);success(await run(root));success(await run(root,"validate-project"));
+ });
+ it("upgrades a connection written by the previous installer",async()=>{
+  const root=await host();success(await run(root));
+  const read=(file:string)=>readFile(path.join(root,file),"utf8");
+  const wrapper=await read("src/velora/ProjectPreview.jsx");const handoff=await read("VELORA.md");const record=await read(".velora/integration.json");
+  const legacyWrapper=wrapper.replace(`from "${VELORA_PACKAGE.preview}"`,'from "velora/preview"');
+  const legacyHandoff=handoff.replace("`"+TOOLKIT+"` and `"+VELORA_PACKAGE.preview+"`","`velora` and `velora/preview`");
+  expect(legacyWrapper).not.toBe(wrapper);expect(legacyHandoff).not.toBe(handoff);
+  const managed=JSON.parse(record);managed.files["src/velora/ProjectPreview.jsx"]=legacyWrapper;managed.files["VELORA.md"]=legacyHandoff;
+  await put(root,".velora/integration.json",JSON.stringify(managed,null,2)+"\n");
+  await put(root,"src/velora/ProjectPreview.jsx",legacyWrapper);await put(root,"VELORA.md",legacyHandoff);
+  expect(await run(root,"validate-project")).toMatchObject({success:false,issues:[{code:"incomplete-setup"}]});
+  expect(success(await run(root)).changed).toBe(true);
+  expect(await read("src/velora/ProjectPreview.jsx")).toBe(wrapper);
+  expect(await read("VELORA.md")).toBe(handoff);
+  expect(await read(".velora/integration.json")).toBe(record);
+  expect(success(await run(root)).changed).toBe(false);success(await run(root,"validate-project"));
+ });
+ it("refuses an edited file in a legacy connection before writing",async()=>{
+  const root=await host();success(await run(root));
+  const read=(file:string)=>readFile(path.join(root,file),"utf8");
+  const wrapper=await read("src/velora/ProjectPreview.jsx");const record=await read(".velora/integration.json");
+  const legacyWrapper=wrapper.replace(`from "${VELORA_PACKAGE.preview}"`,'from "velora/preview"');
+  const managed=JSON.parse(record);managed.files["src/velora/ProjectPreview.jsx"]=legacyWrapper;
+  managed.files["VELORA.md"]=managed.files["VELORA.md"].replace("`"+TOOLKIT+"` and `"+VELORA_PACKAGE.preview+"`","`velora` and `velora/preview`");
+  await put(root,".velora/integration.json",JSON.stringify(managed,null,2)+"\n");
+  const edited=legacyWrapper+"// mine\n";await put(root,"src/velora/ProjectPreview.jsx",edited);
+  const write=vi.spyOn(services,"atomicWrite");
+  expect(await run(root)).toMatchObject({success:false,issues:[{code:"conflict"}]});
+  expect(write).not.toHaveBeenCalled();expect(await read("src/velora/ProjectPreview.jsx")).toBe(edited);
  });
  it("recovers an interrupted catalog ownership update",async()=>{
   const root=await host();success(await run(root));await scene(root);

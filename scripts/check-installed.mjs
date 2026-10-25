@@ -13,6 +13,8 @@ import { chromium } from 'playwright';
 // Installed consumer evidence: use the packed artifact and an independent host app,
 // never aliases back into src/ or the demo. All writes stay inside a disposable fixture.
 const root = fileURLToPath(new URL('../', import.meta.url));
+// The installed directory and import specifier follow the name this package publishes.
+const packageName = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).name;
 const scratch = await mkdtemp(path.join(tmpdir(), 'velora-installed-'));
 const host = path.join(scratch, 'host');
 const registryPackage = process.env.VELORA_REGISTRY_PACKAGE;
@@ -69,10 +71,7 @@ try {
   const parentCli=path.join(root,'dist/cli/velora.js');
   if(registryPackage || process.env.VELORA_VERIFY_AGENT==='1') await ok('npm',['install','--ignore-scripts','--no-audit','--no-fund',registryPackage ?? tarball]);
   if(registryPackage) {
-    const installedPath = existsSync(path.join(host,'node_modules/velora/package.json'))
-      ? path.join(host,'node_modules/velora/package.json')
-      : path.join(host,'node_modules/@webprodigies/velora/package.json');
-    const installed=JSON.parse(await readFile(installedPath,'utf8'));
+    const installed=JSON.parse(await readFile(path.join(host,'node_modules',packageName,'package.json'),'utf8'));
     assert.equal(installed.name+'@'+installed.version,registryPackage,'Install exact published version');
   }
   const initResult=registryPackage || process.env.VELORA_VERIFY_AGENT==='1'
@@ -93,9 +92,8 @@ try {
   assert.ok(entryAfter.includes('<DashboardProvider><App /></DashboardProvider>'));
   assert.ok(entryAfter.includes('Existing provider composition'));
   assert.notEqual(entryAfter,originalEntry);
-  const installedPkg = existsSync(path.join(host,'node_modules/velora/package.json'))
-    ? JSON.parse(await readFile(path.join(host,'node_modules/velora/package.json'),'utf8')).name
-    : '@webprodigies/velora';
+  const installedPkg = packageName;
+  assert.ok(existsSync(path.join(host,'node_modules',installedPkg,'package.json')),'Setup installs the published package name');
   const cli=path.join(host,'node_modules',installedPkg,'dist/cli/velora.js');
   const installedGuide=JSON.parse(await ok(process.execPath,[cli,'guide','--json']));
   const publicGuide=JSON.parse(await ok(process.execPath,['--input-type=module','-e',`import {getAuthoringGuide} from '${installedPkg}'; console.log(JSON.stringify(getAuthoringGuide()))`]));

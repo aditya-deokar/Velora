@@ -17,15 +17,15 @@ function compositionDoc(scenes: unknown) {
 async function initialized() {
   root = await mkdtemp(path.join(tmpdir(), "velora-effects-"));
   await put("package.json", JSON.stringify({ name: "host", scripts: { dev: "vite" },
-    dependencies: { react: "^19.2.0", "react-dom": "^19.2.0", "velora": "0.1.0" }, devDependencies: { vite: "^7.3.6" } }));
+    dependencies: { react: "^19.2.0", "react-dom": "^19.2.0", "@adityadeokar/velora": "0.1.0" }, devDependencies: { vite: "^7.3.6" } }));
   await put("package-lock.json", '{"lockfileVersion":3}');
   await put("index.html", '<div id="root"></div><script type="module" src="/src/main.tsx"></script>');
   await put("vite.config.ts", 'import {defineConfig} from "vite"; import react from "@vitejs/plugin-react"; export default defineConfig({plugins:[react()]});');
   await put("src/main.tsx", 'import { StrictMode } from "react";\nimport { createRoot } from "react-dom/client";\ncreateRoot(document.getElementById("root")!).render(<StrictMode><div/></StrictMode>);\n');
   await put("node_modules/react/package.json", '{"name":"react","version":"19.2.0"}');
   await put("node_modules/react-dom/package.json", '{"name":"react-dom","version":"19.2.0"}');
-  await put("node_modules/velora/package.json", JSON.stringify({ name: "velora", version: "0.1.0", exports: { "./preview": { import: "./preview.js" } } }));
-  await put("node_modules/velora/preview.js", "export const ProjectPreview = () => null;");
+  await put("node_modules/@adityadeokar/velora/package.json", JSON.stringify({ name: "@adityadeokar/velora", version: "0.1.0", exports: { "./preview": { import: "./preview.js" } } }));
+  await put("node_modules/@adityadeokar/velora/preview.js", "export const ProjectPreview = () => null;");
   await put("src/velora/scenes/demo.scene.json", JSON.stringify(recipeDoc));
   await put("src/velora/scenes/demo.tsx", "export default function Demo() { return null; }");
   expect(await executeProjectCommand("init-project", {}, { root })).toMatchObject({ success: true });

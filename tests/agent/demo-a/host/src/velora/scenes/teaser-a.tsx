@@ -1,4 +1,4 @@
-import { Surface } from 'velora';
+import { Surface } from '@adityadeokar/velora';
 import { App, DashboardProvider } from '../../App';
 
 export default function TeaserA() {

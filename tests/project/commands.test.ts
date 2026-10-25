@@ -8,7 +8,9 @@ import { ProjectResultSchema, type ProjectResult } from "../../src/core/project"
 import * as services from "../../src/project/services";
 import { generatedPreview, htmlEntry, inspectEntry } from "../../src/project/vite";
 import { RESOURCES } from "../../src/core/resources";
-import { VELORA_BRAND } from "../../src/core/branding";
+import { VELORA_BRAND, VELORA_PACKAGE } from "../../src/core/branding";
+
+const TOOLKIT = VELORA_PACKAGE.name;
 
 const roots: string[] = [];
 const servers: Server[] = [];
@@ -29,7 +31,7 @@ async function fixture(options: { installed?: boolean; source?: string } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "velora-project-"));
   roots.push(root);
   await put(root, "package.json", JSON.stringify({ name: "host", scripts: { dev: "vite" },
-    dependencies: { react: "^19.2.0", "react-dom": "^19.2.0", ...(options.installed === false ? {} : { "velora": "0.1.0" }) },
+    dependencies: { react: "^19.2.0", "react-dom": "^19.2.0", ...(options.installed === false ? {} : { [TOOLKIT]: "0.1.0" }) },
     devDependencies: { vite: "^7.3.6" } }));
   await put(root, "package-lock.json", '{"lockfileVersion":3}');
   await put(root, "index.html", '<div id="root"></div><script type="module" src="/src/main.tsx"></script>');
@@ -41,12 +43,12 @@ async function fixture(options: { installed?: boolean; source?: string } = {}) {
   if (options.installed !== false) await installFixture(root);
   return root;
 }
-async function installFixture(root: string) {
+async function installFixture(root: string, name: string = TOOLKIT) {
   const pkg = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-  pkg.dependencies["velora"] = "0.1.0";
+  pkg.dependencies[name] = "0.1.0";
   await put(root, "package.json", JSON.stringify(pkg));
-  await put(root, "node_modules/velora/package.json", JSON.stringify({ name: "velora", version: "0.1.0", exports: { "./preview": { import: "./preview.js" } } }));
-  await put(root, "node_modules/velora/preview.js", "export const ProjectPreview = () => null;");
+  await put(root, `node_modules/${name}/package.json`, JSON.stringify({ name, version: "0.1.0", exports: { "./preview": { import: "./preview.js" } } }));
+  await put(root, `node_modules/${name}/preview.js`, "export const ProjectPreview = () => null;");
 }
 function run(root: string, operation: unknown = "init-project", input: unknown = {}) {
   return executeProjectCommand(operation, input, { root });
@@ -171,7 +173,7 @@ describe("trusted project commands", () => {
     const root = await fixture({ installed: false });
     const result = await run(root);
     failure(result, "package-unavailable");
-    expect(JSON.stringify(result)).toContain("npm install velora");
+    expect(JSON.stringify(result)).toContain("npm install " + TOOLKIT);
     expect(await readdir(root)).not.toContain(".velora");
     expect(await readFile(path.join(root, "src/main.tsx"), "utf8")).toBe(original);
   });
@@ -181,14 +183,14 @@ describe("trusted project commands", () => {
     await put(root, "src/main.tsx", original);
     failure(await run(root, "load-project"), "conflict");
     failure(await run(root), "conflict");
-    await put(root, "node_modules/velora/preview.js", "export {}");
-    await rm(path.join(root, "node_modules/velora/preview.js"));
+    await put(root, `node_modules/${TOOLKIT}/preview.js`, "export {}");
+    await rm(path.join(root, `node_modules/${TOOLKIT}/preview.js`));
     failure(await run(root, "validate-project"), "conflict");
   });
   it("checks installed preview export on repeat even when state and wrapper exist", async () => {
     const root = await fixture();
     success(await run(root));
-    await rm(path.join(root, "node_modules/velora/preview.js"));
+    await rm(path.join(root, `node_modules/${TOOLKIT}/preview.js`));
     failure(await run(root, "validate-project"), "missing-installation");
     failure(await run(root), "missing-installation");
   });
@@ -304,7 +306,7 @@ describe("trusted project commands", () => {
     const root = await fixture({ installed: false });
     await put(root, "velora.tgz", "fixture transport only");
     const install = vi.spyOn(services, "installPackage").mockImplementationOnce(async project => {
-      await put(project, "node_modules/velora/package.json", '{');
+      await put(project, `node_modules/${TOOLKIT}/package.json`, '{');
       throw new Error("interrupted install");
     });
     failure(await run(root, "init-project", { packageSource: "./velora.tgz" }), "project-error");
@@ -340,7 +342,7 @@ describe("installed coding-agent handoff", () => {
     expect(first.handoff).toMatchObject({ path: "VELORA.md", guideCommand: "npx velora guide --json", guideVersion: RESOURCES["authoring-guide"]().version });
     expect(first.handoff!.prompt).toContain("<page route or component path>");
     const text = await readFile(path.join(root, "VELORA.md"), "utf8");
-    for (const pointer of [VELORA_BRAND.title, VELORA_BRAND.url, "npx velora guide --json", "capabilities.api", "velora/preview", "src/velora/scenes"])
+    for (const pointer of [VELORA_BRAND.title, VELORA_BRAND.url, "npx velora guide --json", "capabilities.api", VELORA_PACKAGE.preview, "src/velora/scenes"])
       expect(text).toContain(pointer);
     expect(text).not.toContain(RESOURCES["authoring-guide"]().concepts[0].mechanism);
     const repeat = success(await run(root));
@@ -566,4 +568,71 @@ it("upgrades the prior TSX-only Vite glob without replacing host UI",async()=>{
  const text=await readFile(path.join(root,adapter),"utf8");
  await put(root,adapter,text.replace("scene.json,tsx,jsx","scene.json,tsx"));
  success(await run(root));expect(await readFile(path.join(root,adapter),"utf8")).toBe(text);
+});
+
+describe("package identity upgrades", () => {
+  const adapterPath = "src/velora/ProjectPreview.tsx";
+  const legacyPreview = (text: string) => text.replace(`from "${VELORA_PACKAGE.preview}"`, 'from "velora/preview"');
+  const legacyHandoff = (text: string) => text.replace(`\`${TOOLKIT}\` and \`${VELORA_PACKAGE.preview}\``, "`velora` and `velora/preview`");
+  it("generates the published package in the adapter and handoff", async () => {
+    const root = await fixture();
+    success(await run(root));
+    expect(await readFile(path.join(root, adapterPath), "utf8")).toContain(`import { ProjectPreview } from "${VELORA_PACKAGE.preview}";`);
+    expect(await readFile(path.join(root, "VELORA.md"), "utf8")).toContain(`\`${TOOLKIT}\` and \`${VELORA_PACKAGE.preview}\``);
+  });
+  it("explains a legacy-only installation instead of generating imports it cannot serve", async () => {
+    const root = await fixture({ installed: false });
+    await installFixture(root, "velora");
+    const result = await run(root);
+    failure(result, "missing-installation");
+    expect(JSON.stringify(result)).toContain("npm install " + TOOLKIT);
+    expect(await readdir(root)).not.toContain(".velora");
+    expect(await readFile(path.join(root, "src/main.tsx"), "utf8")).toBe(original);
+  });
+  it("upgrades the adapter and handoff written by the previous installer, preserving the entry", async () => {
+    const root = await fixture();
+    const first = success(await run(root));
+    const entry = await readFile(path.join(root, "src/main.tsx"), "utf8");
+    const adapter = await readFile(path.join(root, adapterPath), "utf8");
+    const handoff = await readFile(path.join(root, "VELORA.md"), "utf8");
+    expect(legacyPreview(adapter)).not.toBe(adapter);
+    expect(legacyHandoff(handoff)).not.toBe(handoff);
+    await put(root, adapterPath, legacyPreview(adapter));
+    await put(root, "VELORA.md", legacyHandoff(handoff));
+    failure(await run(root, "load-project"), "incomplete-setup");
+    const upgraded = success(await run(root));
+    expect(upgraded.changed).toBe(true);
+    expect(upgraded.project).toEqual(first.project);
+    expect(await readFile(path.join(root, adapterPath), "utf8")).toBe(adapter);
+    expect(await readFile(path.join(root, "VELORA.md"), "utf8")).toBe(handoff);
+    expect(await readFile(path.join(root, "src/main.tsx"), "utf8")).toBe(entry);
+    expect(success(await run(root)).changed).toBe(false);
+    success(await run(root, "load-project"));
+  });
+  it("upgrades the previous TSX-only glob under the legacy package name", async () => {
+    const root = await fixture();
+    success(await run(root));
+    const adapter = await readFile(path.join(root, adapterPath), "utf8");
+    await put(root, adapterPath, legacyPreview(adapter).replace("scene.json,tsx,jsx", "scene.json,tsx"));
+    success(await run(root));
+    expect(await readFile(path.join(root, adapterPath), "utf8")).toBe(adapter);
+  });
+  it("refuses an edited legacy adapter or handoff without writing", async () => {
+    const root = await fixture();
+    success(await run(root));
+    const adapter = await readFile(path.join(root, adapterPath), "utf8");
+    const handoff = await readFile(path.join(root, "VELORA.md"), "utf8");
+    const editedAdapter = legacyPreview(adapter) + "// mine\n";
+    await put(root, adapterPath, editedAdapter);
+    const write = vi.spyOn(services, "atomicWrite");
+    failure(await run(root), "conflict");
+    expect(write).not.toHaveBeenCalled();
+    expect(await readFile(path.join(root, adapterPath), "utf8")).toBe(editedAdapter);
+    await put(root, adapterPath, adapter);
+    const editedHandoff = legacyHandoff(handoff) + "My notes\n";
+    await put(root, "VELORA.md", editedHandoff);
+    failure(await run(root), "conflict");
+    expect(write).not.toHaveBeenCalled();
+    expect(await readFile(path.join(root, "VELORA.md"), "utf8")).toBe(editedHandoff);
+  });
 });

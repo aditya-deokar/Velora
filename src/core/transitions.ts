@@ -10,8 +10,8 @@ import { createCascadeTracks } from "./choreography";
  * Entering-side model (butt-join timeline, totals unchanged): every transition
  * describes what the incoming scene does over the first durationMs of its
  * segment. True A/B crossfade compositing is out of scope: dissolve means the
- * entering leaves fade in; wipe/iris are travel+fade approximations because
- * clipping masks belong to host CSS, not motion tracks. No new render path.
+ * entering leaves fade in. Wipe and iris are true masks: clip tracks on the
+ * entering visual leaves (inset and circle clip-paths). No new render path.
  */
 export const TransitionTypeSchema = z.enum([
   "cut", "dissolve", "slide-push", "wipe-mask", "iris-mask", "depth-dolly", "focus-pull", "cascade-handoff",
@@ -26,8 +26,8 @@ export const TRANSITION_CATALOG: { type: TransitionType; description: string; ne
   { type: "cut", description: "Hard cut. No tracks, no overlap.", needsLeaves: false },
   { type: "dissolve", description: "Entering leaves fade from transparent over durationMs.", needsLeaves: true },
   { type: "slide-push", description: "Entering leaves travel along x from distance to rest.", needsLeaves: true },
-  { type: "wipe-mask", description: "Wipe approximated with x travel plus fade. True clipping masks belong to host CSS.", needsLeaves: true },
-  { type: "iris-mask", description: "Iris approximated with a scale pop plus fade. True masks belong to host CSS.", needsLeaves: true },
+  { type: "wipe-mask", description: "True left-to-right wipe: entering leaves reveal through an inset clip mask.", needsLeaves: true },
+  { type: "iris-mask", description: "True iris: entering leaves open from the center through a circular clip mask.", needsLeaves: true },
   { type: "depth-dolly", description: "Camera dollies along z from depth to rest across the boundary.", needsLeaves: false },
   { type: "focus-pull", description: "Focus distance racks from focusFrom to focusTo across the boundary.", needsLeaves: false },
   { type: "cascade-handoff", description: "Staggered depth+opacity entrances across the entering leaves.", needsLeaves: true },
@@ -66,24 +66,24 @@ export function buildTransition(
       for (const id of surfaceIds) tracks.push(fade(id));
       return { tracks, warnings };
     case "slide-push":
-    case "wipe-mask":
-      for (const id of surfaceIds) {
-        if (type === "wipe-mask") tracks.push(fade(id));
+      for (const id of surfaceIds)
         tracks.push(track({ target: { kind: "surface", id }, property: "x", keyframes: [
           { timeMs: 0, value: distance }, { timeMs: durationMs, value: 0 },
         ] }));
-      }
-      if (type === "wipe-mask")
-        warnings.push({ code: "transition-approx", path: "transition", message: "Wipe is approximated with travel plus fade; true clipping masks belong to host CSS." });
+      return { tracks, warnings };
+    case "wipe-mask":
+      // The right inset closes from 100% to 0%, revealing each leaf left to right.
+      for (const id of surfaceIds)
+        tracks.push(track({ target: { kind: "surface", id }, property: "clipRight", keyframes: [
+          { timeMs: 0, value: 100 }, { timeMs: durationMs, value: 0 },
+        ] }));
       return { tracks, warnings };
     case "iris-mask":
-      for (const id of surfaceIds) {
-        tracks.push(fade(id));
-        tracks.push(track({ target: { kind: "surface", id }, property: "scale", keyframes: [
-          { timeMs: 0, value: 0.2 }, { timeMs: durationMs, value: 1 },
+      // A circle of 75% of the leaf's normalized diagonal clears its corners.
+      for (const id of surfaceIds)
+        tracks.push(track({ target: { kind: "surface", id }, property: "clipRadius", keyframes: [
+          { timeMs: 0, value: 0 }, { timeMs: durationMs, value: 75 },
         ] }));
-      }
-      warnings.push({ code: "transition-approx", path: "transition", message: "Iris is approximated with a scale pop plus fade; true masks belong to host CSS." });
       return { tracks, warnings };
     case "depth-dolly":
       tracks.push(track({ target: { kind: "camera" }, property: "z", keyframes: [

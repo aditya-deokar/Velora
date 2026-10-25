@@ -19,6 +19,8 @@ export function usePreviewSession(input: PreviewDefinitionInput | undefined, rev
   const [renderIssues, setRenderIssues] = useState<SceneIssue[]>([]);
   const sceneDurationMs = definition?.motion ? motionDuration(definition.motion) : 0;
   const durationMs = timeline?.durationMs ?? sceneDurationMs;
+  // A looping scene keeps playing from the start; timelines and exports never wrap.
+  const loop = !timeline && !!definition?.motion?.loop;
   const cursor = useRef(timeMs);
   cursor.current = timeMs;
   const issues = result && !result.valid ? result.issues : renderIssues;
@@ -41,14 +43,15 @@ export function usePreviewSession(input: PreviewDefinitionInput | undefined, rev
     const started = performance.now() - cursor.current;
     let frame = 0;
     const tick = (now: number) => {
-      const next = Math.min(durationMs, now - started);
+      const elapsed = now - started;
+      const next = loop ? elapsed % durationMs : Math.min(durationMs, elapsed);
       setTime(next);
-      if (next < durationMs) frame = requestAnimationFrame(tick);
+      if (loop || next < durationMs) frame = requestAnimationFrame(tick);
       else setPlaying(false);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, valid, durationMs]);
+  }, [playing, valid, durationMs, loop]);
   useEffect(() => {
     const media = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
     const changed = () => { if (media?.matches) pause(); };

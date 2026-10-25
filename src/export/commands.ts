@@ -1,3 +1,4 @@
+import { parseJsonDocument } from "../core/json";
 import { RESOURCES } from "../core/resources";
 import { AUDIO_DRIFT_BUDGET_MS, SUPPORTED_AUDIO_CODECS, audioPlacement } from "../core/audio";
 import { resolveAssetId } from "../core/assets";
@@ -69,7 +70,7 @@ export async function executeSceneSnapshot(input:unknown,context:{root:string;si
   const selected=opened.data.selected!;
   const original=await services.readRecipe(context.root,selected.source,256_000);
   if(!original)throw fault("source-changed","Scene source disappeared. Restore it and retry.");
-  const recipe=SceneRecipeSchema.parse(JSON.parse(original));
+  const recipe=SceneRecipeSchema.parse(parseJsonDocument(original));
   if(recipe.id!==selected.id||JSON.stringify(recipe.definition)!==JSON.stringify(selected.definition))throw fault("source-changed","Scene source changed. Retry the snapshot.");
   // Small cached image; keep the authored aspect ratio and canonical playback clock.
   const width=320, height=Math.max(64,Math.min(640,Math.round(width*recipe.definition.height/recipe.definition.width)));
@@ -79,7 +80,7 @@ export async function executeSceneSnapshot(input:unknown,context:{root:string;si
   if(timeMs>manifest.durationMs)throw fault("invalid-snapshot","Snapshot time must be within the scene duration.");
   const snapshot=SceneSnapshotSchema.parse({image:await session.snapshot(timeMs,manifest),timeMs});
   if(context.signal?.aborted)throw fault("export-cancelled","Snapshot cancelled; no image was saved.");
-  const content=JSON.stringify({...JSON.parse(original),snapshot},null,2)+"\n";
+  const content=JSON.stringify({...(parseJsonDocument(original) as object),snapshot},null,2)+"\n";
   if(services.textBytes(content)>256_000)throw fault("snapshot-too-large","Recipe and snapshot exceed 256000 bytes. Simplify the scene source before retrying.");
   await services.writeRecipe(context.root,selected.source,content,original);
   return {success:true as const,data:{sceneId:recipe.id,source:selected.source,timeMs}};
@@ -102,7 +103,8 @@ export async function probeCapturePrerequisites(): Promise<{
   return { ffmpeg, chromium };
 }
 
-export type RenderedFrame = { frame: number; timeMs: number; sceneId: string; segmentId: string; png: Buffer; sha: string; cached: boolean; clamped: boolean; renderMs: number };
+// png is absent once a spill sink has taken the bytes (video renders stay bounded in memory).
+export type RenderedFrame = { frame: number; timeMs: number; sceneId: string; segmentId: string; png?: Buffer; sha: string; cached: boolean; clamped: boolean; renderMs: number };
 export type FrameWanted = { frame: number; timeMs: number };
 export type ProgressFn = (done: number, total: number) => void;
 export const DEFAULT_FRAME_CACHE = "node_modules/.cache/velora/frames";
@@ -116,11 +118,20 @@ async function renderTimelineFrames(options: {
   catalog: SceneCatalog; timeline: Timeline; wanted: FrameWanted[];
   cacheDir: string | undefined; noCache: boolean; parallel: number;
   signal?: AbortSignal; onProgress?: ProgressFn;
+  spill?: (frame: number, png: Buffer) => Promise<void>;
 }): Promise<Map<number, RenderedFrame>> {
-  const { root, url, version, fps, width, height, seed, catalog, timeline, wanted, noCache, parallel, signal, onProgress } = options;
+  const { root, url, version, fps, width, height, seed, catalog, timeline, wanted, noCache, parallel, signal, onProgress, spill } = options;
   const cacheDir = options.cacheDir ?? DEFAULT_FRAME_CACHE;
+  // Host edits change pixels without touching the binding; an unfingerprintable tree renders uncached.
+  const hostSha = noCache ? undefined : await services.hostFingerprint(root);
+  const caching = hostSha !== undefined;
   const sorted = [...wanted].sort((a, b) => a.frame - b.frame);
-  const results = new Map<number, RenderedFrame>();
+  const frames = new Map<number, RenderedFrame>();
+  // With a spill sink, results keep metadata only; the sink owns the PNG bytes.
+  const results = { set: async (frame: number, entry: RenderedFrame) => {
+    if (spill && entry.png) { await spill(frame, entry.png); const { png: _spilled, ...meta } = entry; frames.set(frame, meta); }
+    else frames.set(frame, entry);
+  } };
   let done = 0;
   const tick = () => { done++; onProgress?.(done, sorted.length); };
   const groups = new Map<string, { segment: TimelineSegment | null; frames: FrameWanted[] }>();
@@ -137,7 +148,7 @@ async function renderTimelineFrames(options: {
         if (signal?.aborted) throw fault("export-cancelled", "Render cancelled; no output was published.");
         const started = Date.now();
         const png = services.voidPng(width, height);
-        results.set(item.frame, { frame: item.frame, timeMs: item.timeMs, sceneId: "black-void", segmentId: "gap", png, sha: services.sha256Hex(png), cached: false, clamped: false, renderMs: Date.now() - started });
+        await results.set(item.frame, { frame: item.frame, timeMs: item.timeMs, sceneId: "black-void", segmentId: "gap", png, sha: services.sha256Hex(png), cached: false, clamped: false, renderMs: Date.now() - started });
         tick();
       }
       return;
@@ -160,22 +171,22 @@ async function renderTimelineFrames(options: {
         const local = localTime(segment, item.timeMs);
         const finish = (png: Buffer, sha: string, cached: boolean, clamped: boolean): RenderedFrame =>
           ({ frame: item.frame, timeMs: item.timeMs, sceneId: recipe.id, segmentId: segment.id, png, sha, cached, clamped, renderMs: Date.now() - started });
-        if (!noCache) {
-          const key = services.frameCacheKey({ recipeSha: services.sha256Hex(recipeText), bindingSha: services.sha256Hex(bindingText), timeMs: local, fps, width, height, seed, version });
+        if (caching) {
+          const key = services.frameCacheKey({ recipeSha: services.sha256Hex(recipeText), bindingSha: services.sha256Hex(bindingText), hostSha: hostSha!, timeMs: local, fps, width, height, seed, version });
           const hit = await services.frameCacheLookup(root, cacheDir, key);
           if (hit) {
-            results.set(item.frame, finish(hit.png, hit.sha, true, false));
+            await results.set(item.frame, finish(hit.png, hit.sha, true, false));
             tick();
             continue;
           }
         }
         const clamped = local > bridge.data.durationMs;
         const png = services.decodePngDataUrl(await session.snapshot(clamped ? bridge.data.durationMs : local, bridge.data));
-        if (!noCache) {
-          const key = services.frameCacheKey({ recipeSha: services.sha256Hex(recipeText), bindingSha: services.sha256Hex(bindingText), timeMs: local, fps, width, height, seed, version });
+        if (caching) {
+          const key = services.frameCacheKey({ recipeSha: services.sha256Hex(recipeText), bindingSha: services.sha256Hex(bindingText), hostSha: hostSha!, timeMs: local, fps, width, height, seed, version });
           await services.frameCacheStore(root, cacheDir, key, png);
         }
-        results.set(item.frame, finish(png, services.sha256Hex(png), false, clamped));
+        await results.set(item.frame, finish(png, services.sha256Hex(png), false, clamped));
         tick();
       }
     } finally {
@@ -191,7 +202,7 @@ async function renderTimelineFrames(options: {
       await renderGroup(group);
     }
   }));
-  return results;
+  return frames;
 }
 
 /** Render one exact timeline frame from a composition to PNG plus a manifest.
@@ -253,7 +264,7 @@ export async function executeFrameRender(
       checks: [{ id: "bridge-present", pass: true, detail: entry.sceneId === "black-void" ? "Timeline gap renders black void without a browser." : "Capture bridge served this frame." }],
       createdAt: new Date().toISOString(),
     });
-    await services.writeNewFile(scope, entry.png);
+    await services.writeNewFile(scope, entry.png!);
     await services.writeNewTextFile(await services.prepareFileOutput(root, manifestPath), JSON.stringify(manifest, null, 2) + "\n");
     return { success: true, data: { out: parsed.data.out, manifest: manifestPath, frame: entry.frame, timeMs: entry.timeMs, sceneId: entry.sceneId, segmentId: entry.segmentId, sha: entry.sha, cached: entry.cached } };
   } catch (error) {
@@ -310,13 +321,16 @@ export async function executeVideoRender(
     const noCache = parsed.data.noCache ?? false;
     const cacheDir = parsed.data.cacheDir ?? DEFAULT_FRAME_CACHE;
     const parallel = parsed.data.parallel ?? services.defaultParallelism();
+    tmpDir = await services.makeTempDir(root, ".velora-video-");
+    const frameDir = `${tmpDir}/frames`;
     const rendered = await renderTimelineFrames({
       root, url, version, fps, width, height, seed: composition.seed,
       catalog: full.catalog, timeline, wanted, cacheDir, noCache, parallel,
       signal: context.signal, onProgress: context.onProgress,
+      spill: (frame, png) => services.spillFrame(frameDir, frame, png),
     });
     const ordered = wanted.map((w) => rendered.get(w.frame)!);
-    const pngs = ordered.map((entry) => entry.png);
+    const pngs = services.spilledFrames(frameDir, ordered.map((entry) => entry.frame));
     const finalAbs = await services.resolveOutput(root, parsed.data.out);
     const needsMux = composition.audio.length > 0 || !!composition.captions;
     let ffmpegArgs: string[];
@@ -325,7 +339,6 @@ export async function executeVideoRender(
     if (!needsMux) {
       ffmpegArgs = (await services.encodeFrameBuffers(pngs, finalAbs, { fps, width, height, cwd: root, signal: context.signal })).ffmpegArgs;
     } else {
-      tmpDir = await services.makeTempDir(root, ".velora-video-");
       const tmpVideo = `${tmpDir}/video.mp4`;
       await services.encodeFrameBuffers(pngs, tmpVideo, { fps, width, height, cwd: root, signal: context.signal });
       const tracks = [];
@@ -466,7 +479,7 @@ export async function executeFramesRender(
     });
     for (const { entry, file } of frames) {
       const scope = await services.prepareFileOutput(root, `${parsed.data.out}/${file}`);
-      await services.writeNewFile(scope, entry.png);
+      await services.writeNewFile(scope, entry.png!);
     }
     const manifest = RenderManifestSchema.parse({
       version: 1 as const, kind: "frames" as const, compositionId: composition.id,
@@ -569,7 +582,7 @@ export async function executeCheck(
       if (text === undefined) throw fault("ERR_VISUAL_MANIFEST", `Manifest ${manifestRel} was not found. Render frames first.`, target);
       let document: unknown;
       try {
-        document = JSON.parse(text);
+        document = parseJsonDocument(text);
       } catch {
         throw fault("ERR_VISUAL_MANIFEST", `Manifest ${manifestRel} is not valid JSON.`, target);
       }
@@ -682,7 +695,7 @@ export async function executeCheck(
         if (text === undefined) throw fault("ERR_VISUAL_MANIFEST", `Manifest ${parsed.data.manifest} was not found.`, target);
         let document: unknown;
         try {
-          document = JSON.parse(text);
+          document = parseJsonDocument(text);
         } catch {
           throw fault("ERR_VISUAL_MANIFEST", `Manifest ${parsed.data.manifest} is not valid JSON.`, target);
         }

@@ -59,7 +59,7 @@ const valid = {
  */
  export function usePreviewSession(){return {};}`,
 
- 'src/core/branding.ts': `/** SOURCE OF TRUTH: VELORA_BRAND. WHAT: shared attribution. WHY: consistent presentation. WHERE: CLI and browser. */ export const VELORA_BRAND=Object.freeze({});`,
+ 'src/core/branding.ts': `/** SOURCE OF TRUTH: VELORA_BRAND, VELORA_PACKAGE. WHAT: shared attribution and package identity. WHY: consistent presentation and imports. WHERE: CLI, generators and browser. */ export const VELORA_BRAND=Object.freeze({}); export const VELORA_PACKAGE=Object.freeze({});`,
  'src/core/authoring.ts': `/** SOURCE OF TRUTH: getAuthoringGuide, reviewAuthoring, AuthoringGuideSchema.
  * WHAT: define cinematic concepts and review.
  * WHY: share capabilities across clients.
@@ -91,7 +91,10 @@ import {z} from 'zod'; export const CascadeSchema=z.strictObject({}); export fun
   'src/project/commands.ts': `/** SOURCE OF TRUTH: executeProjectCommand.\n * WHAT: execute validated project commands.\n * WHY: protect scoped project state.\n * WHERE: invoked through CLI adapters.\n */\nexport async function executeProjectCommand(){return {};}`, 
   'src/core/scene.ts': `${sceneDoc}\nimport { z } from 'zod';\nexport const TransformSchema = z.strictObject({ x: z.number() });\nexport const SceneSchema = z.strictObject({ transform: TransformSchema }).superRefine(() => {});`,
   'src/core/spatial.ts': `${spatialDoc}\nimport { SceneSchema } from './scene';\nexport function evaluateScene(input: unknown) { return SceneSchema.parse(input); }\nexport const transformToCss = () => 'none'; export const focusForSurface=()=>0; export const sampleFocus=()=>0; export const focusMask=()=>''; export const cameraToCss=()=>''; export const uniformFocusBlur=()=>0;`,
-  'src/core/motion.ts': '/** SOURCE OF TRUTH: MotionSchema, evaluateMotion, motionDuration, motionTime, cinematicProgress, cinematicTimeAtProgress, sampleFrameTime.\n * WHAT: validate motion and time.\n * WHY: prevent multiple competing clocks.\n * WHERE: consumed by React adapters.\n */\nimport { z } from \'zod\'; export const MotionSchema=z.strictObject({}); export function evaluateMotion(){return 0;} export function motionDuration(){return 0;} export function motionTime(){return 0;} export function cinematicProgress(){return 0;} export function cinematicTimeAtProgress(){return 0;} export function sampleFrameTime(){return 0;}',
+  'src/core/easing.ts': '/** SOURCE OF TRUTH: applyEasing.\n * WHAT: easing curves for motion segments.\n * WHY: one evaluator for every renderer.\n * WHERE: consumed by core motion.\n */\nimport { z } from \'zod\'; export function applyEasing(){return 0;}',
+  'src/core/noise.ts': '/** SOURCE OF TRUTH: NoiseSchema, sampleNoise.\n * WHAT: seeded noise texture over time.\n * WHY: deterministic handheld camera motion.\n * WHERE: consumed by core motion.\n */\nimport { z } from \'zod\'; export const NoiseSchema=z.strictObject({}); export function sampleNoise(){return 0;}',
+  'src/core/lens.ts': '/** SOURCE OF TRUTH: perspectiveForFocalLength, focalLengthForPerspective, lensFor.\n * WHAT: lens millimetres mapped to perspective.\n * WHY: one lens language for every shot.\n * WHERE: consumed by builders and the guide.\n */\nexport function perspectiveForFocalLength(){return 0;} export function focalLengthForPerspective(){return 0;} export function lensFor(){return 0;}',
+  'src/core/motion.ts': '/** SOURCE OF TRUTH: MotionSchema, evaluateMotion, motionDuration, motionTime, cinematicProgress, cinematicTimeAtProgress, sampleFrameTime, loopSeam.\n * WHAT: validate motion and time.\n * WHY: prevent multiple competing clocks.\n * WHERE: consumed by React adapters.\n */\nimport { z } from \'zod\'; export const MotionSchema=z.strictObject({}); export function evaluateMotion(){return 0;} export function motionDuration(){return 0;} export function motionTime(){return 0;} export function cinematicProgress(){return 0;} export function cinematicTimeAtProgress(){return 0;} export function sampleFrameTime(){return 0;} export function loopSeam(){return 0;}',
   'src/core/index.ts': `export * from './scene'; export { evaluateScene, transformToCss } from './spatial';`,
 };
 const fixture = (file, text, options) => checkArchitecture({ ...valid, [file]: text }, options);
@@ -342,6 +345,7 @@ test('snapshot schemas and command keep canonical owners',()=>{
 test('preview cannot call snapshot filesystem or browser effects',()=>rejects('src/preview/capture.ts',"import {openCapture} from '../export/services'; openCapture({});",'module-boundary'));
 
 test("rejects another branding owner",()=>{ rejects("src/preview/brand.ts", "export const VELORA_BRAND=Object.freeze({});", "canonical-owner"); });
+test("rejects another package identity owner",()=>{ rejects("src/project/package.ts", "export const VELORA_PACKAGE=Object.freeze({name:'velora'});", "canonical-owner"); });
 
 // Framework adapters must reuse the shared owners, never establish competing policy.
 test('framework connection cannot duplicate canonical recipe discovery', () => {

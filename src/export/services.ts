@@ -9,6 +9,7 @@ import type { Browser, Page } from "playwright";
 import type { CaptureBridge, CaptureManifest, ExportVideo } from "../core/export";
 import { AUDIO_DRIFT_BUDGET_MS, SUPPORTED_AUDIO_CODECS } from "../core/audio";
 import { formatSrt, parseCaptions } from "../core/captions";
+import { SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 import { canonicalRoot, relativeTarget, scopedPath, readText, atomicWrite, probeExecutable, probeAudioFile, type AudioProbe } from "../project/services";
 import { fault } from "../project/errors";
 
@@ -170,10 +171,51 @@ export async function writeNewTextFile(scope: { root: string; output: string }, 
   return writeNewFile(scope, Buffer.from(text, "utf8"));
 }
 // Content-hash frame cache. Keys hash everything that affects pixels
-// (recipe + binding bytes, frame time, fps, dimensions, seed, code version);
-// entries are verified by recomputed SHA on read, never trusted by mtime.
-export function frameCacheKey(parts: { recipeSha: string; bindingSha: string; timeMs: number; fps: number; width: number; height: number; seed: number; version: string }): string {
-  return sha256Hex([parts.recipeSha, parts.bindingSha, String(parts.timeMs), String(parts.fps), String(parts.width), String(parts.height), String(parts.seed), parts.version].join("|"));
+// (recipe + binding bytes, host source fingerprint, frame time, fps, dimensions,
+// seed, code version); entries are verified by recomputed SHA on read.
+export function frameCacheKey(parts: { recipeSha: string; bindingSha: string; hostSha: string; timeMs: number; fps: number; width: number; height: number; seed: number; version: string }): string {
+  return sha256Hex([parts.recipeSha, parts.bindingSha, parts.hostSha, String(parts.timeMs), String(parts.fps), String(parts.width), String(parts.height), String(parts.seed), parts.version].join("|"));
+}
+// Bindings import arbitrary host components and styles, so their bytes alone cannot
+// key the cache. Stat-only fingerprint of what can change pixels: code, styles and
+// markup anywhere, plus images, video and fonts under source/asset directories and the
+// lockfile. Scene recipes and bindings are already keyed per scene (helpers live outside
+// the discovery directory), so editing one scene re-renders only that scene. Render outputs (stills, manifests), compositions, audio and captions never
+// change a scene's pixels, so re-renders after timeline edits stay cached. Any counted
+// edit (or touch) invalidates; above the cap the caller renders without the cache.
+export const HOST_FINGERPRINT_MAX_FILES = 20_000;
+const fingerprintSkip = new Set(["node_modules", "dist", "build", "out", "coverage", "test-results"]);
+const fingerprintMediaRoots = new Set(["src", "app", "pages", "components", "lib", "styles", "public", "assets"]);
+const fingerprintCode = /\.(?:[cm]?[jt]sx?|css|scss|sass|less|html|json)$/i;
+const fingerprintMedia = /\.(?:svg|png|jpe?g|webp|gif|avif|woff2?|ttf|otf|mp4|webm)$/i;
+const fingerprintOutput = /(?:^|\.)manifest\.json$|\.composition\.json$/i;
+function fingerprinted(relative: string, name: string): boolean {
+  if (fingerprintOutput.test(name)) return false;
+  if (fingerprintCode.test(name)) return true;
+  return fingerprintMedia.test(name) && fingerprintMediaRoots.has(relative.split("/")[0]);
+}
+export async function hostFingerprint(root: string): Promise<string | undefined> {
+  const entries: string[] = [];
+  const walk = async (relative: string): Promise<boolean> => {
+    const directory = relative ? path.join(root, relative) : root;
+    let items;
+    try { items = await readdir(directory, { withFileTypes: true }); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return true; throw error; }
+    items.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    for (const item of items) {
+      const child = relative ? `${relative}/${item.name}` : item.name;
+      if (item.isDirectory()) {
+        if (item.name.startsWith(".") || fingerprintSkip.has(item.name) || child === SCENE_RECIPE_DIRECTORY) continue;
+        if (!await walk(child)) return false;
+      } else if (item.isFile() && fingerprinted(child, item.name)) {
+        const info = await lstat(path.join(root, child));
+        entries.push(`${child}|${info.size}|${Math.trunc(info.mtimeMs)}`);
+        if (entries.length > HOST_FINGERPRINT_MAX_FILES) return false;
+      }
+    }
+    return true;
+  };
+  return await walk("") ? sha256Hex(entries.join("\n")) : undefined;
 }
 export async function frameCacheLookup(root: string, cacheDir: string, key: string): Promise<{ png: Buffer; sha: string } | undefined> {
   let file: string;
@@ -311,11 +353,23 @@ export function videoEncodeArgs(options: { fps: number; width: number; height: n
     "-vcodec", "png", "-i", "pipe:0", "-an", "-vf", coverFilter(options.width, options.height),
     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-frames:v", String(options.frames), "-n", output];
 }
-// Encode in-memory PNG buffers to MP4 with the exact live-capture pipeline.
-// Used by composition video rendering; same bytes in, same bytes out.
-export async function encodeFrameBuffers(pngs: Buffer[], output: string, options: { fps: number; width: number; height: number; cwd: string; signal?: AbortSignal }): Promise<{ ffmpegArgs: string[] }> {
-  if (!pngs.length) throw fault("invalid-capture", "Nothing to encode: the timeline spans less than one frame.");
-  const args = videoEncodeArgs({ fps: options.fps, width: options.width, height: options.height, frames: pngs.length }, output);
+// Ordered PNG frames spilled to disk so long renders hold one frame per worker in memory.
+export type SpilledFrames = { count: number; read: (index: number) => Promise<Buffer> };
+const spillName = (frame: number) => `${String(frame).padStart(7, "0")}.png`;
+export async function spillFrame(dirAbs: string, frame: number, png: Buffer): Promise<void> {
+  if (!Number.isInteger(frame) || frame < 0) throw new Error("Spilled frame index must be a nonnegative integer.");
+  await mkdir(dirAbs, { recursive: true });
+  await writeFile(path.join(dirAbs, spillName(frame)), png);
+}
+export function spilledFrames(dirAbs: string, frames: readonly number[]): SpilledFrames {
+  return { count: frames.length, read: (index) => readFile(path.join(dirAbs, spillName(frames[index]))) };
+}
+// Encode PNG frames to MP4 with the exact live-capture pipeline, from memory or
+// from a spilled sequence read one frame at a time; same bytes in, same bytes out.
+export async function encodeFrameBuffers(source: Buffer[] | SpilledFrames, output: string, options: { fps: number; width: number; height: number; cwd: string; signal?: AbortSignal }): Promise<{ ffmpegArgs: string[] }> {
+  const frames: SpilledFrames = Array.isArray(source) ? { count: source.length, read: async (index) => source[index] } : source;
+  if (!frames.count) throw fault("invalid-capture", "Nothing to encode: the timeline spans less than one frame.");
+  const args = videoEncodeArgs({ fps: options.fps, width: options.width, height: options.height, frames: frames.count }, output);
   await new Promise<void>((resolve, reject) => {
     let settled = false;
     const done = (fn: () => void) => { if (!settled) { settled = true; fn(); } };
@@ -344,8 +398,9 @@ export async function encodeFrameBuffers(pngs: Buffer[], output: string, options
     options.signal?.addEventListener("abort", abort, { once: true });
     (async () => {
       try {
-        for (const png of pngs) {
+        for (let index = 0; index < frames.count; index++) {
           if (options.signal?.aborted) throw fault("export-cancelled", "Video render cancelled; no output was published.");
+          const png = await frames.read(index);
           await new Promise<void>((resolveWrite, rejectWrite) => encoder!.stdin!.write(png, (error) => error ? rejectWrite(error) : resolveWrite()));
           await Promise.race([Promise.resolve(), finished.then(() => { throw fault("encoding-failed", "Encoder stopped before all scene frames were written."); })]);
         }

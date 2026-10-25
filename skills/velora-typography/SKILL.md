@@ -56,7 +56,7 @@ velora render --composition teaser.composition.json --frame 0 --out proof.png --
 velora frames --composition teaser.composition.json --out stills --every 30 --json
 ```
 
-Preset choice: `word-cascade` staggers depth plus opacity across words; `fade-slide` rises plus fades; `mask-reveal` travels on `x` plus fades (true clipping masks belong to host CSS); `typewriter-timed` steps opacity per word with `linear` easing.
+Preset choice: `word-cascade` staggers depth plus opacity across words; `fade-slide` rises plus fades; `mask-reveal` is a true left-to-right reveal through a `clipRight` mask on each text leaf; `typewriter-timed` steps opacity per word with `linear` easing.
 
 ## Anti-Patterns
 

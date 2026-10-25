@@ -1,4 +1,4 @@
-import { Surface } from 'velora';
+import { Surface } from '@adityadeokar/velora';
 
 export default function Hook() {
   return (

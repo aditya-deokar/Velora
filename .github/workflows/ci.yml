@@ -1,0 +1,58 @@
+name: CI
+# Fast gates on every OS and supported Node; browser/export/installed-app proof on Linux.
+# Hardware timing (test:performance) and verify:release remain local maintainer gates.
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  fast:
+    name: fast (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ["22.12.0", "24"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run test:architecture
+      - run: npm run test:core
+      - run: npm run test:react
+      - run: npm run test:skills
+      - run: npm run test:release
+  browser:
+    name: browser, export and installed app (ubuntu, node 24)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run test:browser
+      - run: npm run test:launch
+      - run: npm run test:export
+      - run: npm run test:installed

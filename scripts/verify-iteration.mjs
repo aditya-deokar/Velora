@@ -21,10 +21,12 @@ export async function verifyIteration({page,host,origin,server,processes,waitFor
  // Replacing the fixture's module graph is bootstrap, not the HMR behavior under
  // test. Detach the previous app before replacing its provider/component exports.
  await page.goto('about:blank');
- const sceneSource=distance=>`import type {PreviewDefinitionInput} from 'velora';
+ // Host sources import whatever name this package publishes, matching the installed artifact.
+ const pkg=JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).name;
+ const sceneSource=distance=>`import type {PreviewDefinitionInput} from '${pkg}';
  export const definition:PreviewDefinitionInput={width:1400,height:980,scene:{camera:{perspective:1800,rotateY:-18},focus:{distance:${distance},fStop:2.8},nodes:[{id:'host'}]},motion:{durationMs:4000,tracks:[{target:{kind:'camera'},property:'x',keyframes:[{timeMs:0,value:-100},{timeMs:4000,value:100}]}]}};`;
  const shell=`import {App as Host,DashboardProvider} from './Host';
- import {Surface} from 'velora';import {ScenePreview} from 'velora/preview';import {definition} from './scene';
+ import {Surface} from '${pkg}';import {ScenePreview} from '${pkg}/preview';import {definition} from './scene';
  export {DashboardProvider};const content=<Surface id="host" style={{width:1100,height:850,left:150,top:60}}><Host/></Surface>;
  export function App(){return <ScenePreview title="Existing project" definition={definition} hot={import.meta.hot}>{content}</ScenePreview>}`;
  await writeSource('Host.tsx',originalApp);

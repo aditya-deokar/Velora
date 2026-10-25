@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
+import { VELORA_PACKAGE } from "../core/branding";
 import { fault } from "./errors";
 
 /** SOURCE OF TRUTH: scoped project effects.
@@ -326,7 +327,7 @@ export async function probeAudioFile(absolutePath: string, timeoutMs = 30_000): 
 }
 /** Read-only dependency resolution; hoisted and pnpm-linked packages are not mutation targets. */
 export async function readDependency(root:string,name:string,target="package.json"):Promise<string|undefined> {
-  if (!["react","react-dom","@webprodigies/velora","velora"].includes(name)) throw fault("invalid-input","Unknown runtime dependency.");
+  if (!["react","react-dom",VELORA_PACKAGE.name,...VELORA_PACKAGE.legacyNames].includes(name)) throw fault("invalid-input","Unknown runtime dependency.");
   relativeTarget(target);
   const candidates=createRequire(path.join(root,"package.json")).resolve.paths(name)??[];
   for(const modules of candidates) {

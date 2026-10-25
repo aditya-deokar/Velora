@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { VELORA_PACKAGE } from "./branding";
 
 /** SOURCE OF TRUTH: agent-first CLI contracts.
  * WHAT: machine-readable issue envelope, stable error catalog with hints, command index and doctor checks.
@@ -94,7 +95,7 @@ export const CLI_ERROR_CATALOG: Record<string, { hint: string; next: string[] }>
   ERR_SKILL_INVALID: { hint: "Fix the skill front-matter and required sections; run velora skills check for details.", next: ["velora skills check"] },
   ERR_SKILL_CONFLICT: { hint: "Preserve or move the differing file, then retry the install.", next: ["velora skills check --dir <path>"] },
   ERR_REACT_UNSUPPORTED: { hint: "Run npm install in the project root to install declared React 18.2+ or 19.x dependencies.", next: ["velora doctor --json"] },
-  ERR_TOOLKIT_MISSING: { hint: "Install the local Velora .tgz with npm install /path/to/velora.tgz, then run velora init.", next: ["velora doctor --json"] },
+  ERR_TOOLKIT_MISSING: { hint: `Install Velora with npm install ${VELORA_PACKAGE.name} (or a local .tgz build), then run velora init.`, next: ["velora doctor --json"] },
   ERR_INTERNAL: { hint: "Run velora doctor --json to diagnose; if the failure persists, report the command and its --json output.", next: ["velora doctor --json"] },
   // Legacy operation codes (kept stable; every one gains a hint here).
   "invalid-operation": { hint: "Run velora --help to list available operations.", next: ["velora --help"] },

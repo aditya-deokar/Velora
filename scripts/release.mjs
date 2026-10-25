@@ -11,8 +11,9 @@ import {NPM_SHELL} from './npm-cmd.mjs';
 // Tests run locally; GitHub only builds/publishes new versions from main.
 // WHERE: package scripts and .github/workflows/publish.yml; runtime policy stays in RESOURCES.
 export function validateIdentity(manifest, {repository, tag, publishing = false} = {}) {
-  // The public package is the unscoped `velora` (see README maintainer
-  // release); scoped names stay accepted for forks and renames.
+  // The public package is @adityadeokar/velora (src/core/branding.ts VELORA_PACKAGE;
+  // the unscoped registry name belongs to another publisher). Other scoped names
+  // and the earlier unscoped name stay accepted for forks and local builds.
   assert.match(manifest.name, /^(@[a-z0-9-]+\/[a-z0-9-]+|velora)$/, 'Release requires the public package name');
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/,'Release requires a stable numeric version');
   assert.notEqual(manifest.private, true);
@@ -36,7 +37,7 @@ export function validateRelease(manifest, files, options = {}) {
   assert.equal(new Set(names).size, names.length, 'Duplicate packed paths');
   for (const name of names) {
     assert.ok(!name.split('/').some(part => part === '..' || part.startsWith('.')), 'Hidden/traversal packed file: ' + name);
-    assert.ok(/^(package\.json|README\.md|LICENSE|dist\/(library|cli)\/.+\.(js|map|ts)|skills\/velora\/SKILL\.md|skills\/velora\/(REFERENCE|COMPATIBILITY)\.md|skills\/velora\/templates\/[^/]+\/[^/]+\.(json|tsx|jsx|md|srt|txt)|skills\/velora\/scripts\/[A-Za-z0-9-]+\.mjs|skills\/velora-[a-z0-9-]+\/SKILL\.md)$/.test(name),
+    assert.ok(/^(package\.json|README\.md|LICENSE|dist\/(library|cli)\/.+\.(js|map|ts)|schemas\/[a-z-]+\.schema\.json|skills\/velora\/SKILL\.md|skills\/velora\/(REFERENCE|COMPATIBILITY)\.md|skills\/velora\/templates\/[^/]+\/[^/]+\.(json|tsx|jsx|md|srt|txt)|skills\/velora\/scripts\/[A-Za-z0-9-]+\.mjs|skills\/velora-[a-z0-9-]+\/SKILL\.md)$/.test(name),
       'Unexpected packed file: ' + name);
   }
   const required = ['package.json','README.md','LICENSE',manifest.bin.velora.slice(2)];
