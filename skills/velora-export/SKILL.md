@@ -36,12 +36,29 @@ Use this skill after frame proofs pass and the request is an MP4. It chooses fps
 - `velora export --url http://127.0.0.1:5173/?velora-preview=1 --output clip.mp4 --json`: live-scene capture through the bridge.
 - `velora check --frames stills --json`: gates before calling video done.
 
-Flags: `--fps 30|60|120`, `--width` and `--height` even numbers 64 to 3840, `--parallel 1-4`, `--no-cache`, `--cache-dir <dir>`, `--url <origin>`, `--project <dir>`.
+Flags: `--fps 24|25|30|50|60|120`, `--width` and `--height` even numbers 64 to 3840, `--parallel 1-8`, `--no-cache`, `--cache-dir <dir>`, `--url <origin>`, `--project <dir>`.
+
+## Finishing: quality, formats and delivery
+
+| Need | Flags |
+|---|---|
+| Fast iteration | `--quality draft` (half-size capture, fast encode) |
+| Reviews (default) | `--quality standard` (x264 slow, CRF 18) |
+| Final master | `--quality master` (2x supersampled in linear light, CRF 14, 180-degree motion blur) |
+| Website background | `--codec vp9 --out hero.webm` (also render an MP4 fallback and `--poster MS`) |
+| README or docs | `--codec gif --out demo.gif [--gif-fps 15]`, or `--preset github-readme-gif` |
+| Editors compositing over footage | `--codec prores4444 --transparent --out ui.mov`, or `--codec vp9 --transparent --out ui.webm` |
+| Apple-friendly smaller files | `--codec hevc` |
+| Platform target | `--preset youtube-1080p` (also `youtube-shorts`, `x-landscape`, `x-square`, `linkedin`, `instagram-reel`, `instagram-feed-4x5`, `tiktok`, `website-hero`, `og-image`, `product-hunt-gallery`, `youtube-4k`); explicit flags win, and budget warnings arrive in `data.warnings` |
+| Several aspects in one run | `--aspects 9:16,1:1` writes `<out>-<w>x<h>.<ext>` beside the main render |
+
+Motion blur: `--motion-blur 180` is the cinematic default, 90 keeps UI text crisp, 270 to 360 feels dreamy, and whip pans benefit most. Add `--motion-samples N` (2 to 64, default 8). Frames that do not move are byte-identical to no blur. Preview one frame first with `velora shot --scene <id> --time MS --out blur.png --quality master --json`. All video output is BT.709: converted to limited range and tagged, so browsers show the preview's colors.
 
 ## Prerequisites
 
 - Validated composition with butt-joined segments and resolved assets.
-- Project-relative `.mp4` output without traversal; fresh filename.
+- Project-relative `.mp4`, `.webm`, `.mov` or `.gif` output matching `--codec`, without traversal; a fresh filename (Velora never overwrites the video, manifest or poster).
+- Optional codecs depend on the FFmpeg build: `velora doctor --json` lists them (`ERR_CODEC_UNAVAILABLE` otherwise).
 - FFmpeg on `PATH`; Chromium via Playwright; dev server running for non-gap timelines.
 
 ## Workflow
@@ -61,7 +78,7 @@ velora frames --composition teaser.composition.json --out stills --json
 velora check --video teaser.mp4 --manifest stills/manifest.json --json
 ```
 
-FPS and size choice: 30 for review, 60 for smooth camera travel, 120 only when requested; keep the composition canvas unless the request names another size.
+FPS and size choice: 24 for a cinematic cadence, 25/50 for PAL deliverables, 30 for review, 60 for smooth camera travel, 120 only when requested. Keep the composition canvas unless the request names another size or a `--preset`.
 
 ## Anti-Patterns
 
@@ -74,7 +91,10 @@ FPS and size choice: 30 for review, 60 for smooth camera travel, 120 only when r
 
 - `ERR_FFMPEG_MISSING`: install FFmpeg and ensure `ffmpeg` is on `PATH`.
 - `ERR_CHROMIUM_MISSING`: run `npm install playwright` plus browser install.
-- `ERR_FPS_UNSUPPORTED`: use `--fps 30`, `60`, or `120`.
+- `ERR_FPS_UNSUPPORTED`: use `--fps 24`, `25`, `30`, `50`, `60` or `120`.
+- `ERR_CODEC_UNAVAILABLE`: this FFmpeg build lacks the encoder; install a full build or use `--codec h264`.
+- `invalid-input` naming the container: rename the output to the codec's extension (`vp9` writes `.webm`, `prores4444` writes `.mov`, `gif` writes `.gif`).
+- `--transparent` refused: only `vp9` and `prores4444` carry alpha, and audio or captions need an opaque codec.
 - `ERR_OUTPUT_UNWRITABLE`: choose another project-relative `.mp4` path.
 - `ERR_SERVER_UNREACHABLE` or `ERR_CAPTURE_NO_BRIDGE`: start the dev server and open a capture-enabled scene.
 

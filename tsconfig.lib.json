@@ -16,6 +16,7 @@
     "src/index.ts",
     "src/core",
     "src/react",
+    "src/kit",
     "src/preview"
   ],
   "exclude": [

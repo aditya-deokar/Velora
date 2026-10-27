@@ -569,6 +569,20 @@ it("upgrades the prior TSX-only Vite glob without replacing host UI",async()=>{
  await put(root,adapter,text.replace("scene.json,tsx,jsx","scene.json,tsx"));
  success(await run(root));expect(await readFile(path.join(root,adapter),"utf8")).toBe(text);
 });
+it("upgrades the pre-studio adapter to the DEV-only composition and asset globs",async()=>{
+ const root=await fixture();success(await run(root));
+ const adapter="src/velora/ProjectPreview.tsx";
+ const text=await readFile(path.join(root,adapter),"utf8");
+ expect(text).toContain('const compositionModules = import.meta.env.DEV ? import.meta.glob("/*.composition.json") : undefined;');
+ expect(text).toMatch(/const assetUrls = import\.meta\.env\.DEV \? import\.meta\.glob\("\/\*\*\/\*\.\{mp3,[^"]*srt,vtt\}", \{ query: "\?url", import: "default", eager: true \}\) : undefined;/);
+ const previous=text.replace(/^const compositionModules.*\n^const assetUrls.*\n/m,"").replace(' | "compositionModules" | "assetUrls"',"")
+  .replace(" compositionModules={compositionModules} assetUrls={assetUrls as Record<string, string> | undefined}","");
+ expect(previous).not.toContain("composition");
+ for(const variant of [previous,previous.replace(`from "${VELORA_PACKAGE.preview}"`,'from "velora/preview"')]){
+  await put(root,adapter,variant);
+  success(await run(root));expect(await readFile(path.join(root,adapter),"utf8")).toBe(text);
+ }
+});
 
 describe("package identity upgrades", () => {
   const adapterPath = "src/velora/ProjectPreview.tsx";

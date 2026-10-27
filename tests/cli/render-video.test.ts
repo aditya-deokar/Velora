@@ -46,7 +46,7 @@ describe("render video mode", () => {
     const video = vi.fn().mockResolvedValue(videoOk);
     const human = await runCli(["render", "--composition", "t.composition.json", "--out", "t.mp4"], context, ex(), ex(), ex(), ex(), ex(), ex(), ex(), ex(), video);
     expect(human.code).toBe(0);
-    expect(human.stdout).toContain("t.mp4 (6 frames at 30 FPS, 128x96, seed 0, 2 cached)");
+    expect(human.stdout).toContain("t.mp4 (6 frames at 30 FPS, 128x96, h264 standard, seed 0, 2 cached)");
     const failure = vi.fn().mockResolvedValue({ success: false, issues: [{ code: "ERR_TIMELINE_OVERLAP", message: "Overlap." }] });
     const bad = await runCli(["render", "--composition", "t.composition.json", "--out", "t.mp4", "--json"], context, ex(), ex(), ex(), ex(), ex(), ex(), ex(), ex(), failure);
     expect(bad.code).toBe(1);

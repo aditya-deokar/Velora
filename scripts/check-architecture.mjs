@@ -39,7 +39,8 @@ const layers = {
   core: { local: ['core'], external: ['zod'] },
   runtime: { local: ['core', 'runtime'], external: ['zod'] },
   react: { local: ['core', 'runtime', 'react'], external: ['react', 'react-dom', 'react-error-boundary', 'zod'] },
-  preview: { local: ['core', 'react', 'preview'], external: ['react', 'react-dom'] },
+  kit: { local: ['core', 'react', 'kit'], external: ['react', 'react-dom'] },
+  preview: { local: ['core', 'react', 'kit', 'preview'], external: ['react', 'react-dom'] },
   commands: { local: ['core', 'commands', 'projectAdapter', 'projectErrors', 'services'], external: ['zod'] },
   projectAdapter: { local: ['core', 'projectAdapter', 'projectErrors'], external: ['typescript', 'zod'] },
   projectErrors: { local: ['projectErrors'], external: [] },
@@ -69,9 +70,9 @@ const layerOf = name => {
   if (/^src\/export\/commands\.[cm]?[jt]s$/.test(name)) return 'exportCommands';
   if (name.startsWith('src/export/')) return 'exportServices';
   if (name.startsWith('src/project/')) return 'projectAdapter';
-  return /^src\/(core|runtime|react|preview|cli)(?:\/|$)/.exec(name)?.[1];
+  return /^src\/(core|runtime|react|kit|preview|cli)(?:\/|$)/.exec(name)?.[1];
 };
-const browserLayers = new Set(['react', 'preview']);
+const browserLayers = new Set(['react', 'kit', 'preview']);
 const packageOf = name => name.startsWith('@') ? name.split('/').slice(0, 2).join('/') : name.split('/')[0];
 
 /** Returns actionable diagnostics; fixtures and the CLI use exactly the same rules. */

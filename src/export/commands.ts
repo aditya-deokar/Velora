@@ -3,7 +3,9 @@ import { RESOURCES } from "../core/resources";
 import { AUDIO_DRIFT_BUDGET_MS, SUPPORTED_AUDIO_CODECS, audioPlacement } from "../core/audio";
 import { resolveAssetId } from "../core/assets";
 import { formatSrt, parseCaptions } from "../core/captions";
-import { CaptureManifestSchema, RenderManifestSchema, type CheckRenderResult, type ExportVideoResult, type FrameRenderResult, type FramesRenderResult, type ShotRenderResult, type VideoRenderResult, type VisualCheck } from "../core/export";
+import { findDeliveryPreset, deliveryWarnings } from "../core/delivery";
+import { ASPECT_FRAMES } from "../core/shots";
+import { ALPHA_CODECS, CODEC_CONTAINERS, CaptureManifestSchema, RenderManifestSchema, resolveFinishing, shutterSamples, type ResolvedFinishing, type CheckRenderResult, type ExportVideoResult, type FrameRenderResult, type FramesRenderResult, type ShotRenderResult, type VideoRenderResult, type VisualCheck } from "../core/export";
 import { frameAt, localTime, segmentAt, timeAtFrame, timelineDuration, timelineFromComposition, validateTimeline, TimelineSchema, type Timeline, type TimelineSegment } from "../core/timeline";
 import { SceneRecipeSchema, SceneSnapshotSchema, type SceneCatalog } from "../core/recipes";
 import {executeRecipeCommand} from "../project/recipes";
@@ -12,6 +14,7 @@ import {checkCompositionFull} from "../project/commands";
 import { canonicalRoot, readText, readBytes } from "../project/services";
 import { fault } from "../project/errors";
 import * as services from "./services";
+import { composite } from "./compositor";
 
 /** SOURCE OF TRUTH: executeVideoExport, executeSceneSnapshot, executeFrameRender trusted operations.
  * WHAT: validate requests, local scope and capture state before publishing video.
@@ -25,29 +28,46 @@ export async function executeVideoExport(input: unknown, context: { root: string
     if (!parsed.success) return { success: false, issues: parsed.error.issues.map(i => ({ code: "invalid-export", message: `${i.path.join(".")}: ${i.message}` })) };
     services.validateTarget(parsed.data.output);
     const scope = await services.prepareScope(context.root, parsed.data.output);
-    session = await services.openCapture(parsed.data, context.signal);
+    const finishing = resolveFinishing(parsed.data, parsed.data);
+    await requireEncoder(finishing.codec);
+    session = await services.openCapture({ ...parsed.data, scale: finishing.supersample, transparent: finishing.transparent }, context.signal);
     const manifest = CaptureManifestSchema.safeParse(await session.manifest());
     if (!manifest.success) throw fault("invalid-capture", "Scene capture bridge must use version 1, the scene viewport selector and a duration between 0 and 120 seconds.");
     if(manifest.data.durationMs===0)throw fault("invalid-capture","Video export needs a scene with a nonzero duration. Static scenes support snapshots.");
     const frames = Math.ceil(manifest.data.durationMs * parsed.data.fps / 1000);
-    const data: { output: string; fps: number; frames: number; durationMs: number } & {
+    const data: { output: string; fps: number; frames: number; durationMs: number; codec: string; quality: string; poster?: string } & {
       audio?: { file: string; codec: string; driftMs: number; peakDb: number | null };
       captions?: { file: string; cues: number; burnIn: boolean };
-    } = { output: parsed.data.output, fps: parsed.data.fps, frames, durationMs: frames * 1000 / parsed.data.fps };
+    } = { output: parsed.data.output, fps: parsed.data.fps, frames, durationMs: frames * 1000 / parsed.data.fps, codec: finishing.codec, quality: finishing.quality };
+    // Every output frame goes through the shared finisher (motion blur, supersample downscale).
+    const durationMs = manifest.data.durationMs;
+    const produce: services.FrameProducer = async (_index, timeMs, shoot) => (await finishFrame(timeMs, parsed.data.fps, durationMs, finishing, shoot)).png;
+    const posterFrame = parsed.data.poster === undefined ? undefined : Math.min(frames - 1, frameAt(Math.min(parsed.data.poster, durationMs), parsed.data.fps));
+    let posterPng: Buffer | undefined;
+    const onFrame = (index: number, png: Buffer) => { if (index === posterFrame) posterPng = png; };
+    const options = { ...parsed.data, ...finishing };
+    const publishPoster = async () => {
+      if (!posterPng) return;
+      const poster = parsed.data.output.slice(0, parsed.data.output.lastIndexOf(".")) + ".poster.png";
+      await services.writeNewFile(await services.prepareFileOutput(context.root, poster), posterPng);
+      data.poster = poster;
+    };
     if (!parsed.data.audio && !parsed.data.captions) {
-      await session.encode(scope, parsed.data, manifest.data, frames);
+      await session.encode(scope, options, manifest.data, frames, produce, onFrame);
+      await publishPoster();
       return { success: true, data };
     }
     // Audio/caption post-pass: encode the silent master to a staged temp file,
     // then mix/burn in one FFmpeg pass and publish only the in-spec result.
     const staged = await services.stageTempVideo(scope);
     try {
-      await session.encode(staged.scope, parsed.data, manifest.data, frames);
+      await session.encode(staged.scope, options, manifest.data, frames, produce, onFrame);
       const post = await services.mixPostAudioCaptions(scope, staged.scope.output, {
         ...(parsed.data.audio ? { audio: parsed.data.audio } : {}),
         ...(parsed.data.captions ? { captions: parsed.data.captions } : {}),
       });
       Object.assign(data, post);
+      await publishPoster();
       return { success: true, data };
     } finally {
       await staged.cleanup();
@@ -98,13 +118,39 @@ export async function executeSceneSnapshot(input:unknown,context:{root:string;si
 export async function probeCapturePrerequisites(): Promise<{
   ffmpeg: { available: boolean; detail: string };
   chromium: { available: boolean; detail: string };
+  encoders?: Record<string, boolean>;
 }> {
   const [ffmpeg, chromium] = await Promise.all([services.probeFfmpeg(), services.probeChromium()]);
-  return { ffmpeg, chromium };
+  // Encoders are listed only once ffmpeg is known to run (no extra cold-start contention).
+  const encoders = ffmpeg.available ? await services.probeEncoders() : undefined;
+  return { ffmpeg, chromium, ...(encoders ? { encoders } : {}) };
 }
 
 // png is absent once a spill sink has taken the bytes (video renders stay bounded in memory).
-export type RenderedFrame = { frame: number; timeMs: number; sceneId: string; segmentId: string; png?: Buffer; sha: string; cached: boolean; clamped: boolean; renderMs: number };
+export type RenderedFrame = { frame: number; timeMs: number; sceneId: string; segmentId: string; png?: Buffer; sha: string; cached: boolean; clamped: boolean; renderMs: number; subFrames?: string[] };
+/**
+ * Finish one output frame from captured samples: the trailing-shutter sub-frames for motion blur
+ * (adaptive skip when every sample is identical, so static frames stay byte-identical to no blur)
+ * and the linear-light downscale of supersampled captures. Shared by render, export and shot.
+ */
+export async function finishFrame(timeMs: number, fps: number, endMs: number, finishing: Pick<ResolvedFinishing, "motionBlur" | "motionSamples" | "supersample">,
+  sample: (timeMs: number) => Promise<Buffer>): Promise<{ png: Buffer; subFrames?: string[] }> {
+  const times = shutterSamples(timeMs, fps, finishing.motionBlur, finishing.motionSamples, endMs);
+  const shots: Buffer[] = [];
+  for (const time of times) shots.push(await sample(time));
+  const shas = shots.map(services.sha256Hex);
+  const distinct = new Set(shas).size > 1;
+  const factor = finishing.supersample >= 2 ? Math.floor(finishing.supersample) : 1;
+  return { png: composite(distinct ? shots : [shots[0]], factor), ...(distinct ? { subFrames: shas } : {}) };
+}
+// Probe once per render: a missing encoder fails before any frame is captured.
+async function requireEncoder(codec: ResolvedFinishing["codec"]) {
+  if (codec === "h264") return;
+  const encoders = await services.probeEncoders();
+  if (encoders && !encoders[codec]) throw fault("ERR_CODEC_UNAVAILABLE", `This FFmpeg build has no ${services.CODEC_ENCODERS[codec]} encoder for --codec ${codec}.`);
+}
+// Output frame size for a capture scale: drafts encode from half-size frames (FFmpeg scales up).
+const capturedSize = (width: number, height: number, scale: number) => scale < 1 ? { width: Math.max(2, Math.round(width * scale / 2) * 2), height: Math.max(2, Math.round(height * scale / 2) * 2) } : { width, height };
 export type FrameWanted = { frame: number; timeMs: number };
 export type ProgressFn = (done: number, total: number) => void;
 export const DEFAULT_FRAME_CACHE = "node_modules/.cache/velora/frames";
@@ -119,8 +165,12 @@ async function renderTimelineFrames(options: {
   cacheDir: string | undefined; noCache: boolean; parallel: number;
   signal?: AbortSignal; onProgress?: ProgressFn;
   spill?: (frame: number, png: Buffer) => Promise<void>;
+  finishing?: ResolvedFinishing;
 }): Promise<Map<number, RenderedFrame>> {
   const { root, url, version, fps, width, height, seed, catalog, timeline, wanted, noCache, parallel, signal, onProgress, spill } = options;
+  const finishing = options.finishing ?? resolveFinishing({}, { width, height });
+  const variant = finishing.supersample !== 1 || finishing.transparent ? `scale=${finishing.supersample};alpha=${finishing.transparent ? 1 : 0}` : undefined;
+  const output = capturedSize(width, height, finishing.supersample);
   const cacheDir = options.cacheDir ?? DEFAULT_FRAME_CACHE;
   // Host edits change pixels without touching the binding; an unfingerprintable tree renders uncached.
   const hostSha = noCache ? undefined : await services.hostFingerprint(root);
@@ -147,7 +197,7 @@ async function renderTimelineFrames(options: {
       for (const item of group.frames) {
         if (signal?.aborted) throw fault("export-cancelled", "Render cancelled; no output was published.");
         const started = Date.now();
-        const png = services.voidPng(width, height);
+        const png = services.voidPng(output.width, output.height, finishing.transparent);
         await results.set(item.frame, { frame: item.frame, timeMs: item.timeMs, sceneId: "black-void", segmentId: "gap", png, sha: services.sha256Hex(png), cached: false, clamped: false, renderMs: Date.now() - started });
         tick();
       }
@@ -161,7 +211,7 @@ async function renderTimelineFrames(options: {
     if (recipeText === undefined || bindingText === undefined) throw fault("source-changed", "Scene source disappeared. Restore it and retry.");
     const opened = await executeRecipeCommand("open-scene", { sceneId: recipe.id, url, launch: false }, { root });
     if (!opened.success) throw fault("ERR_SCENE_INVALID", opened.issues.map((i) => i.message).join("\n"));
-    const session = await services.openCapture({ url: opened.data.url!, width, height }, signal);
+    const session = await services.openCapture({ url: opened.data.url!, width, height, scale: finishing.supersample, transparent: finishing.transparent }, signal);
     try {
       const bridge = CaptureManifestSchema.safeParse(await session.manifest());
       if (!bridge.success) throw fault("invalid-capture", "Scene capture bridge must use version 1, the scene viewport selector and a duration between 0 and 120 seconds.");
@@ -169,24 +219,21 @@ async function renderTimelineFrames(options: {
         if (signal?.aborted) throw fault("export-cancelled", "Render cancelled; no output was published.");
         const started = Date.now();
         const local = localTime(segment, item.timeMs);
-        const finish = (png: Buffer, sha: string, cached: boolean, clamped: boolean): RenderedFrame =>
-          ({ frame: item.frame, timeMs: item.timeMs, sceneId: recipe.id, segmentId: segment.id, png, sha, cached, clamped, renderMs: Date.now() - started });
-        if (caching) {
-          const key = services.frameCacheKey({ recipeSha: services.sha256Hex(recipeText), bindingSha: services.sha256Hex(bindingText), hostSha: hostSha!, timeMs: local, fps, width, height, seed, version });
-          const hit = await services.frameCacheLookup(root, cacheDir, key);
-          if (hit) {
-            await results.set(item.frame, finish(hit.png, hit.sha, true, false));
-            tick();
-            continue;
-          }
-        }
         const clamped = local > bridge.data.durationMs;
-        const png = services.decodePngDataUrl(await session.snapshot(clamped ? bridge.data.durationMs : local, bridge.data));
-        if (caching) {
-          const key = services.frameCacheKey({ recipeSha: services.sha256Hex(recipeText), bindingSha: services.sha256Hex(bindingText), hostSha: hostSha!, timeMs: local, fps, width, height, seed, version });
-          await services.frameCacheStore(root, cacheDir, key, png);
-        }
-        await results.set(item.frame, finish(png, services.sha256Hex(png), false, clamped));
+        // Every sample (one, or the shutter's sub-frames) is cached by its own local time.
+        let allCached = true;
+        const sample = async (time: number) => {
+          const key = caching ? services.frameCacheKey({ recipeSha: services.sha256Hex(recipeText), bindingSha: services.sha256Hex(bindingText), hostSha: hostSha!, timeMs: time, fps, width, height, seed, version, variant }) : "";
+          const hit = caching ? await services.frameCacheLookup(root, cacheDir, key) : undefined;
+          if (hit) return hit.png;
+          allCached = false;
+          const png = services.decodePngDataUrl(await session.snapshot(Math.min(time, bridge.data.durationMs), bridge.data));
+          if (caching) await services.frameCacheStore(root, cacheDir, key, png);
+          return png;
+        };
+        const finished = await finishFrame(local, fps, bridge.data.durationMs, finishing, sample);
+        await results.set(item.frame, { frame: item.frame, timeMs: item.timeMs, sceneId: recipe.id, segmentId: segment.id, png: finished.png,
+          sha: services.sha256Hex(finished.png), cached: caching && allCached, clamped, renderMs: Date.now() - started, ...(finished.subFrames ? { subFrames: finished.subFrames } : {}) });
         tick();
       }
     } finally {
@@ -301,9 +348,23 @@ export async function executeVideoRender(
     const full = await checkCompositionFull(root, parsed.data.composition);
     if (full.issues.length) return { success: false, issues: full.issues.map((i) => ({ code: i.code, path: i.path, message: i.message })) };
     const composition = full.composition!;
-    const fps = parsed.data.fps ?? composition.fps;
-    const width = parsed.data.width ?? composition.width;
-    const height = parsed.data.height ?? composition.height;
+    // A delivery preset supplies defaults; explicit flags win.
+    const target = parsed.data.preset === undefined ? undefined : findDeliveryPreset(parsed.data.preset);
+    if (parsed.data.preset !== undefined && !target) throw fault("invalid-input", `Unknown delivery preset "${parsed.data.preset}". List presets with velora guide --json (capabilities.delivery).`, "render.preset");
+    const fps = parsed.data.fps ?? (target && !(target.fps as number[]).includes(composition.fps) ? target.fps[0] : composition.fps);
+    const width = parsed.data.width ?? target?.width ?? composition.width;
+    const height = parsed.data.height ?? target?.height ?? composition.height;
+    const requested = { ...parsed.data, codec: parsed.data.codec ?? target?.codec, quality: parsed.data.quality ?? target?.quality, gifFps: parsed.data.gifFps ?? target?.gifFps };
+    const finishing = resolveFinishing(requested, { width, height });
+    const extension = parsed.data.out.slice(parsed.data.out.lastIndexOf(".")).toLowerCase();
+    if (target && !CODEC_CONTAINERS[finishing.codec].includes(extension))
+      throw fault("invalid-input", `Preset ${target.id} encodes ${finishing.codec}; name the output ${CODEC_CONTAINERS[finishing.codec][0]} or pass --codec.`, "render.out");
+    if (finishing.transparent && !ALPHA_CODECS.includes(finishing.codec))
+      throw fault("invalid-input", `--transparent needs an alpha codec (${ALPHA_CODECS.join(" or ")}); ${finishing.codec} has no alpha.`, "render.transparent");
+    if (composition.captions?.burnIn && finishing.codec !== "h264")
+      throw fault("invalid-input", "Burned-in captions re-encode H.264; render with --codec h264, or set captions.burnIn to false.", "render.composition");
+    const warnings: { code: string; message: string }[] = [];
+    await requireEncoder(finishing.codec);
     const timeline = TimelineSchema.parse({
       version: 1 as const, fps,
       durationMs: timelineDuration(composition.scenes),
@@ -314,7 +375,13 @@ export async function executeVideoRender(
     const total = Math.ceil((timeline.durationMs * fps) / 1000);
     if (total < 1) throw fault("ERR_FRAME_OUT_OF_RANGE", "The timeline spans less than one frame.", "render.composition");
     const scope = await services.prepareFileOutput(root, parsed.data.out);
-    const manifestPath = parsed.data.out.replace(/\.mp4$/i, "") + ".manifest.json";
+    const base = parsed.data.out.slice(0, -extension.length);
+    // MP4 keeps <name>.manifest.json; other containers keep their extension so variants never collide.
+    const manifestPath = (extension === ".mp4" ? base : parsed.data.out) + ".manifest.json";
+    // Refuse before rendering: a late manifest conflict must never leave a published video behind.
+    for (const target of [parsed.data.out, manifestPath, ...(parsed.data.poster !== undefined ? [base + ".poster.png"] : [])])
+      if (await services.fileSize(await services.resolveOutput(root, target)) !== undefined)
+        throw fault("output-exists", `Output ${target} already exists. Choose another filename.`, target);
     const sourceText = await readText(root, parsed.data.composition, 256_000);
     if (sourceText === undefined) throw fault("source-changed", "Composition source disappeared. Restore it and retry.");
     const wanted: FrameWanted[] = Array.from({ length: total }, (_, frame) => ({ frame, timeMs: timeAtFrame(frame, fps) }));
@@ -327,20 +394,25 @@ export async function executeVideoRender(
       root, url, version, fps, width, height, seed: composition.seed,
       catalog: full.catalog, timeline, wanted, cacheDir, noCache, parallel,
       signal: context.signal, onProgress: context.onProgress,
-      spill: (frame, png) => services.spillFrame(frameDir, frame, png),
+      spill: (frame, png) => services.spillFrame(frameDir, frame, png), finishing,
     });
     const ordered = wanted.map((w) => rendered.get(w.frame)!);
     const pngs = services.spilledFrames(frameDir, ordered.map((entry) => entry.frame));
     const finalAbs = await services.resolveOutput(root, parsed.data.out);
-    const needsMux = composition.audio.length > 0 || !!composition.captions;
+    const encode = { fps, width, height, cwd: root, signal: context.signal, codec: finishing.codec, quality: finishing.quality, transparent: finishing.transparent, gifFps: finishing.gifFps, x264: finishing.x264, crf: finishing.crf };
+    // GIF carries no audio or captions; say so instead of failing the render.
+    const silent = finishing.codec === "gif";
+    if (silent && (composition.audio.length || composition.captions))
+      warnings.push({ code: "WARN_GIF_SILENT", message: "GIF has no audio or caption track; they were left out of this render." });
+    const needsMux = !silent && (composition.audio.length > 0 || !!composition.captions);
     let ffmpegArgs: string[];
     let audioData: { tracks: { id: string; assetId: string; startMs: number }[]; driftMs: number } | undefined;
     let captionsData: { file?: string; cues: number; burnIn: boolean; windows: { startMs: number; endMs: number }[] } | undefined;
     if (!needsMux) {
-      ffmpegArgs = (await services.encodeFrameBuffers(pngs, finalAbs, { fps, width, height, cwd: root, signal: context.signal })).ffmpegArgs;
+      ffmpegArgs = (await services.encodeFrameBuffers(pngs, finalAbs, encode)).ffmpegArgs;
     } else {
-      const tmpVideo = `${tmpDir}/video.mp4`;
-      await services.encodeFrameBuffers(pngs, tmpVideo, { fps, width, height, cwd: root, signal: context.signal });
+      const tmpVideo = `${tmpDir}/video${extension}`;
+      await services.encodeFrameBuffers(pngs, tmpVideo, encode);
       const tracks = [];
       for (const track of composition.audio) {
         const resolved = resolveAssetId(full.assets, full.aliases, track.assetId);
@@ -389,21 +461,55 @@ export async function executeVideoRender(
       }
       if (composition.captions) captionsData = { file: composition.captions.file, cues, burnIn: composition.captions.burnIn, windows };
     }
+    // Poster: the finished frame nearest the requested time, written beside the video.
+    let poster: string | undefined;
+    if (parsed.data.poster !== undefined) {
+      poster = base + ".poster.png";
+      const index = Math.min(ordered.length - 1, frameAt(Math.min(parsed.data.poster, timeline.durationMs), fps));
+      await services.writeNewFile(await services.prepareFileOutput(root, poster), await pngs.read(index));
+    }
+    // Aspect variants re-capture the timeline at each frame size; the scene cover-fits the new frame.
+    const variants: { aspect: string; out: string; width: number; height: number }[] = [];
+    for (const aspect of parsed.data.aspects ?? []) {
+      const frame = ASPECT_FRAMES[aspect];
+      const scale = Math.min(1, 3840 / Math.max(frame.width, frame.height), Math.max(width, height) / Math.max(frame.width, frame.height));
+      const size = { width: Math.round(frame.width * scale / 2) * 2, height: Math.round(frame.height * scale / 2) * 2 };
+      if (size.width === width && size.height === height) continue;
+      const out = `${base}-${size.width}x${size.height}${extension}`;
+      const variantDir = `${tmpDir}/variant-${variants.length}`;
+      const variantFrames = await renderTimelineFrames({
+        root, url, version, fps, ...size, seed: composition.seed, catalog: full.catalog, timeline, wanted, cacheDir, noCache, parallel,
+        signal: context.signal, onProgress: context.onProgress, spill: (index, png) => services.spillFrame(variantDir, index, png),
+        finishing: resolveFinishing(requested, size),
+      });
+      await services.encodeFrameBuffers(services.spilledFrames(variantDir, wanted.map(w => variantFrames.get(w.frame)!.frame)), await services.resolveOutput(root, out), { ...encode, ...size });
+      variants.push({ aspect, out, ...size });
+    }
+    if (variants.length && composition.audio.length)
+      warnings.push({ code: "WARN_VARIANT_SILENT", message: "Aspect variants are encoded without the audio mix; mux audio into them in your editor or render each aspect with --width/--height." });
+    if (target) {
+      const bytes = await services.fileSize(finalAbs);
+      warnings.push(...deliveryWarnings(target, { width, height, fps, durationMs: timeline.durationMs, ...(bytes !== undefined ? { bytes } : {}) }));
+    }
     const manifest = RenderManifestSchema.parse({
       version: 1 as const, kind: "video" as const, compositionId: composition.id,
       compositionSha: services.sha256Hex(sourceText),
       seed: composition.seed, fps, width, height, durationMs: timeline.durationMs,
       segments: timeline.segments.map((s) => ({ id: s.id, recipe: s.recipe, startMs: s.startMs, durationMs: s.durationMs, frames: ordered.filter((e) => e.segmentId === s.id).length })),
-      frames: ordered.map((entry) => ({ frame: entry.frame, timeMs: entry.timeMs, sceneId: entry.sceneId, segmentId: entry.segmentId, sha: entry.sha, renderMs: entry.renderMs, ...(entry.cached ? { cached: true as const } : {}), ...(entry.clamped ? { clamped: true as const } : {}) })),
+      frames: ordered.map((entry) => ({ frame: entry.frame, timeMs: entry.timeMs, sceneId: entry.sceneId, segmentId: entry.segmentId, sha: entry.sha, renderMs: entry.renderMs, ...(entry.cached ? { cached: true as const } : {}), ...(entry.clamped ? { clamped: true as const } : {}), ...(entry.subFrames ? { subFrames: entry.subFrames } : {}) })),
       ...(audioData ? { audio: audioData } : {}),
       ...(captionsData ? { captions: captionsData } : {}),
       ffmpegArgs, veloraVersion: version,
+      quality: finishing.quality, codec: finishing.codec, container: extension.slice(1), colorimetry: finishing.codec === "gif" ? undefined : "bt709",
+      ...(finishing.motionBlur > 0 ? { motionBlur: { shutter: finishing.motionBlur, samples: finishing.motionSamples } } : {}),
+      supersample: finishing.supersample, transparent: finishing.transparent, workers: parallel, ...(poster ? { poster } : {}),
       checks: [{ id: "bridge-present", pass: true, detail: "Segments captured through the capture bridge; gaps render black void." }],
       createdAt: new Date().toISOString(),
     });
     await services.writeNewTextFile(await services.prepareFileOutput(root, manifestPath), JSON.stringify(manifest, null, 2) + "\n");
     const cachedFrames = ordered.filter((e) => e.cached).length;
-    return { success: true, data: { out: parsed.data.out, manifest: manifestPath, frames: total, durationMs: timeline.durationMs, fps, width, height, seed: composition.seed, cachedFrames, renderedFrames: total - cachedFrames } };
+    return { success: true, data: { out: parsed.data.out, manifest: manifestPath, frames: total, durationMs: timeline.durationMs, fps, width, height, seed: composition.seed, cachedFrames, renderedFrames: total - cachedFrames,
+      codec: finishing.codec, quality: finishing.quality, ...(poster ? { poster } : {}), ...(variants.length ? { variants } : {}), ...(warnings.length ? { warnings } : {}) } };
   } catch (error) {
     const known = error as { code?: string; message?: string; target?: string };
     return { success: false, issues: [{ code: known.code ?? "export-failed", message: known.code && known.message ? known.message : "Video render failed. Check the composition, scene server and retry.", ...(typeof known.target === "string" ? { path: known.target } : {}) }] };
@@ -493,8 +599,14 @@ export async function executeFramesRender(
       createdAt: new Date().toISOString(),
     });
     await services.writeNewTextFile(await services.prepareFileOutput(root, manifestPath), JSON.stringify(manifest, null, 2) + "\n");
+    let contactSheet: string | undefined;
+    if (parsed.data.contactSheet) {
+      contactSheet = `${parsed.data.out}/contact-sheet.png`;
+      const sheet = services.contactSheet(frames.map(({ entry }) => entry.png!), parsed.data.columns ? { columns: parsed.data.columns } : {});
+      await services.writeNewFile(await services.prepareFileOutput(root, contactSheet), sheet);
+    }
     return { success: true, data: { out: parsed.data.out, manifest: manifestPath, total: frames.length,
-      frames: frames.map(({ entry, file }) => ({ frame: entry.frame, file, sha: entry.sha })) } };
+      frames: frames.map(({ entry, file }) => ({ frame: entry.frame, file, sha: entry.sha })), ...(contactSheet ? { contactSheet } : {}) } };
   } catch (error) {
     const known = error as { code?: string; message?: string; target?: string };
     return { success: false, issues: [{ code: known.code ?? "export-failed", message: known.code && known.message ? known.message : "Frame extraction failed. Check the composition, scene server and retry.", ...(typeof known.target === "string" ? { path: known.target } : {}) }] };
@@ -522,11 +634,16 @@ export async function executeShotRender(
     if (!opened.success) return { success: false, issues: opened.issues.map((i) => ({ code: "ERR_SCENE_INVALID", path: i.path, message: i.message })) };
     const selected = opened.data.selected!;
     const scope = await services.prepareFileOutput(root, parsed.data.out);
-    session = await services.openCapture({ url: opened.data.url!, width: selected.definition.width, height: selected.definition.height }, context.signal);
+    const size = { width: selected.definition.width, height: selected.definition.height };
+    // Still preview of export finishing: the same finisher as render and export.
+    const finishing = resolveFinishing(parsed.data, size);
+    session = await services.openCapture({ url: opened.data.url!, ...size, scale: finishing.supersample, transparent: finishing.transparent }, context.signal);
     const bridge = CaptureManifestSchema.safeParse(await session.manifest());
     if (!bridge.success) throw fault("invalid-capture", "Scene capture bridge must use version 1, the scene viewport selector and a duration between 0 and 120 seconds.");
     const clamped = parsed.data.timeMs > bridge.data.durationMs;
-    const png = services.decodePngDataUrl(await session.snapshot(clamped ? bridge.data.durationMs : parsed.data.timeMs, bridge.data));
+    const capture = session;
+    const { png } = await finishFrame(clamped ? bridge.data.durationMs : parsed.data.timeMs, parsed.data.fps ?? 60, bridge.data.durationMs, finishing,
+      async time => services.decodePngDataUrl(await capture.snapshot(time, bridge.data)));
     const sha = services.sha256Hex(png);
     await services.writeNewFile(scope, png);
     return { success: true, data: { out: parsed.data.out, sceneId: selected.id, timeMs: parsed.data.timeMs, sha, ...(clamped ? { clamped: true as const } : {}) } };

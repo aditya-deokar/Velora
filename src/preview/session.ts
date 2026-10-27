@@ -8,6 +8,7 @@ import { RESOURCES, motionDuration, type PreviewDefinition, type PreviewDefiniti
  * Timeline mode is additive: an optional {durationMs, boundaries} descriptor only
  * rescales the single cursor's clamp span and adds segment-boundary jumps. No
  * second clock, no second capture bridge; undefined keeps byte-identical behavior.
+ * Shuttle rate (J/K/L) scales how fast that one cursor advances; negative plays backwards.
  */
 export type PreviewTimeline = { durationMs: number; boundaries: number[] };
 export function usePreviewSession(input: PreviewDefinitionInput | undefined, revision: unknown, timeline?: PreviewTimeline) {
@@ -16,6 +17,7 @@ export function usePreviewSession(input: PreviewDefinitionInput | undefined, rev
   const definition = result?.valid ? result.definition : input === undefined ? null : accepted;
   const [timeMs, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [rate, setRateState] = useState(1);
   const [renderIssues, setRenderIssues] = useState<SceneIssue[]>([]);
   const sceneDurationMs = definition?.motion ? motionDuration(definition.motion) : 0;
   const durationMs = timeline?.durationMs ?? sceneDurationMs;
@@ -40,18 +42,18 @@ export function usePreviewSession(input: PreviewDefinitionInput | undefined, rev
   useEffect(() => { if (!valid) pause(); }, [valid, pause]);
   useEffect(() => {
     if (!playing || !valid || !durationMs) return;
-    const started = performance.now() - cursor.current;
+    const started = performance.now() - cursor.current / rate;
     let frame = 0;
     const tick = (now: number) => {
-      const elapsed = now - started;
-      const next = loop ? elapsed % durationMs : Math.min(durationMs, elapsed);
+      const elapsed = (now - started) * rate;
+      const next = loop ? ((elapsed % durationMs) + durationMs) % durationMs : Math.max(0, Math.min(durationMs, elapsed));
       setTime(next);
-      if (loop || next < durationMs) frame = requestAnimationFrame(tick);
+      if (loop || (rate > 0 ? next < durationMs : next > 0)) frame = requestAnimationFrame(tick);
       else setPlaying(false);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, valid, durationMs, loop]);
+  }, [playing, valid, durationMs, loop, rate]);
   useEffect(() => {
     const media = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
     const changed = () => { if (media?.matches) pause(); };
@@ -62,9 +64,17 @@ export function usePreviewSession(input: PreviewDefinitionInput | undefined, rev
   }, [pause]);
   const toggle = () => {
     if (!valid || !durationMs) return;
-    if (cursor.current >= durationMs) setTime(0);
+    if (rate < 0) setRateState(1);
+    else if (cursor.current >= durationMs) setTime(0);
     setPlaying(value => !value);
   };
+  // Shuttle: start playing at a signed rate on the same cursor (0 pauses).
+  const shuttle = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return;
+    if (value === 0) { setPlaying(false); return; }
+    setRateState(value);
+    if (valid && durationMs) setPlaying(true);
+  }, [valid, durationMs]);
   // Segment-boundary jumps over the single cursor. Without a timeline both
   // are undefined and every other behavior is unchanged.
   const boundaries = useMemo(() => [...(timeline?.boundaries ?? [])].sort((a, b) => a - b), [timeline]);
@@ -78,5 +88,5 @@ export function usePreviewSession(input: PreviewDefinitionInput | undefined, rev
     const edge = [...boundaries].reverse().find((boundary) => boundary < cursor.current);
     if (edge !== undefined) seek(edge);
   }, [timeline, valid, boundaries, seek]);
-  return {definition, timeMs, durationMs, playing, valid, issues, seek, pause, toggle, onDiagnostics: setRenderIssues, ...(timeline ? {seekNext, seekPrev, boundaries} : {})};
+  return {definition, timeMs, durationMs, playing, rate, valid, issues, seek, pause, toggle, shuttle, onDiagnostics: setRenderIssues, ...(timeline ? {seekNext, seekPrev, boundaries} : {})};
 }

@@ -7,7 +7,8 @@ import { MotionSchema, MotionTrackSchema, MotionKeyframeSchema, SURFACE_VISUAL_P
 import { EASING_NAMES, easingOvershoots } from "./easing";
 import { perspectiveForFocalLength } from "./lens";
 import { CascadeSchema } from "./choreography";
-import { SUPPORTED_EXPORT_FPS, CaptureManifestSchema } from "./export";
+import { SUPPORTED_EXPORT_FPS, CaptureManifestSchema, QUALITY_PRESETS, CODEC_CONTAINERS, ALPHA_CODECS } from "./export";
+import { DELIVERY_PRESETS } from "./delivery";
 
 /** SOURCE OF TRUTH: getAuthoringGuide, reviewAuthoring, AuthoringGuideSchema.
  * WHAT: versioned cinematic concepts, actual capabilities and non-prescriptive review.
@@ -92,7 +93,7 @@ const concepts: z.infer<typeof ConceptSchema>[] = [
  meaning:"A scene is finished when its real rendered behavior communicates the intended reveal, not merely when its configuration validates.",
  mechanism:"Use ScenePreview from "+VELORA_PACKAGE.preview+" for the shared product interface. It owns paused playback, seek/replay, source validation/recovery, viewport fitting and the capture bridge, using the canonical Scene and motion clock. Supply stable Surface children and a definition containing scene metadata, optional motion, width and height. Pass hot={import.meta.hot} in Vite for update/error/reconnection feedback. For a deliberately custom low-level integration, Scene, motionDuration, SceneErrorBoundary and useSceneCapture remain available; do not register a second capture bridge inside ScenePreview. velora export samples the same live scene at exact frame times using FFmpeg; FPS controls cadence, not speed.",
  choices:"Preview first and revise code through the existing development server. Export only when requested, choosing the requested output cadence. The installed CLI does not need an AI login and does not infer a page's private data. Existing coding agents inspect the host project and use their own credentials/subscription tooling.",
- pitfalls:"Do not assume an agent will discover guidance without being directed to it: start with velora guide. reviewAuthoring validates the supplied scene/motion metadata and returns advisory checks, not a visual quality score or proof of actual DOM registration. No builder, template loader or autonomous AI service is provided here.",
+ pitfalls:"Do not assume an agent will discover guidance without being directed to it: start with velora guide. reviewAuthoring validates the supplied scene/motion metadata and returns advisory checks, not a visual quality score or proof of actual DOM registration. No visual builder or autonomous AI service is provided; templates only scaffold editable source.",
  verify:"Run host types/build, inspect Scene diagnostics and actual registered IDs, scrub several frames, test interaction/reduced motion/mobile and measure playback. Register capture before exporting; use a fresh relative MP4 output path. Compare exported frames with preview and confirm duration/cadence. Record unresolved limits honestly."},
 ];
 export function getAuthoringGuide(input?: { cliVersion?: string }): AuthoringGuide {
@@ -107,6 +108,7 @@ export function getAuthoringGuide(input?: { cliVersion?: string }): AuthoringGui
     concepts,
     workflow:[
       "Start with the project-root VELORA.md handoff created by npx velora init. Read npx velora guide --json for this installed version, then inspect the requested page, original components, providers, styles and existing app entry. Do not start by copying a demo.",
+      "If the request matches a known shot, start from a certified template: run velora templates ls --json, then velora new scene --template <id> --id <slug> with --route /path (zero code) or --component path#Export (real subtree). The scaffolded recipe and binding are ordinary files to refine below; vary templates across scenes rather than repeating one.",
       "Choose a shot family and layout relationship: surface travel, plating, micro detail or floating foreground, or a deliberate variation. State the near edge/corner, subject, camera distance, one travel axis, focus region and visible depth references. Choose camera framing before object animation.",
       "Approve the opening still visually before adding motion: strong near/far perspective, intentional close crop, identifiable detail and visible progressive focus in black void. Reject a small flat overview when the request calls for a dramatic shot. Reference images establish composition cues; motion direction comes from the brief, not a still image.",
       "Compose real components as stable Surface children of ScenePreview from "+VELORA_PACKAGE.preview+", using canonical motion helpers and matching scene node metadata. Keep the normal app available. Use an authored scene route without velora-preview=1: that query activates the separate ProjectPreview bootstrap around the whole app. Do not nest the two previews. For automatic discovery instead use src/velora/scenes/<id>.scene.json plus matching <id>.tsx: the library owns ScenePreview around the selected component, so that component returns Surface content, not another preview shell.",
@@ -143,8 +145,11 @@ export default function PageSurvey() {
       easings:{names:[...EASING_NAMES],cubicBezier:"{cubicBezier:[x1,y1,x2,y2]} with x in 0..1",spring:"{spring:{stiffness?:170,damping?:26,mass?:1}}",steps:"{steps:n,jump?:'end'|'start'}"},
       trackOptions:{interpolation:["segments","smooth"],ease:"smooth tracks only: one easing across the whole track",noise:"{amplitude,frequency?:0.5,octaves?:2,seed?:0} on position, rotation and channel tracks"},
       surfaceVisuals:[...SURFACE_VISUAL_PROPERTIES],
+      templates:{list:"velora templates ls --json",show:"velora templates show --id <id> --json",scaffold:"velora new scene --template <id> --id <slug> [--route /path | --component path#Export] [--set key=value] [--aspect 16:9|21:9|1:1|4:5|9:16]",reel:"velora new video --blueprint <id> --id <slug> [--route /path | --component path#Export]",kit:"@adityadeokar/velora/kit exports RouteFrame, ScrollFrame and SlotPlaceholder for bindings."},
       lenses:[24,35,50,85,135].map(mm=>({mm,perspectiveAt1080:perspectiveForFocalLength(mm,1080),perspectiveAt980:perspectiveForFocalLength(mm,980)})),
       exportFps:SUPPORTED_EXPORT_FPS,
+      finishing:{quality:QUALITY_PRESETS,codecs:CODEC_CONTAINERS,alpha:ALPHA_CODECS,motionBlur:"--motion-blur DEG (180 cinematic, 90 crisp UI text, 270-360 dreamy) [--motion-samples 2-64]; averaged in linear light; static frames stay byte-identical",colorimetry:"BT.709 limited range, tagged",posters:"--poster MS writes <out>.poster.png",preview:"velora shot --quality master --motion-blur 180 previews finishing on one frame"},
+      delivery:DELIVERY_PRESETS.map(preset=>({id:preset.id,title:preset.title,size:`${preset.width}x${preset.height}`,fps:preset.fps,codec:preset.codec,lastVerified:preset.lastVerified})),
       api:{
         hostIntegration:{
           contract:"Framework-independent React DOM 18.2+ / 19. Import ProjectPreview from "+VELORA_PACKAGE.preview+", supply projectId, enabled (the host development flag), optional active (route-based opt-in), sceneModules (path -> async module loader), and original children. No Vite, Next, Node or Electron global is required by this React contract. ScenePreview/Scene/Surface work directly in any compatible React DOM renderer.",

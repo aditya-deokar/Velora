@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { SUPPORTED_EXPORT_FPS, ExportFrameRateSchema, type PreviewDefinitionInput } from "../core";
+import { SUPPORTED_EXPORT_FPS, ExportFrameRateSchema, QualityPresetSchema, VideoCodecSchema, CODEC_CONTAINERS, type PreviewDefinitionInput, type QualityPreset, type VideoCodec } from "../core";
 import { Scene, SceneErrorBoundary, useSceneCapture } from "../react";
 import { usePreviewSession } from "./session";
 import { usePreviewConnection, type PreviewHot } from "./connection";
 import { BrandAttribution } from "./BrandAttribution";
 import { GettingStarted } from "./GettingStarted";
 import { previewTheme } from "./theme";
+import { OverlayMenu, StudioOverlays, useOverlays } from "./overlays";
+import { useTransportKeys } from "./transport";
 
 /** SOURCE OF TRUTH: ScenePreview.
  * WHAT: the product's shared browser viewport, playback, source recovery and export entry.
@@ -16,6 +18,7 @@ import { previewTheme } from "./theme";
  * data-velora-preview-chrome marks overlay pixels for the export service to hide in its page.
  * Export opens upward in the scrollable overlay; no viewport space is reserved for controls.
  * Keep children referentially stable during playback. No clone, snapshot or host CSS reset.
+ * Guides (overlays) and keyboard transport are preview-only; aside hosts studio panels outside capture.
  */
 export type ScenePreviewProps = {
   definition?: PreviewDefinitionInput;
@@ -29,6 +32,12 @@ export type ScenePreviewProps = {
   /** Optional timeline descriptor: rescales the single cursor's span and adds
    * segment-boundary jumps. No second clock; undefined keeps scene behavior. */
   timeline?: { durationMs: number; boundaries: number[] };
+  /** Frame grid for arrow-key stepping (default 60). */
+  fps?: number;
+  /** Export frame size for the copied command (quick shots pass their aspect's frame). */
+  exportSize?: { width: number; height: number };
+  /** Studio panel rendered beside the viewport, outside capture (chrome-marked by its owner). */
+  aside?: ReactNode;
 };
 const timeLabel = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2,"0")}`;
 function Glyph({kind}: {kind: "play" | "pause" | "restart" | "export"}) {
@@ -42,7 +51,7 @@ function Capture({durationMs, seek}: {durationMs: number; seek: (ms: number) => 
   useSceneCapture({durationMs, seek});
   return null;
 }
-function ExportMenu({disabled, panelHost}: {disabled: boolean; panelHost: HTMLDivElement | null}) {
+function ExportMenu({disabled, panelHost, size}: {disabled: boolean; panelHost: HTMLDivElement | null; size?: {width: number; height: number}}) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   useEffect(() => {
@@ -51,11 +60,15 @@ function ExportMenu({disabled, panelHost}: {disabled: boolean; panelHost: HTMLDi
   }, [disabled, open, panelHost]);
   const details = useRef<HTMLDetailsElement>(null);
   const [fps, setFps] = useState(60);
+  const [quality, setQuality] = useState<QualityPreset>("standard");
+  const [codec, setCodec] = useState<VideoCodec>("h264");
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   // Shell quoting is presentation only; the CLI owns request validation and file effects.
   const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
-  const command = `npx velora export --url ${quote(typeof location === "undefined" ? "http://localhost:5173" : location.href)} --output scene-${fps}.mp4 --fps ${fps}`;
+  // Defaults stay out of the command so the common case reads exactly as before.
+  const command = `npx velora export --url ${quote(typeof location === "undefined" ? "http://localhost:5173" : location.href)} --output scene-${fps}${CODEC_CONTAINERS[codec][0]} --fps ${fps}${size ? ` --width ${size.width} --height ${size.height}` : ""}`
+    + (quality !== "standard" ? ` --quality ${quality}` : "") + (codec !== "h264" ? ` --codec ${codec}` : "");
   return disabled ? <button className="velora-control" disabled><Glyph kind="export"/>Export</button> :
     <details className="velora-export" ref={details} onToggle={event => setOpen(event.currentTarget.open)}><summary className="velora-control velora-primary" aria-controls={panelId}><Glyph kind="export"/>Export</summary>
       {open && panelHost && createPortal(<div id={panelId} role="region" aria-label="Export your scene" className="velora-export-panel velora-chrome" onKeyDown={event => {
@@ -68,6 +81,13 @@ function ExportMenu({disabled, panelHost}: {disabled: boolean; panelHost: HTMLDi
         <p>Run this in your project to save an MP4. Use a new filename for each export.</p>
         <label>Frame rate<select aria-label="Export frame rate" value={fps} onChange={event => {setFps(ExportFrameRateSchema.parse(Number(event.target.value)));setCopied(false);}}>
           {SUPPORTED_EXPORT_FPS.map(value => <option key={value} value={value}>{value} fps</option>)}
+        </select></label>
+        <label>Quality<select aria-label="Export quality" value={quality} onChange={event => {setQuality(QualityPresetSchema.parse(event.target.value));setCopied(false);}}>
+          <option value="draft">Draft (fast)</option><option value="standard">Standard</option><option value="master">Master (2x, motion blur)</option>
+        </select></label>
+        <label>Format<select aria-label="Export format" value={codec} onChange={event => {setCodec(VideoCodecSchema.parse(event.target.value));setCopied(false);}}>
+          <option value="h264">MP4 (H.264)</option><option value="hevc">MP4 (HEVC)</option><option value="vp9">WebM (VP9)</option>
+          <option value="av1">MP4 (AV1)</option><option value="prores4444">MOV (ProRes 4444)</option><option value="gif">GIF</option>
         </select></label><code>{command}</code>
         <button className="velora-control velora-primary" onClick={async () => {
           try { await navigator.clipboard.writeText(command);setCopied(true);setCopyError(false); }
@@ -78,8 +98,10 @@ function ExportMenu({disabled, panelHost}: {disabled: boolean; panelHost: HTMLDi
     </details>;
 }
 
-export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, revision, hot, timeline}: ScenePreviewProps) {
+export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, revision, hot, timeline, fps = 60, exportSize, aside}: ScenePreviewProps) {
   const session = usePreviewSession(input, revision, timeline);
+  const [overlays, setOverlays] = useOverlays();
+  const frame = useRef<HTMLDivElement>(null);
   const connection = usePreviewConnection(hot, session.pause);
   const [renderError, setRenderError] = useState("");
   const [size, setSize] = useState({width: 0, height: 0});
@@ -99,6 +121,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
   }, [viewport]);
   const definition = session.definition;
   const blocked = !session.valid || !connection.connected || !!connection.error || !!renderError;
+  useTransportKeys(session, fps, !blocked);
   const captureSeek = useCallback((ms: number) => {
     if (blocked) throw new Error("Correct the scene before exporting.");
     session.seek(ms);
@@ -133,11 +156,12 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
             <div className="velora-canvas" data-velora-capture="scene" data-velora-valid={blocked ? "false" : "true"}
               style={{width: "100%", height: "100%"}}>
               {/* One aspect-preserving cover frame fills preview and capture; overflow is cropped, never stretched. */}
-              <div style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
+              <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
                 <Scene camera={definition.scene.camera} focus={definition.scene.focus} motion={definition.motion}
                   timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}}>
                   {children}
                 </Scene>
+                <StudioOverlays width={definition.width} height={definition.height} state={overlays} root={frame} timeMs={session.timeMs}/>
               </div>
               <Capture durationMs={session.durationMs} seek={captureSeek}/>
             </div>, viewport)}
@@ -151,7 +175,8 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
             }}>{onBack ? "Back to scenes" : "Back to app"}</a> : onBack && <button className="velora-control" onClick={onBack}>Back to scenes</button>}
             <h1 className="velora-title">{title}</h1>
           </div>
-          <ExportMenu disabled={blocked || !session.durationMs} panelHost={exportPanel}/>
+          <div className="velora-header-tools"><OverlayMenu state={overlays} onChange={setOverlays}/>
+            <ExportMenu disabled={blocked || !session.durationMs} panelHost={exportPanel} size={exportSize}/></div>
         </div>
         {!definition && <GettingStarted/>}
         <div className="velora-dock">
@@ -168,5 +193,6 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
         <div className="velora-preview-meta"><span className="velora-status" role="status"><span className="velora-status-dot"/>{stateText}</span><BrandAttribution/></div>
       </div>
     </footer>
+    {aside}
   </main>;
 }

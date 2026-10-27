@@ -13,6 +13,8 @@ commands:
 - load
 related-skills:
 - velora
+- velora-templates
+- velora-cinematography
 - velora-composition
 - velora-render
 not-for: Multi-scene composition files, audio mixes, caption files, or MP4 encoding; use velora-composition, velora-audio, or velora-export for those.

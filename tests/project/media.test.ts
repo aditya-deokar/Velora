@@ -123,7 +123,7 @@ describe("validate folding", () => {
     ["non-audio asset", { audio: [{ id: "m", assetId: "cover", startMs: 0 }] }, "ERR_ASSET_UNSUPPORTED"],
     ["overlapping cues", { captions: { file: "overlap.srt" } }, "ERR_CAPTION_OVERLAP"],
     ["ghost recipe", { scenes: [{ id: "s1", recipe: "ghost", startMs: 0, durationMs: 100 }] }, "ERR_SCENE_NOT_FOUND"],
-    ["bad fps", { fps: 24 }, "ERR_COMPOSITION_INVALID"],
+    ["bad fps", { fps: 23 }, "ERR_COMPOSITION_INVALID"],
   ])("validate fails closed on %s", async (_label, patch, code) => {
     await initialized();
     await put("assets/cover.png", tinyPng);

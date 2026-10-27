@@ -83,6 +83,16 @@ export async function scanDirectory(root: string, target: string, maxEntries: nu
   }
   return entries.sort();
 }
+// Regular files directly in the project root whose names end with suffix (no symlinks, bounded).
+export async function listRootFiles(root: string, suffix: string, maxFiles = 64): Promise<string[]> {
+  const names: string[] = [];
+  for await (const entry of await opendir(root)) {
+    if (!entry.isFile() || !entry.name.endsWith(suffix) || entry.name.startsWith(".")) continue;
+    names.push(entry.name);
+    if (names.length >= maxFiles) break;
+  }
+  return names.sort();
+}
 export async function isRegularFile(root: string, target: string): Promise<boolean> {
   const filename = await scopedPath(root, target);
   try { return (await lstat(filename)).isFile(); }

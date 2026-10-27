@@ -36,6 +36,13 @@ export const SceneRecipeSchema = z.strictObject({
   id: SceneRecipeIdSchema,
   title: z.string().trim().min(1),
   description: z.string().optional(),
+  // Provenance from velora new scene: which template and params produced this recipe (re-scaffold or compare).
+  template: z.strictObject({
+    id: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    version: z.number().int().positive(),
+    aspect: z.enum(["16:9", "21:9", "1:1", "4:5", "9:16"]),
+    params: z.record(z.string(), z.union([z.string(), z.number(), z.strictObject({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })])),
+  }).optional(),
   definition: PreviewDefinitionSchema,
   snapshot:SceneSnapshotSchema.optional(),
 });

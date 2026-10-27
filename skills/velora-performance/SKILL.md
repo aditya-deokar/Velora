@@ -61,6 +61,7 @@ Expected: raising `--budget-ms` is a measurement change, not a fix; real fixes l
 ## Anti-Patterns
 
 - Promising 60 FPS everywhere; report device evidence instead.
+- Iterating at `--quality master`: it captures 2x frames and up to 8 shutter samples each (minutes for seconds of video). Iterate with `--quality draft`, prove finishing on stills with `velora shot --quality master`, and render the master once.
 - Adding layers to fix slowness; fewer filtered surfaces render faster.
 - Rerendering the whole host subtree on every clock tick.
 - Flattening 3D with filters or opacity on grouping ancestors.

@@ -26,7 +26,7 @@ describe("live MP4 export", () => {
   it.each([30,120])("encodes real changing scene frames at %i FPS", async fps => {
     const output = `clip-${fps}.mp4`;
     const result = await run({fps,output});
-    expect(result).toEqual({success:true,data:{output,fps,frames:fps/10,durationMs:100}});
+    expect(result).toEqual({success:true,data:{output,fps,frames:fps/10,durationMs:100,codec:"h264",quality:"standard"}});
     const filename = path.join(root,output);
     const probe = JSON.parse(execFileSync("ffprobe",["-v","error","-show_streams","-of","json",filename],{encoding:"utf8"})).streams[0];
     expect(probe.codec_name).toBe("h264"); expect(probe.pix_fmt).toBe("yuv420p");
@@ -42,7 +42,7 @@ describe("live MP4 export", () => {
   },30_000);
   it("rejects invalid URLs, rates, dimensions and escaped/protected paths before capture", async () => {
     const count=requests;
-    for (const input of [{url:"https://example.com"},{url:"http://user:pass@localhost"},{fps:24},{width:127},{output:"../escape.mp4"},{output:".git/clip.mp4"},{output:"/tmp/clip.mp4"}]) expect((await run(input)).success).toBe(false);
+    for (const input of [{url:"https://example.com"},{url:"http://user:pass@localhost"},{fps:23},{width:127},{output:"clip.avi"},{codec:"vp9"},{transparent:true},{output:"../escape.mp4"},{output:".git/clip.mp4"},{output:"/tmp/clip.mp4"}]) expect((await run(input)).success).toBe(false);
     expect(requests).toBe(count);
   });
   it("rejects symlinks and refuses to overwrite existing bytes", async () => {

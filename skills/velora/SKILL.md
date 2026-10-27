@@ -12,6 +12,8 @@ commands:
 - guide
 - doctor
 related-skills:
+- velora-templates
+- velora-cinematography
 - velora-init
 - velora-composition
 - velora-scenes
@@ -31,6 +33,8 @@ Load this skill first for every Velora request. It tells you which specialized s
 
 Request type to skill map:
 
+- A known shot or a fast first result ("hero shot of our dashboard", "show the whole landing page", "website hero loop", "20-second product reel"): load `velora-templates` and scaffold with `velora new scene` or `velora new video`.
+- Designing or refining how a shot looks and moves (shot size, angle, lens, focus, a director's note): load `velora-cinematography`.
 - New project, VELORA.md handoff, dev-server wiring, Next or Vite adapter, `velora sync` after adding files: load `velora-init`.
 - Composition file authoring, `velora inspect --json`, `velora assets ls --json`, reusable scene catalog: load `velora-composition`.
 - Scene recipe plus TSX binding, `ScenePreview` and `Surface` rules, camera rails, shot families: load `velora-scenes`.
@@ -71,6 +75,8 @@ Every CLI command supports `--help` and `--json`. Exit 0 on success, 1 on operat
 | `velora check --frames stills --json` | `velora-verify` | `velora check --frames stills --json` |
 | `velora audio check --composition teaser.composition.json --json` | `velora-audio` | `velora audio check --composition teaser.composition.json --json` |
 | `velora captions validate --file subs.srt --json` | `velora-audio` | `velora captions validate --file subs.srt --json` |
+| `velora templates ls --json` | `velora-templates` | `velora templates ls --json` |
+| `velora new scene --template hero-push --id home-hero --route / --json` | `velora-templates` | `velora new scene --template hero-push --id home-hero --route / --json` |
 | `velora transitions ls --json` | `velora-transitions` | `velora transitions ls --json` |
 | `velora skills ls --json` | `velora` | `velora skills ls --json` |
 | `velora skills check --json` | `velora` | `velora skills check --json` |

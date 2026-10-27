@@ -77,13 +77,58 @@ The generated adapter returns original children at compile time in production. P
 
 `src/core/easing.ts:applyEasing` is the single easing evaluator: the legacy linear/easeInOut/cinematic curves keep their exact math, joined by the sine through bounce families, CSS-parity cubic-bezier, a closed-form damped spring normalized to its segment, steps and hold. `src/core/motion.ts` owns tracks: optional `interpolation: "smooth"` evaluates a monotone cubic Hermite (Fritsch-Carlson) through every keyframe with a track-level `ease`, so camera rails never stop at waypoints; seeded `noise` (`src/core/noise.ts`) adds replayable texture to position, rotation and channel tracks; camera `perspective` is animatable; channel tracks feed `useChannel`; and surface `blur`/`clip*` properties style only the content leaf, so masks and artistic blur never flatten spatial groups. `motion.loop` wraps preview playback only, and `loopSeam` reports discontinuities. Every new field is optional without defaults, so existing recipes parse and evaluate byte-identically (a golden of every committed recipe enforces this). `src/core/lens.ts` maps full-frame millimetres to perspective (frameHeight × mm / 24). `src/core/schemas.ts:jsonSchemas` derives the shipped editor schemas in `schemas/`; `src/core/json.ts:parseJsonDocument` accepts BOM-prefixed hand-edited JSON.
 
+## Shot library, templates and kit
+
+`src/core/shots.ts:buildShot` compiles the camera-move vocabulary (push-in, survey, orbit, crane, rise, dolly zoom, rack focus, scroll-through, macro, float loop, handheld push, whip) into plain scene + motion data for one centered `subject` Surface, choosing lenses through `lensFor` and smooth rails with a track ease. `framingReport` projects a grid over the subject through the same `matrixFor` camera matrix and thin-lens `sampleFocus` the renderer uses, reporting in-frame fraction, camera-plane margin and focus blur. `src/core/templates.ts` owns the template catalog as data (`TEMPLATE_CATALOG`, `BLUEPRINT_CATALOG`): typed params with CLI coercion, craft notes, supported aspects and certification thresholds; `certifyTemplate` gates every template x aspect x intensity in tests and in `velora templates check`. There is no runtime template engine: `src/project/templates.ts` generates ordinary recipe JSON (with optional `template` provenance) and a binding, and `executeTemplateCommand` (project/commands) validates every input before create-only writes, then re-validates the pair through `discoverRecipes`. `src/kit/` is a browser layer over core and react (registered in the architecture checker, exported as `@adityadeokar/velora/kit`): `RouteFrame` frames a same-origin route with channel-driven scroll and paused page animations, `ScrollFrame` scrolls a component from a channel, and `SlotPlaceholder` marks unfilled slots. `useCaptureSettle` lets such components finish asynchronous work after each capture seek; the bridge returns a promise only when settlers exist, and export services already await it. `velora frames --contact-sheet` composes the extracted frames into one storyboard PNG in export services.
+
+## Studio v2: gallery, quick shots and composition player
+
+The development library (`SceneLibrary`) has three URL-addressed tabs: Scenes, Templates and Compositions (`velora-tab`). `TemplateGallery` draws every template as a schematic storyboard: `projectSubject` (core/shots) projects the subject plane at the start, middle and end of the shot, with no render. Only the hovered or focused card runs one live mini preview. `QuickShot` applies a template to the live app with zero source files. Its subject slot holds the host's own children, which `ProjectPreview` now passes through, or a same-origin `RouteFrame` when the host has no children (the Next studio route). The URL carries the whole shot: `velora-quick`, `velora-route` and `velora-params` (base64url JSON). It is decoded by core `readQuickShot`, so reload, deep links and `velora export --url` reproduce exactly what the panel shows. `ParamPanel` edits a draft immediately and replaces the URL once per animation frame. It copies exact commands from `quickShotCommands` and never writes files. `CompositionPlayer` drives one `usePreviewSession` cursor in timeline mode, with a motionless carrier definition and a signed shuttle `rate`. The active segment renders at its local time and the next segment is preloaded hidden. Gaps are void, transitions are strip markers only, captions come from core `parseCaptions`, and audio elements follow the cursor through `syncMedia`, resyncing past 50 ms. It has no capture bridge; export stays `velora render`. `useTransportKeys` maps Space, J/K/L, arrows (frame/second), `[`/`]` and Home/End onto the session. `StudioOverlays` draws thirds, title/action safe, approximate 9:16 platform zones, an aspect-crop mask and focus peaking. Each layer is chrome-marked, and its toggles live in memory, so exported frames never include them. The generated Vite adapter adds DEV-only `compositionModules` (root `*.composition.json`) and eager `assetUrls` (audio and caption URLs). Framework catalogs written by `velora sync` register root compositions in the same `sceneModules` registry. `init` recognizes and upgrades the pre-studio adapter bytes.
+
 ## Render cache and memory
 
 Frame-cache keys include the recipe, binding and a host source fingerprint (`hostFingerprint` in `src/export/services.ts`: sorted path, size and mtime of project source and asset files plus the lockfile, excluding dependency, build and cache directories). Editing an imported host component or stylesheet therefore invalidates cached frames; above the file cap that command renders without the cache rather than serving stale pixels. Composition video renders spill each frame to a temporary PNG sequence and encode it through FFmpeg's image2 demuxer, so memory stays bounded by one frame per worker regardless of length.
 
+## Master-quality finishing and delivery formats
+
+`src/core/export.ts` owns the finishing vocabulary:
+
+- `QualityPresetSchema` and `QUALITY_PRESETS`:
+  - **draft:** 0.5x capture, x264 veryfast, CRF 26;
+  - **standard:** 1x, slow, CRF 18;
+  - **master:** 2x supersampling, slower, CRF 14, 180° blur with 8 samples.
+- `VideoCodecSchema` with `CODEC_CONTAINERS` and `ALPHA_CODECS`.
+- `resolveFinishing`: explicit flags win over the preset, and supersampling never exceeds a 3840 px capture side.
+- `shutterSamples`: a trailing shutter, clamped at the scene end.
+- Frame rates 24, 25, 30, 50, 60 and 120.
+
+`src/export/compositor.ts` holds the PNG codec, which moved out of services, and `composite`:
+
+- It averages motion-blur sub-frames and box-downscales supersampled captures in linear light, with premultiplied alpha.
+- It rounds half to even back to sRGB.
+- A single frame at factor 1 is returned unchanged.
+
+`finishFrame` in `export/commands` is the one path render, export and shot share:
+
+- It captures the shutter samples. In render they are cached per local time under a capture-variant key, so standard cache keys are unchanged.
+- It skips averaging when every sample is identical, so static frames stay byte-identical to an unblurred render.
+- Then it composites.
+
+`videoEncodeArgs` is pure and builds per-codec FFmpeg arguments:
+
+- Every codec except GIF converts full-range sRGB to limited-range BT.709. `setparams` stamps frame properties, which FFmpeg 7+ prefers over output flags, and the output flags tag the stream.
+- VP9 (`yuva420p`) and ProRes 4444 (`yuva444p10le`) keep alpha.
+- GIF builds its palette and dithers in one filter graph.
+
+Transparent capture is capture-only: export services inject a transparent-background stylesheet and screenshot with `omitBackground`, so the preview's black void is untouched.
+
+`src/core/delivery.ts` holds the platform presets (`DELIVERY_PRESETS`, each with `lastVerified`). `deliveryWarnings` reports budget and fit warnings and never fails a render.
+
+Render publication refuses an existing video, manifest or poster before capturing anything. Non-MP4 manifests keep their container extension. `velora doctor` lists the available encoders, and a missing one fails fast with `ERR_CODEC_UNAVAILABLE`.
+
 ## Framework-independent host integration
 
-`ProjectPreview` is the shared React DOM boundary: `projectId`, host-owned `enabled`, optional route-based `active`, lazy `sceneModules` and children. It imports no Next/Vite/Electron runtime. Server hydration uses a stable initial URL snapshot. The packaged React entry points retain a client directive for RSC-aware bundlers. Supported peers are React/React DOM 18.2+ and 19; the CLI verifies installed peers rather than requiring React 19.2.
+`ProjectPreview` is the shared React DOM boundary: `projectId`, host-owned `enabled`, optional route-based `active`, lazy `sceneModules`, optional `compositionModules`/`assetUrls`, and children (forwarded to quick shots). It imports no Next/Vite/Electron runtime. Server hydration uses a stable initial URL snapshot. The packaged React entry points retain a client directive for RSC-aware bundlers. Supported peers are React/React DOM 18.2+ and 19; the CLI verifies installed peers rather than requiring React 19.2.
 
 `executeProjectCommand` owns setup, validation and `sync-project` through RESOURCES. Vite's existing AST adapter remains an optional entry connector. `portableIntegration` in `src/project/portable.ts` generates the same shared wrapper for arbitrary React hosts. Its Next connection only adds a development-only /velora route plus an SSR-disabled client loader; layouts, config and host providers are untouched. Custom Vite/Electron entries also fall back to the portable connection before any host entry writes; existing integrations and pending journals retain their established identity. Other React wrappers receive an explicit wiring instruction and host development flag, not a guessed root rewrite. Electron uses its existing renderer, with main/preload untouched. Next client scene imports cannot import server-only components; supply server data through the host boundary.
 

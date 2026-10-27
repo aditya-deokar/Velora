@@ -4,9 +4,10 @@ import path from "node:path";
 import { cpus } from "node:os";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { inflateSync, deflateSync } from "node:zlib";
+import { deflateSync } from "node:zlib";
+import { parsePng, pngChunk } from "./compositor";
 import type { Browser, Page } from "playwright";
-import type { CaptureBridge, CaptureManifest, ExportVideo } from "../core/export";
+import type { CaptureBridge, CaptureManifest, ExportVideo, ResolvedFinishing, VideoCodec } from "../core/export";
 import { AUDIO_DRIFT_BUDGET_MS, SUPPORTED_AUDIO_CODECS } from "../core/audio";
 import { formatSrt, parseCaptions } from "../core/captions";
 import { SCENE_RECIPE_DIRECTORY } from "../core/recipes";
@@ -26,7 +27,16 @@ export async function prepareScope(root: string, output: string) {
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   return { root: canonical, output };
 }
-export async function openCapture(input: Pick<ExportVideo,"url"|"width"|"height">, signal?: AbortSignal) {
+// Capture-only transparency: the preview's black void stays the default everywhere else.
+export const TRANSPARENT_CAPTURE_CSS = "html,body,[data-velora-preview],.velora-viewport,.velora-canvas,[data-velora-capture],[data-velora-scene]{background:transparent!important;background-color:transparent!important}";
+export type CaptureOptions = Pick<ExportVideo, "url" | "width" | "height"> & {
+  /** Device scale factor: 2 supersamples (downscaled later in linear light), 0.5 drafts. */
+  scale?: number;
+  transparent?: boolean;
+};
+// Frame finishing applied before encoding: sub-frame capture and compositing for one output frame.
+export type FrameProducer = (index: number, timeMs: number, shoot: (timeMs: number) => Promise<Buffer>) => Promise<Buffer>;
+export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
   let browser: Browser | undefined;
   let page: Page;
   let aborted = signal?.aborted ?? false;
@@ -46,7 +56,8 @@ export async function openCapture(input: Pick<ExportVideo,"url"|"width"|"height"
       const { chromium } = await import("playwright");
       browser = await chromium.launch({ headless: true, channel: "chromium" });
     } catch { throw fault("missing-chromium", "Install Playwright and its browser: npm install playwright && npx playwright install chromium."); }
-    page = await browser.newPage({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: 1 });
+    page = await browser.newPage({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: input.scale ?? 1 });
+    const transparent = !!input.transparent;
     page.setDefaultTimeout(10_000);
     await page.route("**/*", route => {
       const request = route.request();
@@ -58,6 +69,7 @@ export async function openCapture(input: Pick<ExportVideo,"url"|"width"|"height"
     // Product chrome can visually overlap the capture rectangle. Hide its semantic
     // marker and host development-tools portal only in this private export page; the user's preview stays untouched.
     await page.addStyleTag({content:'[data-velora-preview-chrome],nextjs-portal{visibility:hidden!important}'});
+    if (transparent) await page.addStyleTag({ content: TRANSPARENT_CAPTURE_CSS });
     try { await page.waitForFunction(() => typeof (window as unknown as { __VELORA_CAPTURE__?: CaptureBridge }).__VELORA_CAPTURE__?.seek === "function", undefined, { timeout: 5000 }); }
     catch { throw fault("missing-capture", "This page has no ready Velora capture bridge. Open a scene with capture enabled and retry."); }
     await page.evaluate(async () => {
@@ -81,10 +93,10 @@ export async function openCapture(input: Pick<ExportVideo,"url"|"width"|"height"
         await page.evaluate(elapsed=>(window as unknown as {__VELORA_CAPTURE__:CaptureBridge}).__VELORA_CAPTURE__.seek(elapsed),timeMs);
         const rect=await locator.boundingBox();
         if(!rect||rect.width<1||rect.height<1||rect.width>3840||rect.height>3840)throw fault("invalid-capture","Scene viewport must be visible and bounded.");
-        const png=await page.screenshot({clip:rect,type:"png",animations:"disabled",timeout:10_000});check();
+        const png=await page.screenshot({clip:rect,type:"png",animations:"disabled",omitBackground:transparent,timeout:10_000});check();
         return "data:image/png;base64,"+png.toString("base64");
       },
-      async encode(scope: { root: string; output: string }, options: ExportVideo, manifest: CaptureManifest, frames: number) {
+      async encode(scope: { root: string; output: string }, options: ExportVideo & Partial<ResolvedFinishing>, manifest: CaptureManifest, frames: number, produce?: FrameProducer, onFrame?: (index: number, png: Buffer) => Promise<void> | void) {
         let temporary: string | undefined;
         try {
           check();
@@ -97,8 +109,9 @@ export async function openCapture(input: Pick<ExportVideo,"url"|"width"|"height"
           await mkdir(path.dirname(target), { recursive: true });
           await scopedPath(scope.root, scope.output);
           temporary = await mkdtemp(path.join(path.dirname(target), ".velora-export-"));
-          const video = path.join(temporary, "video.mp4");
-          encoder = spawn("ffmpeg", videoEncodeArgs({ fps: options.fps, width: options.width, height: options.height, frames }, video), { cwd: scope.root, shell: false, stdio: ["pipe", "ignore", "pipe"] });
+          const video = path.join(temporary, "video" + path.extname(scope.output).toLowerCase());
+          encoder = spawn("ffmpeg", videoEncodeArgs({ fps: options.fps, width: options.width, height: options.height, frames,
+            codec: options.codec, quality: options.quality, transparent: options.transparent, gifFps: options.gifFps, x264: options.x264, crf: options.crf }, video), { cwd: scope.root, shell: false, stdio: ["pipe", "ignore", "pipe"] });
           const timeout = setTimeout(() => encoder?.kill("SIGKILL"), 15 * 60_000);
           let stderr = "";
           encoder.stderr?.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-4096); });
@@ -108,10 +121,15 @@ export async function openCapture(input: Pick<ExportVideo,"url"|"width"|"height"
           });
           void finished.catch(() => {});
           encoder.stdin!.on("error", () => {});
+          const shoot = async (elapsed: number) => {
+            check();
+            await page.evaluate(time => (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__.seek(time), elapsed);
+            return page.screenshot({ clip: rect, type: "png", animations: "disabled", omitBackground: transparent, timeout: 30_000 });
+          };
           for (let i = 0; i < frames; i++) {
             check();
-            await page.evaluate(elapsed => (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__.seek(elapsed), i * 1000 / options.fps);
-            const png = await page.screenshot({clip:rect, type: "png", animations: "disabled", timeout: 30_000 });
+            const png = produce ? await produce(i, i * 1000 / options.fps, shoot) : await shoot(i * 1000 / options.fps);
+            await onFrame?.(i, png);
             if(i>0 && i % (options.fps*2)===0) process.stderr.write(`Captured ${i}/${frames} frames\n`);
             await Promise.race([new Promise<void>((resolve, reject) => encoder!.stdin!.write(png, error => error ? reject(error) : resolve())), finished.then(() => { throw fault("encoding-failed", "Encoder stopped before all scene frames were written."); })]);
           }
@@ -173,8 +191,9 @@ export async function writeNewTextFile(scope: { root: string; output: string }, 
 // Content-hash frame cache. Keys hash everything that affects pixels
 // (recipe + binding bytes, host source fingerprint, frame time, fps, dimensions,
 // seed, code version); entries are verified by recomputed SHA on read.
-export function frameCacheKey(parts: { recipeSha: string; bindingSha: string; hostSha: string; timeMs: number; fps: number; width: number; height: number; seed: number; version: string }): string {
-  return sha256Hex([parts.recipeSha, parts.bindingSha, parts.hostSha, String(parts.timeMs), String(parts.fps), String(parts.width), String(parts.height), String(parts.seed), parts.version].join("|"));
+// variant distinguishes capture modes (supersample scale, transparency); standard captures keep their keys.
+export function frameCacheKey(parts: { recipeSha: string; bindingSha: string; hostSha: string; timeMs: number; fps: number; width: number; height: number; seed: number; version: string; variant?: string }): string {
+  return sha256Hex([parts.recipeSha, parts.bindingSha, parts.hostSha, String(parts.timeMs), String(parts.fps), String(parts.width), String(parts.height), String(parts.seed), parts.version, ...(parts.variant ? [parts.variant] : [])].join("|"));
 }
 // Bindings import arbitrary host components and styles, so their bytes alone cannot
 // key the cache. Stat-only fingerprint of what can change pixels: code, styles and
@@ -236,98 +255,7 @@ export async function frameCacheStore(root: string, cacheDir: string, key: strin
 }
 // Minimal black-frame encoder for timeline gaps, which render black void by
 // contract. RGB, filter-zero scanlines; parsePng round-trips every byte.
-const crcTable = (() => {
-  const table = new Uint32Array(256);
-  for (let i = 0; i < 256; i++) {
-    let c = i;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[i] = c >>> 0;
-  }
-  return table;
-})();
-function crc32(bytes: Buffer): number {
-  let crc = 0xffffffff;
-  for (let i = 0; i < bytes.length; i++) crc = crcTable[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
-  return (crc ^ 0xffffffff) >>> 0;
-}
-function pngChunk(type: string, data: Buffer): Buffer {
-  const head = Buffer.alloc(4);
-  head.writeUInt32BE(data.length, 0);
-  const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
-  const tail = Buffer.alloc(4);
-  tail.writeUInt32BE(crc32(body), 0);
-  return Buffer.concat([head, body, tail]);
-}
-export function voidPng(width: number, height: number): Buffer {
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 3840 || height > 3840)
-    throw new Error("Void frame dimensions must be integers within 1..3840.");
-  const stride = width * 3;
-  const raw = Buffer.alloc((stride + 1) * height);
-  for (let y = 0; y < height; y++) raw[y * (stride + 1)] = 0;
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8; ihdr[9] = 2;
-  return Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    pngChunk("IHDR", ihdr),
-    pngChunk("IDAT", deflateSync(raw)),
-    pngChunk("IEND", Buffer.alloc(0)),
-  ]);
-}
-// RGB/RGBA/grayscale, the exact shapes Chromium screenshots produce.
-// Anything else fails closed with an honest diagnostic instead of guessing.
-export function parsePng(png: Buffer): { width: number; height: number; pixels: Buffer } {
-  // Minimal decoder for the visual-check suite: 8-bit non-interlaced
-  // RGB/RGBA/grayscale, the exact shapes Chromium screenshots produce.
-  // Anything else fails closed with an honest diagnostic instead of guessing.
-  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  if (png.length < 33 || !png.subarray(0, 8).equals(signature)) throw new Error("Not a PNG file.");
-  let offset = 8;
-  let width = 0, height = 0, bitDepth = 0, colorType = -1, interlace = 1;
-  const idat: Buffer[] = [];
-  while (offset + 8 <= png.length) {
-    const length = png.readUInt32BE(offset);
-    const type = png.toString("ascii", offset + 4, offset + 8);
-    const data = png.subarray(offset + 8, offset + 8 + length);
-    if (type === "IHDR") {
-      width = data.readUInt32BE(0); height = data.readUInt32BE(4);
-      bitDepth = data[8]; colorType = data[9]; interlace = data[12];
-    } else if (type === "IDAT") idat.push(Buffer.from(data));
-    else if (type === "IEND") break;
-    offset += 12 + length;
-  }
-  if (!width || !height) throw new Error("PNG is missing its IHDR.");
-  if (bitDepth !== 8 || interlace !== 0 || ![0, 2, 6].includes(colorType)) throw new Error("Only 8-bit non-interlaced grayscale/RGB/RGBA PNGs are supported.");
-  const channels = colorType === 6 ? 4 : colorType === 2 ? 3 : 1;
-  const stride = width * channels;
-  const raw = inflateSync(Buffer.concat(idat));
-  if (raw.length !== (stride + 1) * height) throw new Error("PNG scanline size does not match its IHDR.");
-  const pixels = Buffer.alloc(width * height * 4);
-  let previous = Buffer.alloc(stride);
-  let position = 0;
-  const paeth = (a: number, b: number, c: number): number => {
-    const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
-    return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
-  };
-  for (let y = 0; y < height; y++) {
-    const filter = raw[position++];
-    const line = Buffer.from(raw.subarray(position, position + stride));
-    position += stride;
-    for (let x = 0; x < stride; x++) {
-      const a = x >= channels ? line[x - channels] : 0;
-      const b = previous[x], c = x >= channels ? previous[x - channels] : 0;
-      line[x] = (line[x] + (filter === 1 ? a : filter === 2 ? b : filter === 3 ? Math.floor((a + b) / 2) : filter === 4 ? paeth(a, b, c) : 0)) & 0xff;
-    }
-    for (let x = 0; x < width; x++) {
-      const o = (y * width + x) * 4;
-      if (colorType === 6) { pixels[o] = line[x * 4]; pixels[o + 1] = line[x * 4 + 1]; pixels[o + 2] = line[x * 4 + 2]; pixels[o + 3] = line[x * 4 + 3]; }
-      else if (colorType === 2) { pixels[o] = line[x * 3]; pixels[o + 1] = line[x * 3 + 1]; pixels[o + 2] = line[x * 3 + 2]; pixels[o + 3] = 255; }
-      else { pixels[o] = pixels[o + 1] = pixels[o + 2] = line[x]; pixels[o + 3] = 255; }
-    }
-    previous = line;
-  }
-  return { width, height, pixels };
-}
+export { parsePng, voidPng } from "./compositor";
 // Mean and variance of luminance over RGBA pixels: the no-blank check's signal.
 export function luminanceStats(pixels: Buffer): { mean: number; variance: number } {
   const count = Math.floor(pixels.length / 4);
@@ -345,13 +273,75 @@ export function luminanceStats(pixels: Buffer): { mean: number; variance: number
 
 // Aspect-cover filter shared by live capture encoding and buffer encoding:
 // the authored scene scales uniformly to cover the frame, edges cropped.
-export function coverFilter(width: number, height: number): string {
-  return `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`;
+export function coverFilter(width: number, height: number, transparent = false): string {
+  return `scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2${transparent ? ":color=black@0" : ""}`;
 }
-export function videoEncodeArgs(options: { fps: number; width: number; height: number; frames: number }, output: string): string[] {
-  return ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "image2pipe", "-framerate", String(options.fps),
-    "-vcodec", "png", "-i", "pipe:0", "-an", "-vf", coverFilter(options.width, options.height),
-    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-frames:v", String(options.frames), "-n", output];
+export type EncodeOptions = { fps: number; width: number; height: number; frames: number } & Partial<Pick<ResolvedFinishing, "codec" | "quality" | "transparent" | "gifFps" | "x264" | "crf">>;
+// Broadcast colorimetry: full-range sRGB PNGs convert to limited-range BT.709 YUV and the stream is
+// tagged so browsers and editors decode the same colors (FFmpeg defaults to an untagged BT.601 matrix).
+const BT709_TAGS = ["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"];
+// setparams stamps the frames too: FFmpeg 7+ prefers frame properties (from the PNG input) over output flags.
+const toYuv = (format: string) => `scale=in_range=pc:out_range=tv:out_color_matrix=bt709,format=${format},setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv`;
+const GIF_MAX_WIDTH = 960;
+// Per-codec quality: [draft, standard, master] CRF (or prores qscale) and encoder speed.
+const CODEC_QUALITY: Record<Exclude<VideoCodec, "h264" | "gif">, { crf: [number, number, number]; speed: [string, string, string] }> = {
+  hevc: { crf: [30, 22, 18], speed: ["veryfast", "slow", "slower"] },
+  vp9: { crf: [40, 31, 24], speed: ["5", "2", "1"] },
+  av1: { crf: [45, 32, 24], speed: ["10", "6", "4"] },
+  prores4444: { crf: [13, 9, 5], speed: ["", "", ""] },
+};
+/** FFmpeg arguments for one PNG stream (stdin) to one output; pure, unit-tested per codec and preset. */
+export function videoEncodeArgs(options: EncodeOptions, output: string): string[] {
+  const codec = options.codec ?? "h264";
+  const transparent = !!options.transparent;
+  const level = options.quality === "draft" ? 0 : options.quality === "master" ? 2 : 1;
+  const input = ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "image2pipe", "-framerate", String(options.fps), "-vcodec", "png", "-i", "pipe:0", "-an"];
+  const cover = coverFilter(options.width, options.height, transparent);
+  const frames = ["-frames:v", String(options.frames)];
+  if (codec === "gif") {
+    const width = Math.min(options.width, GIF_MAX_WIDTH);
+    // Two passes in one graph: a palette from frame differences, then error-diffusion dithering.
+    return [...input, "-vf", `${cover},fps=${options.gifFps ?? 20},scale=${width}:-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a`,
+      "-loop", "0", "-n", output];
+  }
+  if (codec === "h264")
+    return [...input, "-vf", `${cover},${toYuv("yuv420p")}`, "-c:v", "libx264", "-preset", options.x264 ?? "medium", "-crf", String(options.crf ?? 18),
+      "-profile:v", "high", "-pix_fmt", "yuv420p", ...BT709_TAGS, "-movflags", "+faststart", ...frames, "-n", output];
+  const tuning = CODEC_QUALITY[codec];
+  if (codec === "hevc")
+    return [...input, "-vf", `${cover},${toYuv("yuv420p")}`, "-c:v", "libx265", "-preset", tuning.speed[level], "-crf", String(tuning.crf[level]),
+      "-tag:v", "hvc1", "-pix_fmt", "yuv420p", ...BT709_TAGS, "-movflags", "+faststart", ...frames, "-n", output];
+  if (codec === "vp9") {
+    const format = transparent ? "yuva420p" : "yuv420p";
+    return [...input, "-vf", `${cover},${toYuv(format)}`, "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", String(tuning.crf[level]), "-cpu-used", tuning.speed[level],
+      "-row-mt", "1", ...(transparent ? ["-auto-alt-ref", "0"] : []), "-pix_fmt", format, ...BT709_TAGS, ...frames, "-n", output];
+  }
+  if (codec === "av1") {
+    const webm = output.toLowerCase().endsWith(".webm");
+    return [...input, "-vf", `${cover},${toYuv("yuv420p")}`, "-c:v", "libsvtav1", "-crf", String(tuning.crf[level]), "-preset", tuning.speed[level],
+      "-pix_fmt", "yuv420p", ...BT709_TAGS, ...(webm ? [] : ["-movflags", "+faststart"]), ...frames, "-n", output];
+  }
+  // ProRes 4444 (10-bit 4:4:4, with alpha when transparent) for editors compositing over footage.
+  const format = transparent ? "yuva444p10le" : "yuv444p10le";
+  return [...input, "-vf", `${cover},${toYuv(format)}`, "-c:v", "prores_ks", "-profile:v", "4444", "-qscale:v", String(tuning.crf[level]), "-vendor", "apl0",
+    "-pix_fmt", format, ...BT709_TAGS, ...frames, "-n", output];
+}
+/** Software encoders this FFmpeg build provides, per Velora codec. */
+export const CODEC_ENCODERS: Record<VideoCodec, string> = { h264: "libx264", hevc: "libx265", vp9: "libvpx-vp9", av1: "libsvtav1", prores4444: "prores_ks", gif: "gif" };
+export async function probeEncoders(timeoutMs = 10_000): Promise<Record<VideoCodec, boolean> | undefined> {
+  const text = await new Promise<string | undefined>(resolve => {
+    let out = "";
+    let child;
+    try { child = spawn("ffmpeg", ["-hide_banner", "-encoders"], { shell: false, stdio: ["ignore", "pipe", "ignore"] }); }
+    catch { resolve(undefined); return; }
+    const timer = setTimeout(() => { child.kill("SIGKILL"); resolve(undefined); }, timeoutMs);
+    child.stdout?.on("data", chunk => { out += chunk.toString(); });
+    child.once("error", () => { clearTimeout(timer); resolve(undefined); });
+    child.once("close", code => { clearTimeout(timer); resolve(code === 0 ? out : undefined); });
+  });
+  if (text === undefined) return undefined;
+  const names = new Set(text.split(/\r?\n/).map(line => line.trim().split(/\s+/)[1]).filter(Boolean));
+  return Object.fromEntries(Object.entries(CODEC_ENCODERS).map(([codec, encoder]) => [codec, names.has(encoder)])) as Record<VideoCodec, boolean>;
 }
 // Ordered PNG frames spilled to disk so long renders hold one frame per worker in memory.
 export type SpilledFrames = { count: number; read: (index: number) => Promise<Buffer> };
@@ -366,10 +356,11 @@ export function spilledFrames(dirAbs: string, frames: readonly number[]): Spille
 }
 // Encode PNG frames to MP4 with the exact live-capture pipeline, from memory or
 // from a spilled sequence read one frame at a time; same bytes in, same bytes out.
-export async function encodeFrameBuffers(source: Buffer[] | SpilledFrames, output: string, options: { fps: number; width: number; height: number; cwd: string; signal?: AbortSignal }): Promise<{ ffmpegArgs: string[] }> {
+export async function encodeFrameBuffers(source: Buffer[] | SpilledFrames, output: string, options: Omit<EncodeOptions, "frames"> & { cwd: string; signal?: AbortSignal }): Promise<{ ffmpegArgs: string[] }> {
   const frames: SpilledFrames = Array.isArray(source) ? { count: source.length, read: async (index) => source[index] } : source;
   if (!frames.count) throw fault("invalid-capture", "Nothing to encode: the timeline spans less than one frame.");
-  const args = videoEncodeArgs({ fps: options.fps, width: options.width, height: options.height, frames: frames.count }, output);
+  const { cwd: _cwd, signal: _signal, ...encode } = options;
+  const args = videoEncodeArgs({ ...encode, frames: frames.count }, output);
   await new Promise<void>((resolve, reject) => {
     let settled = false;
     const done = (fn: () => void) => { if (!settled) { settled = true; fn(); } };
@@ -416,11 +407,11 @@ export async function encodeFrameBuffers(source: Buffer[] | SpilledFrames, outpu
   });
   return { ffmpegArgs: args };
 }
-// Segment-worker default: CPU count capped at 4, at least 1. Frames stay
+// Segment-worker default: one core left for the encoder and dev server, capped at 8. Frames stay
 // serial-deterministic inside each worker; only segments run concurrently.
 export function defaultParallelism(): number {
   try {
-    return Math.min(4, Math.max(1, cpus().length || 1));
+    return Math.min(8, Math.max(1, (cpus().length || 2) - 1));
   } catch {
     return 2;
   }
@@ -510,6 +501,9 @@ export async function decodeVideoSamples(absolutePath: string, tmpDir: string, m
 }
 // Resolve a project-relative output to an absolute path for process spawns.
 // Traversal, absolute paths and symlinks stay denied by scopedPath.
+export async function fileSize(absolutePath: string): Promise<number | undefined> {
+  try { return (await lstat(absolutePath)).size; } catch { return undefined; }
+}
 export async function resolveOutput(root: string, target: string): Promise<string> {
   return scopedPath(root, target);
 }
@@ -653,7 +647,7 @@ export async function resolveMediaFile(root: string, target: string): Promise<st
 export async function stageTempVideo(scope: { root: string; output: string }): Promise<{ scope: { root: string; output: string }; cleanup: () => Promise<void> }> {
   const temporary = await mkdtemp(path.join(scope.root, ".velora-mux-"));
   return {
-    scope: { root: scope.root, output: path.relative(scope.root, path.join(temporary, "silent.mp4")) },
+    scope: { root: scope.root, output: path.relative(scope.root, path.join(temporary, "silent" + (path.extname(scope.output).toLowerCase() || ".mp4"))) },
     cleanup: async () => { await rm(temporary, { recursive: true, force: true }); },
   };
 }
@@ -736,13 +730,16 @@ export async function muxAudioCaptions(request: MuxRequest, timeoutMs = 10 * 60_
     args.push("-i", t.file);
   });
   if (audioFilter) args.push("-filter_complex", audioFilter);
-  if (videoFilter) args.push("-vf", videoFilter);
   args.push("-map", "0:v");
   if (request.tracks.length) {
     args.push("-map", "[aout]");
-    args.push("-c:a", "aac", "-shortest");
+    // WebM carries Opus; MP4 and MOV carry AAC.
+    args.push("-c:a", request.output.toLowerCase().endsWith(".webm") ? "libopus" : "aac", "-shortest");
   }
-  args.push("-c:v", videoFilter ? "libx264" : "copy", "-pix_fmt", "yuv420p", "-movflags", "+faststart", request.output);
+  // Burned-in captions re-encode H.264 with the same BT.709 conversion; otherwise the finished video is copied.
+  if (videoFilter) args.push("-vf", `${videoFilter},scale=out_range=tv:out_color_matrix=bt709,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv`.replace(/^,/, ""));
+  args.push(...(videoFilter ? ["-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"] : ["-c:v", "copy"]),
+    ...(/\.(mp4|mov)$/i.test(request.output) ? ["-movflags", "+faststart"] : []), request.output);
   await new Promise<void>((resolve, reject) => {
     let stderr = "";
     let child;
@@ -762,4 +759,41 @@ export async function muxAudioCaptions(request: MuxRequest, timeoutMs = 10 * 60_
     });
   });
   return { ffmpegArgs: args };
+}
+// Storyboard contact sheet: box-filtered thumbnails of the extracted frames on a dark grid,
+// in frame order, as one RGB PNG. Pure byte math, so the same frames give the same sheet.
+export function contactSheet(pngs: readonly Buffer[], options: { columns?: number; thumbWidth?: number } = {}): Buffer {
+  if (!pngs.length) throw new Error("A contact sheet needs at least one frame.");
+  const frames = pngs.map(parsePng);
+  const columns = Math.max(1, Math.min(options.columns ?? Math.ceil(Math.sqrt(frames.length)), frames.length));
+  const rows = Math.ceil(frames.length / columns);
+  const thumbWidth = Math.max(16, Math.min(options.thumbWidth ?? 480, frames[0].width));
+  const thumbHeight = Math.max(1, Math.round((frames[0].height * thumbWidth) / frames[0].width));
+  const gap = 8;
+  const width = columns * thumbWidth + (columns + 1) * gap, height = rows * thumbHeight + (rows + 1) * gap;
+  if (width > 8192 || height > 8192) throw new Error("Contact sheet exceeds 8192 px; lower --columns or extract fewer frames.");
+  const stride = width * 3;
+  const raw = Buffer.alloc((stride + 1) * height, 0);
+  for (let y = 0; y < height; y++) raw.fill(18, y * (stride + 1) + 1, (y + 1) * (stride + 1));
+  frames.forEach((frame, index) => {
+    const left = gap + (index % columns) * (thumbWidth + gap), top = gap + Math.floor(index / columns) * (thumbHeight + gap);
+    for (let ty = 0; ty < thumbHeight; ty++) {
+      const y0 = Math.floor((ty * frame.height) / thumbHeight), y1 = Math.max(y0 + 1, Math.floor(((ty + 1) * frame.height) / thumbHeight));
+      for (let tx = 0; tx < thumbWidth; tx++) {
+        const x0 = Math.floor((tx * frame.width) / thumbWidth), x1 = Math.max(x0 + 1, Math.floor(((tx + 1) * frame.width) / thumbWidth));
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let y = y0; y < Math.min(y1, frame.height); y++)
+          for (let x = x0; x < Math.min(x1, frame.width); x++) {
+            const o = (y * frame.width + x) * 4;
+            r += frame.pixels[o]; g += frame.pixels[o + 1]; b += frame.pixels[o + 2]; n++;
+          }
+        const o = (top + ty) * (stride + 1) + 1 + (left + tx) * 3;
+        raw[o] = Math.round(r / n); raw[o + 1] = Math.round(g / n); raw[o + 2] = Math.round(b / n);
+      }
+    }
+  });
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk("IHDR", ihdr), pngChunk("IDAT", deflateSync(raw)), pngChunk("IEND", Buffer.alloc(0))]);
 }

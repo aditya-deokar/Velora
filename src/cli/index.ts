@@ -12,7 +12,7 @@ import {
 import { TRANSITION_CATALOG, buildTransition, describeTransition, type TransitionType } from "../core/transitions";
 import { formatOnboarding, terminalWelcome, type TerminalOptions } from "./terminal";
 import { executeFrameRender, executeVideoRender, executeFramesRender, executeShotRender, executeCheck, executeSceneSnapshot, executeVideoExport, probeCapturePrerequisites } from "../export/commands";
-import { executeDoctorCommand, executeProjectCommand, executeAudioCommand, executeCaptionsCommand, executeSkillsCommand, executeInspectCommand, executeAssetsCommand } from "../project/commands";
+import { executeDoctorCommand, executeProjectCommand, executeAudioCommand, executeCaptionsCommand, executeSkillsCommand, executeInspectCommand, executeAssetsCommand, executeTemplateCommand, type TemplateCommandResult } from "../project/commands";
 import { executeRecipeCommand, type RecipeCommandResult } from "../project/recipes";
 import type { ProjectResult } from "../core/project";
 
@@ -33,6 +33,7 @@ type CaptionManager = typeof executeCaptionsCommand;
 type SkillsManager = typeof executeSkillsCommand;
 type InspectManager = typeof executeInspectCommand;
 type AssetsManager = typeof executeAssetsCommand;
+type TemplateManager = typeof executeTemplateCommand;
 type VideoRenderer = typeof executeVideoRender;
 type FramesRenderer = typeof executeFramesRender;
 type ShotRenderer = typeof executeShotRender;
@@ -57,21 +58,26 @@ velora assets ls [--project DIR] [--json]
 velora assets check [--project DIR] [--json]
 velora assets add --as SOURCE --id ID [--project DIR] [--json]
 velora assets rm --id ID --yes [--project DIR] [--json]
-velora export --url URL --output FILE [--fps 30|60|120] [--width N --height N] [--audio FILE] [--captions FILE] [--project DIR] [--json]
+velora export --url URL --output FILE [--fps 24|25|30|50|60|120] [--width N --height N] [--quality draft|standard|master] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG] [--transparent] [--poster MS] [--audio FILE] [--captions FILE] [--project DIR] [--json]
 velora doctor [--project DIR] [--url ORIGIN] [--json]
 velora render --composition FILE --frame N --out PNG [--url ORIGIN] [--no-cache] [--project DIR] [--json]
-velora render --composition FILE --out MP4 [--parallel N] [--fps N] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]
-velora frames --composition FILE --out DIR [--every N | --at MS,...] [--url ORIGIN] [--project DIR] [--json]
-velora shot --scene ID --time MS --out PNG [--url ORIGIN] [--project DIR] [--json]
+velora render --composition FILE --out VIDEO [--preset ID] [--quality Q] [--codec C] [--motion-blur DEG] [--aspects 16:9,9:16] [--poster MS] [--parallel N] [--fps N] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]
+velora frames --composition FILE --out DIR [--every N | --at MS,...] [--contact-sheet [--columns N]] [--url ORIGIN] [--project DIR] [--json]
+velora shot --scene ID --time MS --out PNG [--quality Q] [--motion-blur DEG] [--fps N] [--transparent] [--url ORIGIN] [--project DIR] [--json]
 velora check --frames DIR [--budget-ms MS] [--project DIR] [--json]
 velora check --video FILE [--manifest FILE] [--budget-ms MS] [--project DIR] [--json]
 velora audio ls --composition FILE [--project DIR] [--json]
 velora audio check --composition FILE [--project DIR] [--json]
 velora captions validate --file FILE [--project DIR] [--json]
 velora captions check --composition FILE [--project DIR] [--json]
+velora templates ls [--category C] [--tag T] [--aspect A] [--json]
+velora templates show --id ID [--json]
+velora templates check [--id ID] [--json]
+velora new scene --template ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--set KEY=VALUE]... [--aspect A] [--duration MS] [--title T] [--project DIR] [--json]
+velora new video --blueprint ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--aspect A] [--title T] [--project DIR] [--json]
 velora transitions ls [--json]
 velora transitions describe --type TYPE [--json]
-velora skills install --dir PATH [--agent claude|codex|cursor|generic] [--source PATH] [--json]
+velora skills install (--dir PATH | --agent claude|generic) [--agent claude|codex|cursor|generic] [--source PATH] [--json]
 velora skills ls [--dir PATH] [--source PATH] [--json]
 velora skills check [--dir PATH] [--source PATH] [--json]
 
@@ -97,14 +103,16 @@ const commandUsage: Record<string, string> = {
   inspect: "velora inspect [--project DIR] [--scene ID | --composition FILE] [--json]\n\nInspect the project, one scene or one composition file without mutating anything.\nWithout flags, report project identity plus recipe/asset counts.",
   assets: "velora assets ls [--project DIR] [--json]\nvelora assets check [--project DIR] [--json]\nvelora assets add --as SOURCE --id ID [--project DIR] [--json]\nvelora assets rm --id ID --yes [--project DIR] [--json]\n\nManage project assets in assets/ (list, check, add a file under an ID, remove with confirmation).",
   snapshot: "velora snapshot --scene ID --url ORIGIN [--time MS] [--project DIR] [--json]\n\nCapture one frame PNG into the scene recipe at --time milliseconds (default midpoint).",
-  export: "velora export --url URL --output FILE [--fps 30|60|120] [--width N --height N] [--audio FILE] [--captions FILE] [--project DIR] [--json]\n\nRender the live scene to a project-relative MP4 through the capture bridge.\n--audio mixes a project-relative audio file; --captions burns a project-relative .srt/.vtt file.\nRequires FFmpeg and Playwright Chromium; does not start the app server.",
+  export: "velora export --url URL --output FILE [--fps 24|25|30|50|60|120] [--width N --height N] [--quality draft|standard|master] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG [--motion-samples N]] [--transparent] [--gif-fps N] [--poster MS] [--audio FILE] [--captions FILE] [--project DIR] [--json]\n\nRender the live scene to a project-relative video through the capture bridge.\n--quality master supersamples 2x and adds 180-degree motion blur; --codec picks the container (.mp4 .webm .mov .gif); --transparent needs vp9 or prores4444.\nOutput is BT.709-tagged.\n--audio mixes a project-relative audio file; --captions burns a project-relative .srt/.vtt file.\nRequires FFmpeg and Playwright Chromium; does not start the app server.",
   doctor: "velora doctor [--project DIR] [--url ORIGIN] [--json]\n\nCheck Node, npm package, React, toolkit, scene catalog, FFmpeg and Chromium.\n--url also probes dev-server reachability. Exit 0 when every check passes, 1 otherwise.",
-  render: "velora render --composition FILE [--frame N | --time MS] --out PNG [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\nvelora render --composition FILE --out MP4 [--parallel 1-4] [--fps 30|60|120] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]\n\nRender one exact timeline frame to PNG plus a manifest, or the whole timeline to MP4.\nFrame mode needs exactly one of --frame/--time with a .png --out; video mode needs an .mp4 --out.\n--json streams newline-delimited progress lines ending with the result envelope (--no-stream prints only the envelope).",
-  frames: "velora frames --composition FILE --out DIR [--every N | --at MS,...] [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\n\nExtract a PNG sequence plus manifest.json. Defaults to one frame per second.\nExactly one of --every (frame step) or --at (comma-separated milliseconds) may be given.",
-  shot: "velora shot --scene ID --time MS --out PNG [--url ORIGIN] [--project DIR] [--json]\n\nCapture one still from a single scene without a composition.",
+  render: "velora render --composition FILE [--frame N | --time MS] --out PNG [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\nvelora render --composition FILE --out VIDEO [--preset ID] [--quality draft|standard|master] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG [--motion-samples N]] [--transparent] [--gif-fps N] [--aspects 16:9,9:16,1:1] [--poster MS] [--parallel 1-8] [--fps 24|25|30|50|60|120] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]\n\nRender one exact timeline frame to PNG plus a manifest, or the whole timeline to video.\nFrame mode needs exactly one of --frame/--time with a .png --out; video mode needs a .mp4, .webm, .mov or .gif --out.\n--preset applies a delivery target (explicit flags win) and reports budget warnings.\n--json streams newline-delimited progress lines ending with the result envelope (--no-stream prints only the envelope).",
+  frames: "velora frames --composition FILE --out DIR [--every N | --at MS,...] [--contact-sheet [--columns N]] [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\n\nExtract a PNG sequence plus manifest.json. Defaults to one frame per second.\nExactly one of --every (frame step) or --at (comma-separated milliseconds) may be given.",
+  shot: "velora shot --scene ID --time MS --out PNG [--quality draft|standard|master] [--motion-blur DEG [--motion-samples N]] [--fps N] [--transparent] [--url ORIGIN] [--project DIR] [--json]\n\nCapture one still from a single scene without a composition.\n--quality and --motion-blur preview export finishing on one frame.",
   check: "velora check --frames DIR [--budget-ms MS] [--project DIR] [--json]\nvelora check --video FILE [--manifest FILE] [--budget-ms MS] [--project DIR] [--json]\n\nRun automated visual checks over rendered evidence (technical checks only, never artistic scores).\nExactly one of --frames or --video is required; --manifest cross-checks video records.",
   audio: "velora audio ls --composition FILE [--project DIR] [--json]\nvelora audio check --composition FILE [--project DIR] [--json]\n\nList composition audio tracks with frame-snapped placement, or validate them\nagainst discovered assets (existence, type, size, codec, fades, ducking).",
   captions: "velora captions validate --file FILE [--project DIR] [--json]\nvelora captions check --composition FILE [--project DIR] [--json]\n\nValidate a .srt/.vtt file, or check a composition's captions against its timeline span.",
+  templates: "velora templates ls [--category C] [--tag T] [--aspect A] [--json]\nvelora templates show --id ID [--json]\nvelora templates check [--id ID] [--json]\n\nBrowse the shipped camera templates and blueprints, show one with its params and craft notes, or certify framing for every aspect and intensity.\nTemplates are starting points: velora new copies plain, editable source into your project.",
+  new: "velora new scene --template ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--set KEY=VALUE]... [--aspect 16:9|21:9|1:1|4:5|9:16] [--duration MS] [--title T] [--project DIR] [--json]\nvelora new video --blueprint ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--aspect A] [--title T] [--project DIR] [--json]\n\nScaffold a templated scene (recipe JSON + binding) or a blueprint composition with its scene pairs. Create-only: existing files are never overwritten.\n--component slots a real component (default export when #EXPORT is omitted); --route frames a page of the running app; neither writes a placeholder.\n--set may repeat (for example --set intensity=dramatic --set lens=35).",
   transitions: "velora transitions ls [--json]\nvelora transitions describe --type TYPE [--json]\n\nList the entering-side transition catalog, or show one transition with example tracks.\nTransitions declare segment entrances; builders emit tracks to paste into recipe motion.",
   skills: "velora skills install --dir PATH [--agent claude|codex|cursor|generic] [--source PATH] [--json]\nvelora skills ls [--dir PATH] [--source PATH] [--json]\nvelora skills check [--dir PATH] [--source PATH] [--json]\n\nInstall the Velora skills library (idempotent; differing files are ERR_SKILL_CONFLICT), list available/installed skills with version drift, or check front-matter and cross-links.\n--agent prints the registration snippet for that agent without writing config files.",
 };
@@ -200,6 +208,12 @@ async function defaultDoctor(input: { url?: string }, context: { root: string })
     });
     if (!capture.chromium.available)
       issues.push(normalizeIssue({ code: "ERR_CHROMIUM_MISSING", message: `Chromium browser: ${capture.chromium.detail}`, path: "doctor.chromium" }));
+    // Optional codecs are informational: only h264 is required.
+    if (capture.encoders) {
+      const available = Object.entries(capture.encoders).filter(([, ok]) => ok).map(([codec]) => codec);
+      const missing = Object.entries(capture.encoders).filter(([, ok]) => !ok).map(([codec]) => codec);
+      checks.push({ id: "codecs", label: "Video codecs", pass: true, detail: `Available: ${available.join(", ") || "none"}${missing.length ? `. Unavailable: ${missing.join(", ")} (ERR_CODEC_UNAVAILABLE if requested)` : ""}.` });
+    }
     if (!issues.length) return { success: true, command: "doctor", data: { checks } };
     return { success: false, command: "doctor", data: { checks }, issues, next: nextForIssues(issues) };
   } catch {
@@ -239,6 +253,79 @@ function parseMediaArgs(
     }
   }
   return { sub, flags };
+}
+function templateOutput(result: TemplateCommandResult, json: boolean, human: (data: never) => string): CliResult {
+  if (!result.success)
+    return { code: 1, stdout: "", stderr: (json ? JSON.stringify(result) : result.issues.map(humanIssue).join("\n")) + "\n" };
+  const warnings = result.warnings ?? [];
+  return {
+    code: 0,
+    stdout: (json ? JSON.stringify(result) : human(result.data as never) + (result.next?.length ? "\n\nNext:\n" + result.next.map(step => "  " + step).join("\n") : "")) + "\n",
+    stderr: !json && warnings.length ? warnings.map(humanIssue).join("\n") + "\n" : "",
+  };
+}
+// Templates and new share one flag grammar; --set is the only repeatable flag.
+function parseTemplateArgs(command: string, args: string[], subs: Record<string, string[]>, fail: (message: string, code?: string, name?: string) => CliResult):
+  { sub: string; flags: Map<string, string | true>; sets: Record<string, string> } | { failed: CliResult } {
+  const [sub, ...rest] = args;
+  if (!sub || sub.startsWith("--")) return { failed: fail(`${command} requires a subcommand: ${Object.keys(subs).join(", ")}.`, "ERR_MISSING_VALUE", command) };
+  if (!Object.hasOwn(subs, sub)) return { failed: fail(`Unknown ${command} subcommand: ${sub}. Expected ${Object.keys(subs).join(" or ")}.`, "ERR_UNKNOWN_COMMAND", command) };
+  const flags = new Map<string, string | true>();
+  const sets: Record<string, string> = {};
+  for (let i = 0; i < rest.length; i++) {
+    const flag = rest[i];
+    if (!subs[sub].includes(flag)) return { failed: fail(`Unknown option: ${flag}`, "ERR_UNKNOWN_OPTION", command) };
+    if (flag === "--json") { flags.set(flag, true); continue; }
+    const value = rest[++i];
+    if (value === undefined || value.startsWith("--")) return { failed: fail(`Missing value for ${flag}`, "ERR_MISSING_VALUE", command) };
+    if (flag === "--set") {
+      const at = value.indexOf("=");
+      if (at < 1) return { failed: fail(`--set expects KEY=VALUE, got ${value}.`, "ERR_MISSING_VALUE", command) };
+      sets[value.slice(0, at)] = value.slice(at + 1);
+      continue;
+    }
+    if (flags.has(flag)) return { failed: fail(`Duplicate option: ${flag}`, "ERR_DUPLICATE_OPTION", command) };
+    flags.set(flag, value);
+  }
+  return { sub, flags, sets };
+}
+async function runTemplatesCommand(args: string[], environment: Environment, manager: TemplateManager, fail: (message: string, code?: string, name?: string) => CliResult): Promise<CliResult> {
+  const parsed = parseTemplateArgs("templates", args, { ls: ["--category", "--tag", "--aspect", "--json"], show: ["--id", "--json"], check: ["--id", "--json"] }, fail);
+  if ("failed" in parsed) return parsed.failed;
+  const { sub, flags } = parsed;
+  const json = flags.has("--json");
+  const value = (flag: string) => flags.get(flag) as string | undefined;
+  if (sub === "show" && !flags.has("--id")) return fail("templates show requires --id.", "ERR_MISSING_VALUE", "templates");
+  const context = { root: environment.root };
+  if (sub === "ls")
+    return templateOutput(await manager("list-templates", { category: value("--category"), tag: value("--tag"), aspect: value("--aspect") }, context), json,
+      (data: { templates: { id: string; title: string; summary: string }[]; blueprints: { id: string; title: string }[] }) =>
+        ["Templates (velora new scene --template ID):", ...data.templates.map(t => `  ${t.id.padEnd(18)} ${t.title} — ${t.summary}`),
+          "", "Blueprints (velora new video --blueprint ID):", ...data.blueprints.map(b => `  ${b.id.padEnd(22)} ${b.title}`)].join("\n"));
+  if (sub === "show")
+    return templateOutput(await manager("show-template", { id: value("--id") }, context), json, (data: Record<string, unknown>) => JSON.stringify(data, null, 2));
+  return templateOutput(await manager("check-templates", flags.has("--id") ? { id: value("--id") } : {}, context), json,
+    (data: { templates: { id: string }[] }) => `Certified ${data.templates.length} template${data.templates.length === 1 ? "" : "s"} across every supported aspect and intensity: ${data.templates.map(t => t.id).join(", ")}.`);
+}
+async function runNewCommand(args: string[], environment: Environment, manager: TemplateManager, fail: (message: string, code?: string, name?: string) => CliResult): Promise<CliResult> {
+  const shared = ["--id", "--component", "--route", "--aspect", "--title", "--project", "--json"];
+  const parsed = parseTemplateArgs("new", args, { scene: ["--template", "--set", "--duration", ...shared], video: ["--blueprint", ...shared] }, fail);
+  if ("failed" in parsed) return parsed.failed;
+  const { sub, flags, sets } = parsed;
+  const json = flags.has("--json");
+  const value = (flag: string) => flags.get(flag) as string | undefined;
+  const source = sub === "scene" ? "--template" : "--blueprint";
+  if (!flags.has(source) || !flags.has("--id")) return fail(`new ${sub} requires ${source} and --id.`, "ERR_MISSING_VALUE", "new");
+  if (flags.has("--component") && flags.has("--route")) return fail("Pass either --component or --route, not both.", "ERR_INVALID_FLAG_COMBINATION", "new");
+  const duration = value("--duration");
+  if (duration !== undefined && !/^\d+$/.test(duration)) return fail("--duration expects whole milliseconds.", "ERR_MISSING_VALUE", "new");
+  const context = { root: value("--project") ?? environment.root };
+  const common = { id: value("--id"), ...(flags.has("--component") ? { component: value("--component") } : {}), ...(flags.has("--route") ? { route: value("--route") } : {}),
+    ...(flags.has("--aspect") ? { aspect: value("--aspect") } : {}), ...(flags.has("--title") ? { title: value("--title") } : {}) };
+  const result = sub === "scene"
+    ? await manager("new-scene", { template: value("--template"), ...common, set: sets, ...(duration !== undefined ? { durationMs: Number(duration) } : {}) }, context)
+    : await manager("new-video", { blueprint: value("--blueprint"), ...common }, context);
+  return templateOutput(result, json, (data: { files: string[] }) => `Created (yours to edit):\n${data.files.map(file => "  " + file).join("\n")}`);
 }
 // Transitions are pure catalog data: no project I/O, no manager needed.
 async function runTransitionsCommand(
@@ -336,7 +423,13 @@ async function runSkillsCommand(
   const { sub, flags } = parsed;
   const json = flags.has("--json");
   if (sub === "install") {
-    if (!flags.has("--dir")) return fail("skills install requires --dir.", "ERR_MISSING_VALUE", "skills");
+    // Agents with a verified project convention get it by default; others must name the directory.
+    const conventional: Record<string, string> = { claude: ".claude/skills", generic: ".agents/skills" };
+    if (!flags.has("--dir")) {
+      const agent = flags.get("--agent") as string | undefined;
+      if (!agent || !Object.hasOwn(conventional, agent)) return fail("skills install requires --dir (or --agent claude|generic to use the conventional project directory).", "ERR_MISSING_VALUE", "skills");
+      flags.set("--dir", conventional[agent]);
+    }
     const agent = flags.get("--agent") as string | undefined;
     if (agent && !["claude", "codex", "cursor", "generic"].includes(agent))
       return fail(`Unknown agent: ${agent}. Expected claude, codex, cursor or generic.`, "ERR_UNKNOWN_OPTION", "skills");
@@ -451,13 +544,29 @@ function humanCheck(checks: { id: string; pass: boolean; detail: string }[], uni
 // progress lines ending with the result envelope; --no-stream (or human mode)
 // returns only the final body. Lines stream in-band with the result because
 // runCli owns no process-write contract; agents parse identical bytes either way.
+// Finishing flags shared by export and render (validated by the core schemas).
+function finishingInput(flags: Map<string, string | true>) {
+  return {
+    ...(flags.has("--quality") ? { quality: flags.get("--quality") as string } : {}),
+    ...(flags.has("--codec") ? { codec: flags.get("--codec") as string } : {}),
+    ...(flags.has("--transparent") ? { transparent: true } : {}),
+    ...(flags.has("--motion-blur") ? { motionBlur: Number(flags.get("--motion-blur")) } : {}),
+    ...(flags.has("--motion-samples") ? { motionSamples: Number(flags.get("--motion-samples")) } : {}),
+    ...(flags.has("--gif-fps") ? { gifFps: Number(flags.get("--gif-fps")) } : {}),
+    ...(flags.has("--poster") ? { poster: Number(flags.get("--poster")) } : {}),
+  } as Record<string, never>;
+}
 function progressCollector(json: boolean, noStream: boolean): { lines: string[]; onProgress?: (done: number, total: number) => void; flush: (body: string) => string } {
   const lines: string[] = [];
   if (!json || noStream) return { lines, onProgress: undefined, flush: (body) => `${body}\n` };
+  const started = Date.now();
   return {
     lines,
     onProgress: (done, total) => {
-      lines.push(JSON.stringify({ type: "progress", phase: "capture", frame: done, total, pct: total ? Math.round((done / total) * 100) : 100 }));
+      const elapsed = Math.max(1, Date.now() - started);
+      const rate = done / (elapsed / 1000);
+      lines.push(JSON.stringify({ type: "progress", phase: "capture", stage: "capture", frame: done, total, pct: total ? Math.round((done / total) * 100) : 100,
+        fps: Math.round(rate * 10) / 10, etaMs: rate > 0 ? Math.round(((total - done) / rate) * 1000) : null }));
     },
     flush: (body) => `${[...lines, body].join("\n")}\n`,
   };
@@ -468,7 +577,7 @@ function serverUrl(flags: Map<string, string | true>, environment: Environment):
 function cliVersion(environment: Environment): { version: string } | Record<string, never> {
   return environment.terminal?.version ? { version: environment.terminal.version } : {};
 }
-export async function runCli(argv: string[], environment: Environment, execute: Execute = executeProjectCommand, exporter: typeof executeVideoExport = executeVideoExport, recipes: typeof executeRecipeCommand = executeRecipeCommand, snapshotter:typeof executeSceneSnapshot=executeSceneSnapshot, doctor: Doctor = defaultDoctor, renderer: Renderer = executeFrameRender, audioManager?: AudioManager, captionManager?: CaptionManager, videoRenderer?: VideoRenderer, framesRenderer?: FramesRenderer, shotRenderer?: ShotRenderer, checkRunner?: CheckRunner, skillsManager?: SkillsManager, inspectManager?: InspectManager, assetsManager?: AssetsManager): Promise<CliResult> {
+export async function runCli(argv: string[], environment: Environment, execute: Execute = executeProjectCommand, exporter: typeof executeVideoExport = executeVideoExport, recipes: typeof executeRecipeCommand = executeRecipeCommand, snapshotter:typeof executeSceneSnapshot=executeSceneSnapshot, doctor: Doctor = defaultDoctor, renderer: Renderer = executeFrameRender, audioManager?: AudioManager, captionManager?: CaptionManager, videoRenderer?: VideoRenderer, framesRenderer?: FramesRenderer, shotRenderer?: ShotRenderer, checkRunner?: CheckRunner, skillsManager?: SkillsManager, inspectManager?: InspectManager, assetsManager?: AssetsManager, templateManager?: TemplateManager): Promise<CliResult> {
   if (argv.length === 1 && ["--version", "-v"].includes(argv[0]))
     return {code:0, stdout:(environment.terminal?.version ?? "development") + "\n", stderr:""};
   if (argv.length === 0 || (argv.length === 1 && ["--help", "-h", "help"].includes(argv[0])))
@@ -503,8 +612,10 @@ export async function runCli(argv: string[], environment: Environment, execute: 
     return {code:0,stdout:(args[0]==="--json"?JSON.stringify({...guide,command:"guide"}):`${VELORA_BRAND.title}\n${VELORA_BRAND.url}\n\n${text}`)+"\n",stderr:""};
   }
   const aliases = { init: "init-project", sync: "sync-project", open: "open-preview", load: "load-project", validate: "validate-project" } as const;
-  if (command !== "snapshot" && command !== "export" && command !== "scenes" && command !== "doctor" && command !== "render" && command !== "audio" && command !== "captions" && command !== "transitions" && command !== "frames" && command !== "shot" && command !== "check" && command !== "skills" && command !== "inspect" && command !== "assets" && !Object.hasOwn(aliases, command)) return fail(`Unknown command: ${command}`, "ERR_UNKNOWN_COMMAND");
+  if (command !== "snapshot" && command !== "export" && command !== "scenes" && command !== "doctor" && command !== "render" && command !== "audio" && command !== "captions" && command !== "transitions" && command !== "templates" && command !== "new" && command !== "frames" && command !== "shot" && command !== "check" && command !== "skills" && command !== "inspect" && command !== "assets" && !Object.hasOwn(aliases, command)) return fail(`Unknown command: ${command}`, "ERR_UNKNOWN_COMMAND");
   if (command === "transitions") return runTransitionsCommand(args, fail);
+  if (command === "templates") return runTemplatesCommand(args, environment, templateManager ?? executeTemplateCommand, fail);
+  if (command === "new") return runNewCommand(args, environment, templateManager ?? executeTemplateCommand, fail);
   // Subcommand-style media commands parse positionally before the flag loop.
   // Manager defaults resolve inside each branch (not in the signature) so unit
   // suites that mock project/commands keep working for unrelated commands.
@@ -515,11 +626,11 @@ export async function runCli(argv: string[], environment: Environment, execute: 
   if (command === "assets") return runAssetsCommand(args, environment, assetsManager ?? executeAssetsCommand, fail);
   const flagSets: Record<string, string[]> = {
     snapshot: ["--project","--url","--scene","--time","--json"],
-    export: ["--project", "--url", "--output", "--fps", "--width", "--height", "--audio", "--captions", "--json"],
+    export: ["--project", "--url", "--output", "--fps", "--width", "--height", "--audio", "--captions", "--quality", "--codec", "--transparent", "--motion-blur", "--motion-samples", "--gif-fps", "--poster", "--json"],
     doctor: ["--project", "--url", "--json"],
-    render: ["--composition", "--frame", "--time", "--out", "--url", "--no-cache", "--cache-dir", "--parallel", "--fps", "--width", "--height", "--no-stream", "--project", "--json"],
-    frames: ["--composition", "--out", "--every", "--at", "--url", "--no-cache", "--cache-dir", "--project", "--json"],
-    shot: ["--scene", "--time", "--out", "--url", "--project", "--json"],
+    render: ["--composition", "--frame", "--time", "--out", "--url", "--no-cache", "--cache-dir", "--parallel", "--fps", "--width", "--height", "--no-stream", "--quality", "--codec", "--transparent", "--motion-blur", "--motion-samples", "--gif-fps", "--poster", "--preset", "--aspects", "--project", "--json"],
+    frames: ["--composition", "--out", "--every", "--at", "--contact-sheet", "--columns", "--url", "--no-cache", "--cache-dir", "--project", "--json"],
+    shot: ["--scene", "--time", "--out", "--url", "--quality", "--motion-blur", "--motion-samples", "--fps", "--transparent", "--project", "--json"],
     check: ["--frames", "--video", "--manifest", "--budget-ms", "--project", "--json"],
   };
   const allowed: string[] = flagSets[command] ?? ["--project", "--package", "--url", "--no-open", "--json", "--scene", "--adapter", "--composition"];
@@ -528,7 +639,7 @@ export async function runCli(argv: string[], environment: Environment, execute: 
     const flag = args[i];
     if (!allowed.includes(flag)) return fail(`Unknown option: ${flag}`, "ERR_UNKNOWN_OPTION", command);
     if (flags.has(flag)) return fail(`Duplicate option: ${flag}`, "ERR_DUPLICATE_OPTION", command);
-    if (["--no-open", "--json", "--no-cache", "--no-stream"].includes(flag)) flags.set(flag, true);
+    if (["--no-open", "--json", "--no-cache", "--no-stream", "--contact-sheet", "--transparent"].includes(flag)) flags.set(flag, true);
     else {
       const value = args[++i];
       if (!value || value.startsWith("--")) return fail(`Missing value for ${flag}`, "ERR_MISSING_VALUE", command);
@@ -562,8 +673,8 @@ export async function runCli(argv: string[], environment: Environment, execute: 
     if (wantsFrame) {
       if (flags.has("--frame") && flags.has("--time")) return fail("render needs exactly one of --frame or --time for stills.", "ERR_MISSING_VALUE", command);
       if (!out.toLowerCase().endsWith(".png")) return fail("Frame mode needs a .png --out; drop --frame/--time for video mode.", "invalid-input", command);
-      for (const extra of ["--parallel", "--fps", "--width", "--height", "--no-stream"]) {
-        if (flags.has(extra)) return fail(`${extra} is only valid for video mode (an .mp4 --out without --frame/--time).`, "ERR_INVALID_FLAG_COMBINATION", command);
+      for (const extra of ["--parallel", "--fps", "--width", "--height", "--no-stream", "--quality", "--codec", "--transparent", "--motion-blur", "--motion-samples", "--gif-fps", "--poster", "--preset", "--aspects"]) {
+        if (flags.has(extra)) return fail(`${extra} is only valid for video mode (a video --out without --frame/--time).`, "ERR_INVALID_FLAG_COMBINATION", command);
       }
       try {
         const result = await renderer({
@@ -584,7 +695,7 @@ export async function runCli(argv: string[], environment: Environment, execute: 
         return operationalFailure(command, [{ code: "ERR_INTERNAL", message: "Frame render failed unexpectedly. Check the composition, scene server and retry." }], json);
       }
     }
-    if (!out.toLowerCase().endsWith(".mp4")) return fail("Video mode needs an .mp4 --out; add --frame/--time for stills.", "invalid-input", command);
+    if (!/\.(mp4|webm|mov|gif)$/i.test(out)) return fail("Video mode needs a .mp4, .webm, .mov or .gif --out; add --frame/--time for stills.", "invalid-input", command);
     const progress = progressCollector(json, flags.has("--no-stream"));
     try {
       const result = await renderVideo({
@@ -596,6 +707,9 @@ export async function runCli(argv: string[], environment: Environment, execute: 
         ...(flags.has("--fps") ? { fps: Number(flags.get("--fps")) } : {}),
         ...(flags.has("--width") ? { width: Number(flags.get("--width")) } : {}),
         ...(flags.has("--height") ? { height: Number(flags.get("--height")) } : {}),
+        ...finishingInput(flags),
+        ...(flags.has("--preset") ? { preset: flags.get("--preset") as string } : {}),
+        ...(flags.has("--aspects") ? { aspects: String(flags.get("--aspects")).split(",").map(value => value.trim()) as ("16:9")[] } : {}),
       }, {
         root: context.root,
         url: serverUrl(flags, environment),
@@ -603,7 +717,10 @@ export async function runCli(argv: string[], environment: Environment, execute: 
         ...(progress.onProgress ? { onProgress: progress.onProgress } : {}),
       });
       if (!result.success) return operationalFailure(command, result.issues, json);
-      const human = `Rendered ${result.data.out} (${result.data.frames} frames at ${result.data.fps} FPS, ${result.data.width}x${result.data.height}, seed ${result.data.seed}, ${result.data.cachedFrames} cached).`;
+      const human = `Rendered ${result.data.out} (${result.data.frames} frames at ${result.data.fps} FPS, ${result.data.width}x${result.data.height}, ${result.data.codec ?? "h264"} ${result.data.quality ?? "standard"}, seed ${result.data.seed}, ${result.data.cachedFrames} cached).`
+        + (result.data.variants?.length ? `\nVariants: ${result.data.variants.map(variant => variant.out).join(", ")}` : "")
+        + (result.data.poster ? `\nPoster: ${result.data.poster}` : "")
+        + (result.data.warnings?.length ? "\n" + result.data.warnings.map(warning => `Warning: ${warning.message}`).join("\n") : "");
       return { code: 0, stdout: progress.flush(json ? JSON.stringify(withCommand(result, command)) : human), stderr: "" };
     } catch {
       return operationalFailure(command, [{ code: "ERR_INTERNAL", message: "Video render failed unexpectedly. Check the composition, scene server and retry." }], json);
@@ -621,6 +738,8 @@ export async function runCli(argv: string[], environment: Environment, execute: 
         out: flags.get("--out") as string,
         ...(flags.has("--every") ? { every: Number(flags.get("--every")) } : {}),
         ...(flags.has("--at") ? { at: String(flags.get("--at")).split(",").map((v) => Number(v.trim())) } : {}),
+        ...(flags.has("--contact-sheet") ? { contactSheet: true as const } : {}),
+        ...(flags.has("--columns") ? { columns: Number(flags.get("--columns")) } : {}),
         ...(flags.has("--cache-dir") ? { cacheDir: flags.get("--cache-dir") as string } : {}),
         ...(flags.has("--no-cache") ? { noCache: true as const } : {}),
       }, {
@@ -630,7 +749,7 @@ export async function runCli(argv: string[], environment: Environment, execute: 
         ...(progress.onProgress ? { onProgress: progress.onProgress } : {}),
       });
       if (!result.success) return operationalFailure(command, result.issues, json);
-      const human = `Extracted ${result.data.total} frames to ${result.data.out}/ (manifest ${result.data.manifest}).`;
+      const human = `Extracted ${result.data.total} frames to ${result.data.out}/ (manifest ${result.data.manifest}).${result.data.contactSheet ? `\nContact sheet: ${result.data.contactSheet}` : ""}`;
       return { code: 0, stdout: progress.flush(json ? JSON.stringify(withCommand(result, command)) : human), stderr: "" };
     } catch {
       return operationalFailure(command, [{ code: "ERR_INTERNAL", message: "Frame extraction failed unexpectedly. Check the composition, scene server and retry." }], json);
@@ -646,6 +765,11 @@ export async function runCli(argv: string[], environment: Environment, execute: 
         scene: flags.get("--scene") as string,
         timeMs: Number(flags.get("--time")),
         out: flags.get("--out") as string,
+        ...(flags.has("--quality") ? { quality: flags.get("--quality") as "master" } : {}),
+        ...(flags.has("--motion-blur") ? { motionBlur: Number(flags.get("--motion-blur")) } : {}),
+        ...(flags.has("--motion-samples") ? { motionSamples: Number(flags.get("--motion-samples")) } : {}),
+        ...(flags.has("--fps") ? { fps: Number(flags.get("--fps")) as 60 } : {}),
+        ...(flags.has("--transparent") ? { transparent: true } : {}),
       }, {
         root: context.root,
         url: serverUrl(flags, environment),
@@ -688,6 +812,8 @@ export async function runCli(argv: string[], environment: Environment, execute: 
         out: flags.get("--out") as string,
         ...(flags.has("--every") ? { every: Number(flags.get("--every")) } : {}),
         ...(flags.has("--at") ? { at: String(flags.get("--at")).split(",").map((v) => Number(v.trim())) } : {}),
+        ...(flags.has("--contact-sheet") ? { contactSheet: true as const } : {}),
+        ...(flags.has("--columns") ? { columns: Number(flags.get("--columns")) } : {}),
         ...(flags.has("--cache-dir") ? { cacheDir: flags.get("--cache-dir") as string } : {}),
         ...(flags.has("--no-cache") ? { noCache: true as const } : {}),
       }, {
@@ -697,7 +823,7 @@ export async function runCli(argv: string[], environment: Environment, execute: 
         ...(progress.onProgress ? { onProgress: progress.onProgress } : {}),
       });
       if (!result.success) return operationalFailure(command, result.issues, json);
-      const human = `Extracted ${result.data.total} frames to ${result.data.out}/ (manifest ${result.data.manifest}).`;
+      const human = `Extracted ${result.data.total} frames to ${result.data.out}/ (manifest ${result.data.manifest}).${result.data.contactSheet ? `\nContact sheet: ${result.data.contactSheet}` : ""}`;
       return { code: 0, stdout: progress.flush(json ? JSON.stringify(withCommand(result, command)) : human), stderr: "" };
     } catch {
       return operationalFailure(command, [{ code: "ERR_INTERNAL", message: "Frame extraction failed unexpectedly. Check the composition, scene server and retry." }], json);
@@ -713,6 +839,11 @@ export async function runCli(argv: string[], environment: Environment, execute: 
         scene: flags.get("--scene") as string,
         timeMs: Number(flags.get("--time")),
         out: flags.get("--out") as string,
+        ...(flags.has("--quality") ? { quality: flags.get("--quality") as "master" } : {}),
+        ...(flags.has("--motion-blur") ? { motionBlur: Number(flags.get("--motion-blur")) } : {}),
+        ...(flags.has("--motion-samples") ? { motionSamples: Number(flags.get("--motion-samples")) } : {}),
+        ...(flags.has("--fps") ? { fps: Number(flags.get("--fps")) as 60 } : {}),
+        ...(flags.has("--transparent") ? { transparent: true } : {}),
       }, {
         root: context.root,
         url: serverUrl(flags, environment),
@@ -764,14 +895,15 @@ export async function runCli(argv: string[], environment: Environment, execute: 
     const input = { url: flags.get("--url"), output: flags.get("--output"),
       ...Object.fromEntries(["fps", "width", "height"].filter(key => flags.has(`--${key}`)).map(key => [key, Number(flags.get(`--${key}`))])),
       ...(flags.has("--audio") ? { audio: flags.get("--audio") } : {}),
-      ...(flags.has("--captions") ? { captions: flags.get("--captions") } : {}) };
+      ...(flags.has("--captions") ? { captions: flags.get("--captions") } : {}),
+      ...finishingInput(flags) };
     try {
       const result = await exporter(input, context);
       if (!result.success) return operationalFailure(command, result.issues, json);
       const extras = result.data.audio || result.data.captions
         ? ` (${[result.data.audio ? `audio drift ${result.data.audio.driftMs}ms` : "", result.data.captions ? `${result.data.captions.cues} cues burned` : ""].filter(Boolean).join(", ")})`
         : "";
-      return { code: 0, stdout: (json ? JSON.stringify(withCommand(result, command)) : `Exported ${result.data.output} (${result.data.frames} frames at ${result.data.fps} FPS)${extras}.`) + "\n", stderr: "" };
+      return { code: 0, stdout: (json ? JSON.stringify(withCommand(result, command)) : `Exported ${result.data.output} (${result.data.frames} frames at ${result.data.fps} FPS, ${result.data.codec ?? "h264"} ${result.data.quality ?? "standard"})${extras}.${result.data.poster ? ` Poster: ${result.data.poster}.` : ""}`) + "\n", stderr: "" };
     } catch { return operationalFailure(command, [{code:"ERR_INTERNAL", message:"Video export failed unexpectedly. Check the local scene server and retry."}], json); }
   }
   const input = command === "init" ? { ...(flags.has("--adapter") ? {adapter:flags.get("--adapter")} : {}), ...(flags.has("--package") ? { packageSource: flags.get("--package") } : {}) }

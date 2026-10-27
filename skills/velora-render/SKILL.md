@@ -36,6 +36,7 @@ Use this skill when the timeline is validated and the next step is evidence: one
 - `velora frames --composition teaser.composition.json --out stills --every 30 --json`: PNG sequence with `manifest.json`; default is one frame per second.
 - `velora frames --composition teaser.composition.json --out stills --at 0,500,1000 --json`: explicit millisecond list.
 - `velora shot --scene demo --time 500 --out shot.png --json`: single-scene still without a composition.
+- `velora shot --scene demo --time 500 --out master.png --quality master --motion-blur 180 --fps 24 --json`: preview export finishing (supersampling and motion blur) on one frame before a long master render.
 - `velora snapshot --scene demo --url http://127.0.0.1:5173 --json`: thumbnail capture into the recipe.
 - `velora check --frames stills --json`: technical gates over the evidence.
 

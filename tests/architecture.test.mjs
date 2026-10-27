@@ -352,3 +352,11 @@ test('framework connection cannot duplicate canonical recipe discovery', () => {
   const issues=checkArchitecture({'src/project/other.ts':'export async function discoverRecipes() { return {}; }'});
   assert.ok(issues.length);
 });
+
+// Kit layer: browser building blocks over core and react only, never project or export effects.
+test('kit may compose core and react', () => {
+  assert.deepEqual(fixture('src/kit/Frame.tsx', "import {useChannel} from '../react'; import {RouteSchema} from '../core/templates'; export function Frame(){useChannel('x'); RouteSchema.parse('/'); return <div/>;}").filter(issue => issue.file === 'src/kit/Frame.tsx'), []);
+});
+test('kit cannot reach project services', () => rejects('src/kit/Frame.tsx', "import {readText} from '../project/services'; export function Frame(){readText('a','b'); return null;}"));
+test('kit cannot reach export services', () => rejects('src/kit/Frame.tsx', "import {openCapture} from '../export/services'; export function Frame(){openCapture({}); return null;}"));
+test('kit cannot read node globals', () => rejects('src/kit/Frame.tsx', "export function Frame(){return process.cwd();}", 'runtime-global'));

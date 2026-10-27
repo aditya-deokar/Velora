@@ -1,5 +1,5 @@
 import { portableIntegration, portableCatalog } from "./portable";
-import { discoverAssets, discoverRecipes, discoverSharedComponents, loadComposition, type AssetDiscovery } from "./discovery";
+import { discoverAssets, discoverCompositionFiles, discoverRecipes, discoverSharedComponents, loadComposition, type AssetDiscovery } from "./discovery";
 import { z } from "zod";
 import { RESOURCES } from "../core/resources";
 import { VELORA_BRAND, VELORA_PACKAGE } from "../core/branding";
@@ -18,6 +18,10 @@ import type { SceneIssue } from "../core/scene";
 import * as services from "./services";
 import { fault } from "./errors";
 import { generatedPreview, htmlEntry, inspectConfig, inspectEntry, legacyPreviewTexts } from "./vite";
+import { componentExport, sceneImportPath, scaffoldScene, COMPOSITION_SCHEMA_POINTER, type Slot } from "./templates";
+import { BLUEPRINT_CATALOG, TEMPLATE_CATALOG, RouteSchema, certifyTemplate, findBlueprint, findTemplate, resolveTemplateParams, templateDefinition, type TemplateManifest } from "../core/templates";
+import { ASPECT_FRAMES, AspectSchema, type Aspect } from "../core/shots";
+import { SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 
 /** SOURCE OF TRUTH: executeProjectCommand trusted project operations.
  * WHAT: validate RESOURCES inputs, host compatibility, integration identity and recovery state.
@@ -398,7 +402,7 @@ function legacyPortableFiles(project:ProjectState, catalog:string):Record<string
 async function catalogSource(root:string) {
   const catalog = await discoverRecipes(root);
   if (catalog.issues.length) throw fault("invalid-scenes",catalog.issues.map(issue=>issue.path+": "+issue.message).join("\n"));
-  return portableCatalog(catalog.scenes);
+  return portableCatalog(catalog.scenes, await discoverCompositionFiles(root));
 }
 async function portableFiles(root:string, project:ProjectState, catalog:string) {
   const allowed=project.adapter==="next-app" ? ["app/velora/page.jsx","src/app/velora/page.jsx"]
@@ -1328,5 +1332,170 @@ export async function executeSkillsCommand(
     return skillsFailure([{ code: known ? skillsFaultCode(error) : "project-error",
       message: known ? error.message : "Unable to manage skills. Check local files and permissions, then retry.",
       ...(known && typeof error.target === "string" ? { path: error.target } : {}) }]);
+  }
+}
+
+
+// SOURCE OF TRUTH: executeTemplateCommand template catalog and scaffolding operations.
+// WHAT: list/show/check the shipped templates, and create-only scaffolding of templated scenes
+// (new scene) and blueprint compositions (new video) from the user's real component or route.
+// WHY: templates are starting points the creator owns; every check runs before any write and
+// the written pair is re-validated through the same discovery the studio uses.
+// WHERE: cli/index adapts `velora templates` and `velora new`; core/templates owns the catalog,
+// project/templates generates file text, services performs exclusive writes.
+export type TemplateCommandResult =
+  | { success: true; command: "templates" | "new"; data: unknown; warnings?: CliIssue[]; next?: string[] }
+  | { success: false; command: "templates" | "new"; issues: CliIssue[]; next: string[] };
+const NewSceneInputSchema = z.strictObject({
+  template: z.string().min(1), id: z.string().min(1), title: z.string().trim().min(1).max(200).optional(),
+  component: z.string().min(1).optional(), route: z.string().optional(),
+  aspect: z.string().optional(), durationMs: z.number().optional(), set: z.record(z.string(), z.string()).default({}),
+});
+const NewVideoInputSchema = z.strictObject({
+  blueprint: z.string().min(1), id: z.string().min(1), title: z.string().trim().min(1).max(200).optional(),
+  component: z.string().min(1).optional(), route: z.string().optional(), aspect: z.string().optional(),
+});
+type PlannedFile = { path: string; text: string };
+function templateFault(code: string, message: string, path?: string): never {
+  throw Object.assign(new Error(message), { code, target: path ?? "template" });
+}
+async function resolveSlot(root: string, input: { component?: string; route?: string }): Promise<{ slot: Slot; warnings: CliIssue[] }> {
+  if (input.component !== undefined && input.route !== undefined) templateFault("ERR_INVALID_FLAG_COMBINATION", "Pass either --component or --route, not both.", "slot");
+  if (input.route !== undefined) {
+    // Git Bash (MSYS) rewrites arguments that start with "/" into Windows paths before Node sees them.
+    if (/^[A-Za-z]:[\\/]/.test(input.route)) templateFault("ERR_ROUTE_INVALID", `Received ${input.route}, which looks like a shell-rewritten path: Git Bash on Windows converts arguments starting with "/". Re-run with MSYS_NO_PATHCONV=1 (for example MSYS_NO_PATHCONV=1 npx velora new ...) or from PowerShell or cmd.`, "route");
+    const route = RouteSchema.safeParse(input.route);
+    if (!route.success) templateFault("ERR_ROUTE_INVALID", route.error.issues[0].message, "route");
+    return { slot: { kind: "route", route: route.data }, warnings: [] };
+  }
+  if (input.component !== undefined) {
+    const [file, exportName, ...rest] = input.component.split("#");
+    if (rest.length || !file || !/\.[cm]?[jt]sx?$/.test(file)) templateFault("ERR_COMPONENT_EXPORT_MISSING", "Use --component path/to/File.tsx#ExportName (omit #ExportName for the default export).", "component");
+    const target = services.relativeTarget(file.replace(/^\.\//, ""));
+    const source = await services.readText(root, target, 2_000_000);
+    if (source === undefined) templateFault("ERR_COMPONENT_EXPORT_MISSING", `Component file ${target} was not found in this project.`, "component");
+    const found = componentExport(source, target, exportName || undefined);
+    if (!found) templateFault("ERR_COMPONENT_EXPORT_MISSING", `${target} has no ${exportName ? `export named ${exportName}` : "default export"}.`, "component");
+    return { slot: { kind: "component", importPath: sceneImportPath(target), exportName: exportName || found.name, isDefault: found.isDefault }, warnings: [] };
+  }
+  return { slot: { kind: "placeholder" }, warnings: [normalizeIssue({ code: "WARN_TEMPLATE_PLACEHOLDER", message: "No --component or --route given: the scene uses a SlotPlaceholder until you replace it.", path: "slot" })] };
+}
+async function initializedProject(root: string): Promise<ProjectState> {
+  const state = await stateFor(root);
+  if (!state.project) throw fault("not-initialized", "Run velora init in this project before creating scenes.");
+  return state.project;
+}
+function planScene(manifest: TemplateManifest, overrides: Record<string, string | number>, id: string, title: string | undefined, aspect: Aspect, slot: Slot, extension: "tsx" | "jsx"): { files: PlannedFile[]; durationMs: number } {
+  if (!SceneRecipeIdSchema.safeParse(id).success) templateFault("invalid-input", "Use a lowercase scene slug for --id (letters, digits and single hyphens).", "id");
+  if (!manifest.aspects.includes(aspect)) templateFault("ERR_TEMPLATE_ASPECT", `Template ${manifest.id} supports ${manifest.aspects.join(", ")}, not ${aspect}.`, "aspect");
+  const resolved = resolveTemplateParams(manifest, overrides);
+  if (resolved.issues.length) throw Object.assign(new Error(resolved.issues.map(issue => issue.message).join(" ")), { code: "ERR_TEMPLATE_PARAM", target: resolved.issues[0].path, issues: resolved.issues });
+  const subject = ASPECT_FRAMES[aspect].subject;
+  const definition = templateDefinition(manifest, resolved.params, aspect);
+  const scaffold = scaffoldScene({ id, title: title ?? manifest.title, manifest, params: resolved.params, aspect, definition, subject, slot });
+  const base = `${SCENE_RECIPE_DIRECTORY}/${id}`;
+  return { files: [{ path: `${base}.scene.json`, text: scaffold.recipe }, { path: `${base}.${extension}`, text: scaffold.binding }], durationMs: definition.motion.durationMs };
+}
+async function writePlanned(root: string, files: PlannedFile[]): Promise<void> {
+  for (const file of files) {
+    const siblings = file.path.endsWith(".scene.json") ? [file.path] : [file.path.replace(/\.[jt]sx$/, ".tsx"), file.path.replace(/\.[jt]sx$/, ".jsx")];
+    for (const candidate of siblings)
+      if (await services.readText(root, candidate) !== undefined) templateFault("ERR_SCENE_EXISTS", `${candidate} already exists. Choose another --id or move the existing scene.`, candidate);
+  }
+  for (const file of files) await services.atomicWrite(root, file.path, file.text, undefined);
+}
+async function bindingExtension(root: string, project: ProjectState): Promise<"tsx" | "jsx"> {
+  return project.entry.endsWith(".jsx") || (project.adapter !== undefined && await services.readText(root, "tsconfig.json") === undefined) ? "jsx" : "tsx";
+}
+function templateSummary(manifest: TemplateManifest) {
+  const { id, title, summary, category, tags, aspects } = manifest;
+  return { id, title, summary, category, tags, aspects, params: manifest.params.map(param => param.name), example: `velora new scene --template ${id} --id my-${id} --route /` };
+}
+export async function executeTemplateCommand(operation: "list-templates" | "show-template" | "check-templates" | "new-scene" | "new-video", input: Record<string, unknown>, context: { root: string }): Promise<TemplateCommandResult> {
+  const command = operation.startsWith("new") ? "new" as const : "templates" as const;
+  try {
+    if (operation === "list-templates") {
+      const { category, tag, aspect } = input as { category?: string; tag?: string; aspect?: string };
+      const templates = TEMPLATE_CATALOG.filter(t => (!category || t.category === category) && (!tag || (t.tags as string[]).includes(tag)) && (!aspect || (t.aspects as string[]).includes(aspect)));
+      return { success: true, command, data: { templates: templates.map(templateSummary), blueprints: BLUEPRINT_CATALOG.map(({ id, title, summary, aspects, scenes }) => ({ id, title, summary, aspects, scenes: scenes.map(scene => scene.template) })) } };
+    }
+    if (operation === "show-template") {
+      const id = String(input.id ?? "");
+      const manifest = findTemplate(id), blueprint = findBlueprint(id);
+      if (!manifest && !blueprint) templateFault("ERR_TEMPLATE_NOT_FOUND", `No template or blueprint "${id}". Run velora templates ls --json.`, "id");
+      if (blueprint) return { success: true, command, data: { blueprint, example: `velora new video --blueprint ${blueprint.id} --id launch --route /` } };
+      return { success: true, command, data: { template: manifest, examples: [
+        `velora new scene --template ${manifest!.id} --id my-${manifest!.id} --route /`,
+        `velora new scene --template ${manifest!.id} --id my-${manifest!.id} --component src/App.tsx#App --set intensity=standard`,
+      ] } };
+    }
+    if (operation === "check-templates") {
+      const id = input.id === undefined ? undefined : String(input.id);
+      const manifests = id === undefined ? TEMPLATE_CATALOG : [findTemplate(id) ?? templateFault("ERR_TEMPLATE_NOT_FOUND", `No template "${id}". Run velora templates ls --json.`, "id")];
+      const results = manifests.map(manifest => {
+        const failures = manifest.aspects.flatMap(aspect => (["subtle", "standard", "dramatic"] as const).flatMap(intensity =>
+          certifyTemplate(manifest, resolveTemplateParams(manifest, { intensity }).params, aspect)));
+        return { id: manifest.id, certified: failures.length === 0, failures };
+      });
+      const failed = results.filter(result => !result.certified);
+      if (failed.length) return { success: false, command, issues: failed.flatMap(result => result.failures).map(normalizeIssue), next: ["velora templates show --id " + failed[0].id] };
+      return { success: true, command, data: { templates: results } };
+    }
+    const root = await services.canonicalRoot(context.root);
+    if (operation === "new-scene") {
+      const parsed = NewSceneInputSchema.safeParse(input);
+      if (!parsed.success) templateFault("invalid-input", parsed.error.issues[0].message, parsed.error.issues[0].path.join("."));
+      const request = parsed.data;
+      const manifest = findTemplate(request.template) ?? templateFault("ERR_TEMPLATE_NOT_FOUND", `No template "${request.template}". Run velora templates ls --json.`, "template");
+      const aspect = AspectSchema.safeParse(request.aspect ?? "16:9");
+      if (!aspect.success) templateFault("ERR_TEMPLATE_ASPECT", "Use --aspect 16:9, 21:9, 1:1, 4:5 or 9:16.", "aspect");
+      const project = await initializedProject(root);
+      const { slot, warnings } = await resolveSlot(root, request);
+      const overrides: Record<string, string | number> = { ...request.set, ...(request.durationMs !== undefined ? { durationMs: request.durationMs } : {}) };
+      const plan = planScene(manifest, overrides, request.id, request.title, aspect.data, slot, await bindingExtension(root, project));
+      await writePlanned(root, plan.files);
+      const catalog = await discoverRecipes(root);
+      const sceneIssues = catalog.issues.filter(issue => issue.path.startsWith(plan.files[0].path));
+      if (sceneIssues.length) return { success: false, command, issues: sceneIssues.map(issue => normalizeIssue({ code: "ERR_SCENE_INVALID", ...issue })), next: ["velora validate --json"] };
+      return { success: true, command, data: { files: plan.files.map(file => file.path), scene: request.id, template: manifest.id, aspect: aspect.data, durationMs: plan.durationMs, slot: slot.kind },
+        ...(warnings.length ? { warnings } : {}),
+        next: [...(project.adapter ? ["velora sync --json"] : []), `velora shot --scene ${request.id} --time ${Math.round(plan.durationMs / 2)} --out ${request.id}.png --json`, `velora open --scene ${request.id} --url <origin>`] };
+    }
+    const parsed = NewVideoInputSchema.safeParse(input);
+    if (!parsed.success) templateFault("invalid-input", parsed.error.issues[0].message, parsed.error.issues[0].path.join("."));
+    const request = parsed.data;
+    const blueprint = findBlueprint(request.blueprint) ?? templateFault("ERR_TEMPLATE_NOT_FOUND", `No blueprint "${request.blueprint}". Run velora templates ls --json.`, "blueprint");
+    if (!SceneRecipeIdSchema.safeParse(request.id).success) templateFault("invalid-input", "Use a lowercase slug for --id (letters, digits and single hyphens).", "id");
+    const aspect = AspectSchema.safeParse(request.aspect ?? blueprint.aspects[0]);
+    if (!aspect.success || !blueprint.aspects.includes(aspect.data)) templateFault("ERR_TEMPLATE_ASPECT", `Blueprint ${blueprint.id} supports ${blueprint.aspects.join(", ")}.`, "aspect");
+    const project = await initializedProject(root);
+    const { slot, warnings } = await resolveSlot(root, request);
+    const extension = await bindingExtension(root, project);
+    const files: PlannedFile[] = [];
+    const scenes: { id: string; recipe: string; startMs: number; durationMs: number }[] = [];
+    let cursor = 0;
+    blueprint.scenes.forEach((scene, index) => {
+      const manifest = findTemplate(scene.template)!;
+      const sceneId = `${request.id}-${index + 1}-${manifest.id}`;
+      const plan = planScene(manifest, scene.params, sceneId, `${request.title ?? blueprint.title}: ${manifest.title}`, aspect.data, slot, extension);
+      files.push(...plan.files);
+      scenes.push({ id: `shot-${index + 1}`, recipe: sceneId, startMs: cursor, durationMs: plan.durationMs });
+      cursor += plan.durationMs;
+    });
+    const frame = ASPECT_FRAMES[aspect.data];
+    const composition = { $schema: COMPOSITION_SCHEMA_POINTER, version: 1, id: request.id, title: request.title ?? blueprint.title, width: frame.width, height: frame.height, fps: 30, seed: 1, scenes, assets: [] };
+    files.push({ path: `${request.id}.composition.json`, text: JSON.stringify(composition, null, 2) + "\n" });
+    await writePlanned(root, files);
+    const catalog = await discoverRecipes(root);
+    const sceneIssues = catalog.issues.filter(issue => scenes.some(scene => issue.path.startsWith(`${SCENE_RECIPE_DIRECTORY}/${scene.recipe}.`)));
+    if (sceneIssues.length) return { success: false, command, issues: sceneIssues.map(issue => normalizeIssue({ code: "ERR_SCENE_INVALID", ...issue })), next: ["velora validate --json"] };
+    return { success: true, command, data: { files: files.map(file => file.path), composition: `${request.id}.composition.json`, blueprint: blueprint.id, aspect: aspect.data, durationMs: cursor, brief: blueprint.brief, slot: slot.kind },
+      ...(warnings.length ? { warnings } : {}),
+      next: [...(project.adapter ? ["velora sync --json"] : []), `velora validate --composition ${request.id}.composition.json --json`, `velora render --composition ${request.id}.composition.json --out ${request.id}.mp4 --json`] };
+  } catch (error) {
+    const known = error instanceof Error && "code" in error;
+    const nested = known && "issues" in error && Array.isArray(error.issues) ? (error.issues as CliIssue[]) : undefined;
+    const issues = (nested ?? [{ code: known ? String(error.code) : "ERR_INTERNAL", message: error instanceof Error ? error.message : "Template command failed.", ...(known && "target" in error && typeof error.target === "string" ? { path: error.target } : {}) }]).map(normalizeIssue);
+    return { success: false, command, issues, next: nextForIssues(issues) };
   }
 }

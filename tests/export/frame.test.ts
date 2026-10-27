@@ -102,7 +102,7 @@ describe("frame render", () => {
     expect(await run({})).toMatchObject({ success: false, issues: [{ code: "ERR_SCENE_NOT_FOUND" }] });
     await writeFile(path.join(root, "teaser.composition.json"), "{broken");
     expect(await run({})).toMatchObject({ success: false, issues: [{ code: "ERR_COMPOSITION_INVALID" }] });
-    await writeFile(path.join(root, "teaser.composition.json"), JSON.stringify({ ...compositionDoc(), fps: 24 }));
+    await writeFile(path.join(root, "teaser.composition.json"), JSON.stringify({ ...compositionDoc(), fps: 23 }));
     expect(await run({})).toMatchObject({ success: false, issues: [{ code: "ERR_COMPOSITION_INVALID", path: "composition.fps" }] });
     await writeComposition([{ id: "a", recipe: "demo", startMs: 0, durationMs: 80 }, { id: "b", recipe: "demo", startMs: 50, durationMs: 50 }]);
     expect(await run({})).toMatchObject({ success: false, issues: [{ code: "ERR_TIMELINE_OVERLAP" }] });

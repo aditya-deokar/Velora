@@ -11,7 +11,7 @@ import {
 } from "../core/composition";
 import type { SceneIssue } from "../core/scene";
 import * as services from "./services";
-/** SOURCE OF TRUTH: discoverRecipes, discoverAssets, discoverSharedComponents, loadComposition, scoped source loading.
+/** SOURCE OF TRUTH: discoverRecipes, discoverAssets, discoverSharedComponents, discoverCompositionFiles, loadComposition, scoped source loading.
  * WHAT: read bounded recipe, asset, component and composition files and validate through RESOURCES and core schemas.
  * WHY: CLI and framework catalog generators share exactly one discovery policy.
  * WHERE: recipes and project commands call these operations; services owns all effects.
@@ -123,6 +123,10 @@ export async function discoverSharedComponents(root: string): Promise<string[]> 
 }
 // Load and schema-validate one *.composition.json file. Returns coded issues;
 // callers resolve IDs against the catalog through resolveCompositionSpec.
+// Root *.composition.json files the studio's composition player can list (framework catalogs).
+export async function discoverCompositionFiles(root: string): Promise<string[]> {
+  return services.listRootFiles(root, COMPOSITION_FILE_SUFFIX);
+}
 export async function loadComposition(root: string, file: string): Promise<{ composition: Composition } | { issues: { code: string; path: string; message: string }[] }> {
   if (!file.endsWith(COMPOSITION_FILE_SUFFIX))
     return { issues: [{ code: "ERR_COMPOSITION_INVALID", path: "composition", message: `Use a *${COMPOSITION_FILE_SUFFIX} file. Got ${file}.` }] };

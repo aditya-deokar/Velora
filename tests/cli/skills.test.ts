@@ -5,6 +5,7 @@ import path from "node:path";
 import { runCli } from "../../src/cli";
 import { executeSkillsCommand } from "../../src/project/commands";
 import { CliEnvelopeSchema } from "../../src/core/cli-schema";
+import { VELORA_SKILL_NAMES } from "../../src/project/skills";
 
 const context = { root: "/project" };
 
@@ -59,8 +60,8 @@ describe("skills install round-trip", () => {
       const listed = await executeSkillsCommand("list-skills", { dir }, { root: scratch, version: "0.1.2" });
       expect(listed.success).toBe(true);
       if (!listed.success || listed.data.kind !== "list") return;
-      expect(listed.data.available.length).toBe(15);
-      expect(listed.data.installed.length).toBe(15);
+      expect(listed.data.available.length).toBe(VELORA_SKILL_NAMES.length);
+      expect(listed.data.installed.length).toBe(VELORA_SKILL_NAMES.length);
       expect(listed.data.drift).toEqual([]);
 
       const checked = await executeSkillsCommand("check-skills", { dir }, { root: scratch, version: "0.1.2" });

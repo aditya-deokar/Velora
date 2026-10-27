@@ -74,6 +74,10 @@
     "./preview": {
       "types": "./dist/library/types/preview/index.d.ts",
       "import": "./dist/library/preview.js"
+    },
+    "./kit": {
+      "types": "./dist/library/types/kit/index.d.ts",
+      "import": "./dist/library/kit.js"
     }
   },
   "files": [

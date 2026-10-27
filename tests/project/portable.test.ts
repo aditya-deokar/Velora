@@ -64,6 +64,17 @@ describe("portable host connections",()=>{
   await put(root,"src/velora/scenes/one.tsx","export default function Scene(){return null}");
   expect(await run(root,"sync-project")).toMatchObject({success:false,issues:[{code:"invalid-scenes"}]});
  });
+ it("registers root compositions in the synced catalog for the studio player",async()=>{
+  const root=await host();success(await run(root));await scene(root);
+  await put(root,"reel.composition.json","{}");await put(root,"nested/other.composition.json","{}");await put(root,".hidden.composition.json","{}");
+  success(await run(root,"sync-project"));
+  const catalog=await readFile(path.join(root,"src/velora/catalog.js"),"utf8");
+  expect(catalog).toContain('  "/reel.composition.json": () => import("../../reel.composition.json"),');
+  expect(catalog).not.toContain("other.composition");
+  expect(catalog).not.toContain("hidden");
+  // The connection component is unchanged: compositions ride in the same registry.
+  expect(await readFile(path.join(root,"src/velora/ProjectPreview.jsx"),"utf8")).not.toContain("composition");
+ });
  it("recovers interrupted additive init without replacing existing files",async()=>{
   const root=await host();const actual=services.atomicWrite;let failed=false;
   vi.spyOn(services,"atomicWrite").mockImplementation(async(...args)=>{if(args[1]==="src/velora/Studio.jsx"&&!failed){failed=true;throw Error("interrupted");}return actual(...args)});
