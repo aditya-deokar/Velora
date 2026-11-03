@@ -35,12 +35,15 @@ function run(command,args,cwd=host) {
 async function ok(command,args,cwd) {const r=await run(command,args,cwd);assert.equal(r.code,0,`${command} ${args.join(' ')}\n${r.stdout}\n${r.stderr}`);return r.stdout;}
 async function port() {const s=createServer();await new Promise((r,j)=>s.listen(0,'127.0.0.1',r).once('error',j));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
 async function waitFor(url,child) {
-  for(let i=0;i<120;i++){
+  // A time budget, not an attempt count: refused connections return instantly, and a cold Vite start on a
+  // Windows CI runner (antivirus scanning node_modules) takes far longer than 120 quick retries.
+  const deadline=Date.now()+90_000;
+  while(Date.now()<deadline){
     if(child.exitCode!==null)throw Error('Fixture dev server exited');
-    try {const r=await fetch(url,{signal:AbortSignal.timeout(500)});if(r.ok)return;}catch{}
-    await new Promise(r=>setTimeout(r,100));
+    try {const r=await fetch(url,{signal:AbortSignal.timeout(2000)});if(r.ok)return;}catch{}
+    await new Promise(r=>setTimeout(r,250));
   }
-  throw Error('Fixture server did not start');
+  throw Error('Fixture server did not start within 90 s');
 }
 try {
   await cp(path.join(root,'tests/fixtures/project-host'),host,{recursive:true});
