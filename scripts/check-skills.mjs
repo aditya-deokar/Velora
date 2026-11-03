@@ -78,7 +78,8 @@ for (const name of VELORA_SKILLS) {
   const file = path.join(skillsDir, name, 'SKILL.md');
   let text;
   try {
-    text = await readFile(file, 'utf8');
+    // Windows checkouts (core.autocrlf) carry CRLF; parse line-ending agnostic.
+    text = (await readFile(file, 'utf8')).replace(/\r\n?/g, '\n');
   } catch {
     fail(`Missing ${name}/SKILL.md`);
     continue;
@@ -133,7 +134,7 @@ for (const name of VELORA_SKILLS) {
 
 // 4. Root line budget.
 {
-  const rootText = await readFile(path.join(skillsDir, 'velora/SKILL.md'), 'utf8');
+  const rootText = (await readFile(path.join(skillsDir, 'velora/SKILL.md'), 'utf8')).replace(/\r\n?/g, '\n');
   const lines = rootText.split('\n').length;
   if (lines >= 500) fail(`velora/SKILL.md has ${lines} lines; budget is <500`);
   for (const must of ['routing', 'progressive', 'doctor', 'inspect', 'validate', 'render', 'frames', 'check']) {

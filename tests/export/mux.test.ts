@@ -9,6 +9,8 @@ import {
 } from "../../src/export/services";
 
 let root: string;
+// Caption burn-in needs libass's subtitles filter; minimal FFmpeg builds (Homebrew's core ffmpeg) lack it.
+const hasSubtitles = spawnSync("ffmpeg", ["-hide_banner", "-filters"], { encoding: "utf8" }).stdout?.split(/\r?\n/).some(line => line.trim().split(/\s+/)[1] === "subtitles") ?? false;
 function ffmpeg(...args: string[]) {
   const result = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args], { encoding: "utf8" });
   if (result.status !== 0) throw new Error(`ffmpeg failed: ${result.stderr}`);
@@ -53,7 +55,7 @@ describe("mux filter builder", () => {
 });
 
 describe("audio/caption post-pass", () => {
-  it("mixes audio and burns captions with measured drift", async () => {
+  it.runIf(hasSubtitles)("mixes audio and burns captions with measured drift", async () => {
     const scope = { root, output: "mixed.mp4" };
     const result = await mixPostAudioCaptions(scope, "silent.mp4", { audio: "tone.wav", captions: "subs.srt" });
     expect(result.audio).toMatchObject({ file: "tone.wav", codec: "pcm_s16le" });
@@ -73,7 +75,7 @@ describe("audio/caption post-pass", () => {
     expect(drift.driftMs).not.toBeNull();
     expect(drift.driftMs!).toBeLessThanOrEqual(40);
   }, 180_000);
-  it("converts VTT through the validated parser before burning", async () => {
+  it.runIf(hasSubtitles)("converts VTT through the validated parser before burning", async () => {
     const result = await mixPostAudioCaptions({ root, output: "vtt.mp4" }, "silent.mp4", { captions: "subs.vtt" });
     expect(result.captions).toMatchObject({ file: "subs.vtt", cues: 1, burnIn: true });
     expect(result.audio).toBeUndefined();
@@ -84,7 +86,11 @@ describe("audio/caption post-pass", () => {
     await writeFile(path.join(root, "bad.srt"), "1\nno timing\n\n");
     await expect(mixPostAudioCaptions({ root, output: "bad-cap.mp4" }, "silent.mp4", { captions: "bad.srt" }))
       .rejects.toMatchObject({ code: "ERR_CAPTION_INVALID" });
-    await expect(mixPostAudioCaptions({ root, output: "mixed.mp4" }, "silent.mp4", { audio: "tone.wav" }))
+    await expect(mixPostAudioCaptions({ root, output: "silent.mp4" }, "silent.mp4", { audio: "tone.wav" }))
       .rejects.toMatchObject({ code: "output-exists" });
+  }, 180_000);
+  it.runIf(!hasSubtitles)("explains a missing subtitles filter instead of a filter-graph error", async () => {
+    await expect(mixPostAudioCaptions({ root, output: "no-libass.mp4" }, "silent.mp4", { captions: "subs.srt" }))
+      .rejects.toMatchObject({ code: "ERR_FFMPEG_FILTER" });
   }, 180_000);
 });

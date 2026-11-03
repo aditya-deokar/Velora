@@ -741,6 +741,7 @@ export async function mixPostAudioCaptions(
         await writeFile(captionsFile, formatSrt(parsed.cues), "utf8");
       } else throw fault("ERR_CAPTION_INVALID", `Caption file ${input.captions} must be .srt or .vtt.`, input.captions);
     }
+    if (captionsFile) await requireSubtitlesFilter();
     const tracks: MuxTrack[] = [];
     let audioCodec = "";
     let audioPeak: number | null = null;
@@ -780,6 +781,7 @@ export async function mixPostAudioCaptions(
   }
 }
 export async function muxAudioCaptions(request: MuxRequest, timeoutMs = 10 * 60_000): Promise<{ ffmpegArgs: string[] }> {
+  if (request.captionsFile) await requireSubtitlesFilter();
   const { audioFilter, videoFilter } = buildMuxFilter(request.tracks, request.captionsFile, request.fontsDir);
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", request.video];
   request.tracks.forEach((t) => {
@@ -958,4 +960,25 @@ export async function readRendered(root: string, target: string): Promise<Buffer
 /** Remove a project directory only when it is empty (a failed deliver leaves no stray output folder). */
 export async function removeEmptyDir(root: string, target: string): Promise<void> {
   try { await rmdir(await scopedPath(root, target)); } catch { /* not empty or already gone */ }
+}
+let filterProbe: Promise<Set<string> | undefined> | undefined;
+/** Filters this FFmpeg build provides (probed once per process). */
+export function ffmpegFilters(timeoutMs = 10_000): Promise<Set<string> | undefined> {
+  filterProbe ??= new Promise(resolve => {
+    let out = "";
+    let child;
+    try { child = spawn("ffmpeg", ["-hide_banner", "-filters"], { shell: false, stdio: ["ignore", "pipe", "ignore"] }); }
+    catch { resolve(undefined); return; }
+    const timer = setTimeout(() => { child.kill("SIGKILL"); resolve(undefined); }, timeoutMs);
+    child.stdout?.on("data", chunk => { out += chunk.toString(); });
+    child.once("error", () => { clearTimeout(timer); resolve(undefined); });
+    child.once("close", code => { clearTimeout(timer); resolve(code === 0 ? new Set(out.split(/\r?\n/).map(line => line.trim().split(/\s+/)[1]).filter(Boolean)) : undefined); });
+  });
+  return filterProbe;
+}
+/** Caption burn-in needs FFmpeg's subtitles filter (libass); minimal builds (Homebrew's core ffmpeg) lack it. */
+export async function requireSubtitlesFilter(): Promise<void> {
+  const filters = await ffmpegFilters();
+  if (filters && !filters.has("subtitles"))
+    throw fault("ERR_FFMPEG_FILTER", "This FFmpeg build has no subtitles filter (libass), so captions cannot be burned in. Install a full build (Homebrew: brew install ffmpeg-full; Windows: the gyan.dev full build), or keep captions as a styled overlay (captions.style without burn).");
 }

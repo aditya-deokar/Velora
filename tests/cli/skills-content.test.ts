@@ -28,7 +28,15 @@ describe("skill content contract", () => {
 });
 
 describe("director skills v2", () => {
-  const read = (name: string) => readFile(path.join(root, "skills", name, "SKILL.md"), "utf8");
+  const read = async (name: string) => (await readFile(path.join(root, "skills", name, "SKILL.md"), "utf8")).replace(/\r\n?/g, "\n");
+  it("validates identically with Windows (CRLF) line endings", async () => {
+    for (const name of VELORA_SKILL_NAMES) {
+      const lf = await read(name);
+      const crlf = validateSkillContent(name, lf.replace(/\n/g, "\r\n"));
+      expect(crlf.issues, name).toEqual([]);
+      expect(crlf.frontmatter, name).toEqual(validateSkillContent(name, lf).frontmatter);
+    }
+  });
   it("routes every intent to installed skills, at most four per intent", async () => {
     const text = await read("velora");
     const router = text.slice(text.indexOf("### Intent router"), text.indexOf("Narrower needs"));

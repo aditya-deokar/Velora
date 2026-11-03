@@ -101,7 +101,7 @@ person still reviews taste (`requiresVisualReview: true`).
 | React | DOM 18.2+ or 19 (Next.js App/Pages Router, Vite, portable wrapper, Electron renderer) for component-level shots |
 | Any website | Astro, SvelteKit, Rails, Django, static HTML through `velora studio --site` (route-level shots; no React in your project) |
 | Node | 22.12+ for the CLI |
-| FFmpeg | Required for audio mix, caption burn, MP4 encode, and audio probing |
+| FFmpeg | Required for audio mix, caption burn, MP4 encode, and audio probing; burned-in captions need a build with libass (Homebrew: `brew install ffmpeg-full`) |
 | Chromium | Required via Playwright for capture, snapshots, and video sampling |
 | AI auth | Bring your own agent subscription — Velora runs no agent and stores no keys |
 

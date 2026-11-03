@@ -34,13 +34,19 @@ function run(command,args,cwd=host) {
 }
 async function ok(command,args,cwd) {const r=await run(command,args,cwd);assert.equal(r.code,0,`${command} ${args.join(' ')}\n${r.stdout}\n${r.stderr}`);return r.stdout;}
 async function port() {const s=createServer();await new Promise((r,j)=>s.listen(0,'127.0.0.1',r).once('error',j));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
+// Keep the tail of a spawned server's output so a failed start explains itself.
+function logged(child) {let out='';const keep=d=>{out=(out+d).slice(-6000)};child.stdout?.on('data',keep);child.stderr?.on('data',keep);child.log=()=>out;return child;}
 async function waitFor(url,child) {
-  for(let i=0;i<120;i++){
-    if(child.exitCode!==null)throw Error('Fixture dev server exited');
-    try {const r=await fetch(url,{signal:AbortSignal.timeout(500)});if(r.ok)return;}catch{}
-    await new Promise(r=>setTimeout(r,100));
+  // A time budget, not an attempt count: refused connections return instantly, and a cold Vite start on a
+  // Windows CI runner (antivirus scanning node_modules) takes far longer than 120 quick retries.
+  const deadline=Date.now()+90_000;
+  let last='no response';
+  while(Date.now()<deadline){
+    if(child.exitCode!==null)throw Error(`Fixture dev server exited (${child.exitCode}) for ${url}:\n${child.log?.() ?? ''}`);
+    try {const r=await fetch(url,{signal:AbortSignal.timeout(2000)});if(r.ok)return;last=`HTTP ${r.status}`;}catch(error){last=String(error?.cause?.code ?? error?.message ?? error);}
+    await new Promise(r=>setTimeout(r,250));
   }
-  throw Error('Fixture server did not start');
+  throw Error(`Fixture server did not answer ${url} within 90 s (last: ${last}). Server output:\n${child.log?.() ?? ''}`);
 }
 try {
   await cp(path.join(root,'tests/fixtures/project-host'),host,{recursive:true});
@@ -66,7 +72,7 @@ try {
   }
   await ok('npm',['install','--ignore-scripts','--no-audit','--no-fund']);
   const chosen=await port();const origin=`http://127.0.0.1:${chosen}`;
-  const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(chosen),'--strictPort'],{cwd:host,stdio:'ignore'});processes.push(server);
+  const server=logged(spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(chosen),'--strictPort'],{cwd:host,stdio:['ignore','pipe','pipe']}));processes.push(server);
   await waitFor(origin,server);
   const parentCli=path.join(root,'dist/cli/velora.js');
   if(registryPackage || process.env.VELORA_VERIFY_AGENT==='1') await ok('npm',['install','--ignore-scripts','--no-audit','--no-fund',registryPackage ?? tarball]);
@@ -160,7 +166,7 @@ try {
   const productionCode=(await Promise.all((await readdir(assets)).filter(name=>name.endsWith('.js')).map(name=>readFile(path.join(assets,name),'utf8')))).join('\n');
   assert.ok(!productionCode.includes('velora-library-scroll')&&!productionCode.includes('data-velora-capture'),'Production host must not ship the unused studio renderer');
   const previewPort=await port();const productionOrigin=`http://127.0.0.1:${previewPort}`;
-  const production=spawn(process.execPath,['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port',String(previewPort),'--strictPort'],{cwd:host,stdio:'ignore'});processes.push(production);
+  const production=logged(spawn(process.execPath,['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port',String(previewPort),'--strictPort'],{cwd:host,stdio:['ignore','pipe','pipe']}));processes.push(production);
   await waitFor(productionOrigin,production);
   await page.goto(productionOrigin+'/?velora-preview=1');
   await page.getByRole('heading',{name:'Existing revenue dashboard'}).waitFor();

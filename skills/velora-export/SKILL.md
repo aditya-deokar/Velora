@@ -100,6 +100,7 @@ FPS and size choice: 24 for a cinematic cadence, 25/50 for PAL deliverables, 30 
 - `--transparent` refused: only `vp9` and `prores4444` carry alpha, and audio or captions need an opaque codec.
 - `ERR_OUTPUT_UNWRITABLE`: choose another project-relative `.mp4` path.
 - `ERR_SERVER_UNREACHABLE` or `ERR_CAPTURE_NO_BRIDGE`: start the dev server and open a capture-enabled scene.
+- `ERR_FFMPEG_FILTER`: this FFmpeg build has no `subtitles` filter (libass), so captions cannot be burned in. Install a full build (Homebrew: `brew install ffmpeg-full`) or keep captions as a styled overlay.
 
 ## Validation
 

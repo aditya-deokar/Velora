@@ -47,7 +47,8 @@ export type SkillIssue = { code: string; path: string; message: string };
 // Minimal front-matter parser: `key: value`, `key: [a, b]`, and `key:`
 // followed by `- item` lines. Anything else is a hard invalid error.
 export function parseSkillFrontmatter(text: string): { frontmatter: Record<string, unknown>; body: string } | { issues: SkillIssue[] } {
-  const lines = text.split("\n");
+  // Windows checkouts (core.autocrlf) carry CRLF; the contract is line-ending agnostic.
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
   if (lines[0]?.trim() !== "---")
     return { issues: [{ code: "ERR_SKILL_INVALID", path: "SKILL.md:1", message: "Skill files start with a --- front-matter block." }] };
   let end = -1;

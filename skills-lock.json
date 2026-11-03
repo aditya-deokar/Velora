@@ -215,7 +215,7 @@
       "sourceType": "local",
       "skillPath": "skills/velora-export/SKILL.md",
       "version": "0.1.2",
-      "computedHash": "b79bda1fa815036cd56bc165047702a548883b8905b44f9d394f6d287fd7bf7e"
+      "computedHash": "bd8e772c81e99c14010b4054f7f1e3273841c7b0cdc7b6632120a97fe9f414d4"
     },
     "velora-debug": {
       "source": "local",
