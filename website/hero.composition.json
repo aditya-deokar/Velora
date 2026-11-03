@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/@adityadeokar/velora/schemas/composition.schema.json",
+  "version": 1,
+  "id": "hero",
+  "title": "Website hero loop (8 s)",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "seed": 1,
+  "scenes": [
+    {
+      "id": "shot-1",
+      "recipe": "hero-1-float-loop",
+      "startMs": 0,
+      "durationMs": 8000
+    }
+  ],
+  "assets": []
+}

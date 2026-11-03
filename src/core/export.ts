@@ -42,7 +42,7 @@ const finishing = {
   gifFps: z.number().int().min(5).max(30).optional(),
   poster: z.number().finite().nonnegative().max(120_000).optional(),
 };
-type Finishing = { codec?: VideoCodec; transparent?: boolean; motionBlur?: number; motionSamples?: number; gifFps?: number };
+type Finishing = { codec?: VideoCodec; transparent?: boolean; motionBlur?: number; motionSamples?: number; gifFps?: number; crf?: number };
 function checkFinishing(input: Finishing, output: string, ctx: z.RefinementCtx, path: string) {
   const codec = input.codec ?? "h264";
   const lower = output.toLowerCase();
@@ -65,7 +65,7 @@ export function resolveFinishing(input: Finishing & { quality?: QualityPreset },
   const largest = Math.max(frame.width, frame.height);
   const supersample = preset.scale > 1 ? Math.max(1, Math.min(preset.scale, Math.floor(3840 / largest))) : preset.scale;
   return { quality, codec: input.codec ?? "h264" as VideoCodec, transparent: !!input.transparent, motionBlur, motionSamples, supersample,
-    gifFps: input.gifFps ?? 20, x264: preset.x264, crf: preset.crf };
+    gifFps: input.gifFps ?? 20, x264: preset.x264, crf: preset.crf, ...(input.crf !== undefined ? { crfOverride: input.crf } : {}) as { crfOverride?: number } };
 }
 export type ResolvedFinishing = ReturnType<typeof resolveFinishing>;
 /** Sub-frame times for one output frame: a trailing shutter of `shutter` degrees split into N samples, clamped at the end. */
@@ -206,6 +206,8 @@ export const VideoRenderSchema = z.strictObject({
   ...finishing,
   // Delivery preset id (core/delivery); explicit flags win over its defaults.
   preset: z.string().min(1).max(64).optional(),
+  // Rate-control override (CRF, or ProRes qscale) used by velora deliver's size ladder; no CLI flag.
+  crf: z.number().int().min(0).max(63).optional(),
   // Extra aspect variants rendered in the same run, written as <out>-<w>x<h>.<ext>.
   aspects: z.array(z.enum(["16:9", "9:16", "1:1", "4:5", "21:9"])).min(1).max(5).optional(),
 }).superRefine((input, ctx) => {

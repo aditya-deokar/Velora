@@ -52,6 +52,8 @@ Load this skill first for every Velora request. Routing is progressive: read the
 | Titles, stats, end cards, brand colors and fonts, motion feel | `velora-brand` → `velora-typography` → `velora-motion-design` | `velora brand check --json` |
 | Grade, grain, film look, flash or banding warnings | `velora-looks` | `velora shot --scene <id> --time 0 --finish --out look.png --json` |
 | New project, adapter, `VELORA.md`, `velora sync` | `velora-init` | `velora init --json` |
+| A non-React website (Astro, SvelteKit, Rails, static HTML) | `velora-init` → `velora-templates` → `velora-cinematography` | `velora studio --site http://127.0.0.1:4321 --json` |
+| No product UI yet; motion graphics and a launch page | `velora-init` → `velora-launch` → `velora-motion-design` | `velora create my-launch --json` |
 | Something fails, or proving frames before review | `velora-debug` / `velora-verify` | `velora doctor --json` |
 
 Narrower needs, loaded only when a step calls for them:
@@ -127,7 +129,7 @@ Every film, from a 6 s hero loop to a 30 s launch, moves through the same gates.
 7. **Review and check.** `velora review --composition <file> --platform <preset> --json`, then `velora check --video draft.mp4 --manifest draft.manifest.json --json`.
 8. **Taste review.** A person watches the draft with sound. Automated checks never claim artistic quality.
 9. **Master.** `--quality master` or `--preset <platform>`.
-10. **Deliver.** One render per platform preset, each passing `velora check` (`velora-launch` lists the presets).
+10. **Deliver.** `velora deliver --composition <file> --targets youtube,reels,website-hero --json`, then `velora check --video` on each file (`velora-launch` lists the targets).
 
 ### The verify loop inside each step
 

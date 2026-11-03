@@ -67,3 +67,12 @@ test('new release cannot move latest backwards',async()=>{
 test('numeric version comparison does not use string ordering',async()=>{
  assert.equal((await publicationStatus({...manifest,version:'1.2.10'},{fetchRegistry:registry(published('1.2.9'))})).publish,true);
 });
+test('enforces the package size budget',()=>{
+  validateRelease(manifest,files.map(file=>({...file,size:1000})));
+  assert.throws(()=>validateRelease(manifest,files.map((file,index)=>({...file,size:index===0?3*1024*1024:10}))),/budget/);
+  assert.throws(()=>validateRelease(manifest,files.map(file=>({...file,size:1.9*1024*1024}))),/exceeds/);
+});
+test('never ships the docs website or demo media',()=>{
+  for(const name of ['website/index.html','website/public/hero.webm','tests/agent/demo-c/evidence-contact-sheet.png'])
+    assert.throws(()=>validateRelease(manifest,[...files,{path:name}]));
+});

@@ -184,6 +184,8 @@ export default function PageSurvey() {
       editorial:{beats:"velora audio beats --composition FILE [--write-markers] --json",snap:"velora compose snap --composition FILE --to beats|downbeats [--write] --json",review:"velora review --composition FILE [--platform ID] --json",transitions:"velora transitions ls --json"},
       brandAndLooks:{brand:"velora brand init [--from-css FILE] --json; velora brand check --json",finishPreview:"velora shot --scene ID --time MS --finish --out PNG --json"},
       presets:"velora render --composition FILE --out VIDEO --preset <id>; the delivery list below names each preset.",
+      deliver:"velora deliver --composition FILE --targets youtube,x,linkedin,reels,tiktok,shorts,website-hero,readme-gif,og-image,product-hunt [--out DIR] --json: every platform file within its size budget, website-hero embed snippets, stills and deliverables.json.",
+      setup:{reactApp:"velora init",anySite:"velora studio --site <loopback dev URL> (non-React sites: route-level shots through a same-origin proxy; nothing installed into the project)",noApp:"velora create <dir> (starter launch studio)"},
       delivery:DELIVERY_PRESETS.map(preset=>({id:preset.id,title:preset.title,size:`${preset.width}x${preset.height}`,fps:preset.fps,codec:preset.codec,lastVerified:preset.lastVerified})),
       api:{
         hostIntegration:{

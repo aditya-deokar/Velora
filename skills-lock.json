@@ -138,14 +138,14 @@
       "sourceType": "local",
       "skillPath": "skills/velora/SKILL.md",
       "version": "0.1.2",
-      "computedHash": "840bb48bd736d6d6f7651fd954fcd8186e195655b329e30347a43c3b8a394fed"
+      "computedHash": "2f025501f2d2988470f2ba5f0162a87776521813dba9a6fe52388c65acf997b5"
     },
     "velora-init": {
       "source": "local",
       "sourceType": "local",
       "skillPath": "skills/velora-init/SKILL.md",
       "version": "0.1.2",
-      "computedHash": "eb04646d84dac561f41b12a8cd3307b58b4a330e79edb572f79e4cd9e7c8d87f"
+      "computedHash": "42f157c065a9dff4bc5e2b5bef2ea65d5bebcf76a98f1db047291135bb6ab447"
     },
     "velora-composition": {
       "source": "local",
@@ -215,7 +215,7 @@
       "sourceType": "local",
       "skillPath": "skills/velora-export/SKILL.md",
       "version": "0.1.2",
-      "computedHash": "6818ed81f9715d39cd63155a585d0e26ea93bca53e4fa6abdc4ac18ebf71d50e"
+      "computedHash": "b79bda1fa815036cd56bc165047702a548883b8905b44f9d394f6d287fd7bf7e"
     },
     "velora-debug": {
       "source": "local",
@@ -285,7 +285,7 @@
       "sourceType": "local",
       "skillPath": "skills/velora-launch/SKILL.md",
       "version": "0.1.2",
-      "computedHash": "3cbbee0cd8392db01884e9e68a34d03b42976f3fef113721682764632f2ccaa3"
+      "computedHash": "f5fe9e4704c463c3f0cfdee9159e08ab73605769d6bc091e8870d72eda2b69f7"
     }
   }
 }

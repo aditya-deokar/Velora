@@ -138,3 +138,32 @@ certification checklist. Phases 02, 05 and 06 implement its waves.
   3. Confirm CI is green.
   4. Write `plan/v2/artifacts/phase-NN-exit.md` (commands run, results, evidence, deviations).
 - Keep v1 gates green at all times. v2 extends; it never forks owners or adds a second clock, renderer or validator.
+
+## 9. Final status (2026-11-03)
+
+All ten phases are implemented. Each has an exit report in `plan/v2/artifacts/phase-NN-exit.md` with its commands, results, evidence and deviations.
+
+| Phase | Status | Headline evidence |
+|---|---|---|
+| 00 Stabilize | done | Scoped install, cache invalidation, bounded-memory video, CI |
+| 01 Motion Engine v2 | done | Easing library, smooth rails, lens, noise, channels, masks, JSON Schemas |
+| 02 Templates (Wave 1) | done | 12 camera templates plus 2 blueprints, certified |
+| 03 Studio v2 | done | Gallery, quick shots, param panel, composition player |
+| 04 Master render | done | Quality presets, codecs, motion blur, alpha, delivery presets |
+| 05 Kit, brand, looks (Wave 2) | done | Kit components, brand, looks, 18 templates |
+| 06 Editorial (Wave 3) | done | A/B transitions, overlays, beats, SFX, loudness, review, 6 blueprints |
+| 07 Director skills | done | Intent router, `velora-launch`, guide v3, prompt library, demos C/D/E |
+| 08 Launch kit and 1.0 | done (maintainer tags 1.0) | `velora deliver`, docs site with a Velora-rendered hero, `velora create`, three-OS CI, size budget, security review |
+| 09 Any-site mode | done | `velora studio --site`: a static non-React site rendered to MP4 and delivered, with no React in the project |
+
+Success metrics:
+- **Time to first wow:** the README five-minute path is executed command by command by the parser suite, and the starter smoke runs it end to end.
+- **Launch film:** demo C scaffolded, beat-snapped, reviewed and drafted a 30 s film.
+- **Template quality:** `velora templates check` certifies every template.
+- **Honesty:** `velora skills check` plus the parser execution of every skill, README and USER_GUIDE command.
+- **Install health on three OSes:** confirmed by the first CI run of the 1.0 branch.
+
+Open for the maintainer:
+- the version bump and the 1.0 tag;
+- confirming the three-OS CI run;
+- enabling GitHub Pages for the website workflow.

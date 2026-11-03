@@ -37,6 +37,34 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
 - `velora skills install --agent claude|generic` installs into `.claude/skills` / `.agents/skills` without `--dir`.
 - New skills: `velora-templates`, `velora-cinematography`.
 
+### Added — Launch kit: deliver, starter, docs site
+- **`velora deliver --composition FILE --targets LIST`** renders every launch file into a fresh directory:
+  - platform videos at each preset's size, codec, quality and loudness, stepped down with a deterministic quality ladder until they fit the size budget;
+  - a website hero (`hero.webm`, `hero.mp4`, `hero.poster.jpg`, `embed.html`, `HeroVideo.tsx`: muted, inline, looping, reduced-motion aware, fixed dimensions);
+  - Open Graph and Product Hunt stills;
+  - `deliverables.json` with every file's SHA-256, size, attempts, loudness and warnings.
+  - Targets: `youtube`, `x`, `x-square`, `linkedin`, `reels`, `instagram-feed`, `tiktok`, `shorts`, `website-hero`, `readme-gif`, `og-image`, `product-hunt`.
+- **`velora create <dir>`** writes a starter launch studio (Vite React stage, branded page, `velora.brand.json`, `npm run velora:setup` for init, skills and a blueprint) for teams without a React app.
+- **Docs website** (`website/`, never packed): getting started, template gallery with real storyboards, cookbook from the recorded agent demos, craft guides, a CLI reference and a schema reference generated from the shipped sources. Its hero video is rendered by `velora deliver` from the `website-hero-loop-8s` blueprint of the site itself. A Pages workflow deploys it.
+
+### Added — Any-site mode
+- **`velora studio --site <loopback URL>`** films non-React sites (Astro, SvelteKit, Rails, Django, static HTML).
+  - A managed studio workspace in the user cache (pinned React and Vite; the Velora package aliased to the running CLI) serves `/__velora/` and proxies every other path, WebSockets included, to the site.
+  - Routes therefore frame same-origin. Frame-blocking headers are stripped in this development proxy only.
+  - The project gains only `.velora/project.json`, `VELORA.md`, scenes, compositions and assets.
+- `velora studio init --site`, and `--check` (verifies studio, proxy and framing, then stops).
+- New codes: `ERR_SITE_NOT_LOOPBACK`, `ERR_SITE_UNREACHABLE`, `ERR_SITE_REDIRECT_EXTERNAL`, `ERR_STUDIO_FAILED`, `WARN_SITE_FRAME_HEADERS`.
+
+### Changed — 1.0 hardening
+- Compatibility policy and a 0.x to 1.0 migration guide in the README.
+- CI runs the browser, export and installed-app tier on Linux, Windows and macOS.
+- The release check enforces a package size budget: 6 MB unpacked, 2 MB per file.
+- Capture screenshots wait up to 30 s, so heavy pages render under parallel workers.
+
+### Security
+- On Windows, only `npm.cmd` runs through a shell, and arguments with cmd metacharacters are refused. Before, `--package` paths and browser URLs passed through `cmd`.
+- FFmpeg subtitle and font paths containing quotes or line breaks are refused instead of escaped; a quote could previously end the filter string.
+
 ### Added — Director skills, prompt library and guide v3
 - **Prompt library:** `velora prompts ls` and `velora prompts show --id ID` print ready-to-paste agent prompts:
   `launch-film`, `feature-announcement`, `website-hero-loop`, `vertical-teaser`, `dashboard-cinematic`,

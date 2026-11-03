@@ -9,6 +9,7 @@ prerequisites:
 - velora init completed in the host app (velora-init)
 commands:
 - prompts
+- deliver
 - templates
 - new
 - review
@@ -55,6 +56,7 @@ A launch video has one job: make one person understand one thing and act. This s
 - `velora render --composition launch.composition.json --out launch.mp4 --quality draft --json` renders the draft for review.
 - `velora render --composition launch.composition.json --out launch-yt.mp4 --preset youtube-1080p --json` renders a platform deliverable; add `--aspects 16:9,9:16,1:1` for variants and `--poster 1500` for a poster frame.
 - `velora check --video launch-yt.mp4 --manifest launch-yt.manifest.json --json` gates each file (flash safety, blank frames, sync).
+- `velora deliver --composition launch.composition.json --targets youtube,reels,website-hero,readme-gif,og-image --json` renders every deliverable into a fresh `deliverables/<id>/` with `deliverables.json` (files, SHAs, sizes, size-ladder attempts, loudness, warnings).
 
 ## Prerequisites
 
@@ -78,7 +80,7 @@ The director's workflow. Each step has an exit before the next one starts.
 7. **Review.** `velora review` for the target platform, then `velora check --video`. Fix or consciously accept every advisory.
 8. **Taste review.** A person watches the draft. Advisories never replace this.
 9. **Master.** `--quality master` (or a delivery preset).
-10. **Deliver.** One render per platform preset (below), each checked.
+10. **Deliver.** `velora deliver --targets ...` renders every platform file in one run (below); check each video with `velora check --video`.
 
 ### Platform pacing
 
@@ -109,7 +111,7 @@ Each preset carries size and duration budgets; the render reports warnings when 
 ### Website hero practice
 
 - Keep it short (8-15 s), calm and seamless: `float-loop` returns exactly to its first frame; `velora review` flags a loop seam.
-- Render the WebM with `--preset website-hero`, then an MP4 fallback with `--codec h264`, and a poster with `--poster 0` so the first paint is the first frame.
+- `velora deliver --targets website-hero` writes `hero.webm`, `hero.mp4`, `hero.poster.jpg`, `embed.html` and `HeroVideo.tsx` in one step. By hand: `velora render --composition FILE --out hero.webm --preset website-hero --poster 0`, then the same with `--codec h264` and an `.mp4` output for the fallback.
 - Respect the size budget (about 4 MB for the WebM). Lower `--quality` or the duration before lowering the resolution.
 - Embed muted, looping and inline, with the poster and a reduced-motion fallback:
 
@@ -133,6 +135,7 @@ velora review --composition launch.composition.json --platform youtube-1080p --j
 velora render --composition launch.composition.json --out launch.mp4 --quality draft --json
 velora render --composition launch.composition.json --out launch-yt.mp4 --preset youtube-1080p --poster 1500 --json
 velora check --video launch-yt.mp4 --manifest launch-yt.manifest.json --json
+velora deliver --composition launch.composition.json --targets youtube,reels,website-hero,og-image --json
 ```
 
 Expected: a scaffolded 30 s film whose brief names each beat, a storyboard image, a review with no advisories (or advisories you accepted on purpose), a draft for the taste review, then a checked YouTube master with its poster.
@@ -152,6 +155,9 @@ Expected: a scaffolded 30 s film whose brief names each beat, a storyboard image
 - `ADV_READING_TIME`: shorten the copy before lengthening the shot.
 - A size warning on `website-hero`: shorten the loop or lower `--quality`, then re-render.
 - `ERR_PROMPT_NOT_FOUND`: run `velora prompts ls --json` for the IDs.
+- `ERR_DELIVER_TARGET`: use a target from the deliver help text or a delivery preset id.
+- `WARN_DELIVER_BUDGET`: every ladder step stayed over the preset's size budget; shorten the cut or lower the frame rate.
+- `WARN_DELIVER_CROPPED`: a still was center-cropped from a different aspect; compose a dedicated scene if the crop loses the subject.
 
 ## Validation
 

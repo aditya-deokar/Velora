@@ -1,4 +1,5 @@
 import { createElement, Fragment, useEffect, useState, type ComponentType, type ReactNode } from "react";
+import { projectFileUrl } from "./projectFiles";
 import { BrandSchema, type Brand, type LayoutElement, type LayoutNode } from "../core";
 import { Surface } from "../react";
 import * as kit from "../kit";
@@ -25,7 +26,7 @@ export function useProjectBrand(): Brand | undefined {
   useEffect(() => {
     if (typeof fetch === "undefined" || typeof location === "undefined") return;
     let active = true;
-    fetch(new URL("/velora.brand.json", location.origin)).then(response => response.ok ? response.json() : undefined).then(document => {
+    fetch(projectFileUrl("velora.brand.json")).then(response => response.ok ? response.json() : undefined).then(document => {
       const parsed = BrandSchema.safeParse(document);
       if (active && parsed.success) setBrand(parsed.data);
     }).catch(() => {});

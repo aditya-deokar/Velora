@@ -15,6 +15,8 @@ import { AGENT_NAMES, VELORA_SKILL_NAMES, agentSnippet, parseSkillFrontmatter, v
 import { SceneRecipeIdSchema, sceneMetadata, type SceneCatalog } from "../core/recipes";
 import { reviewAuthoring } from "../core/authoring";
 import { PROMPT_LIBRARY } from "../core/prompts";
+import { starterBlueprintIds, starterFiles } from "./starter";
+import { STUDIO_BASE, STUDIO_DEFAULT_PORT, isLoopbackUrl, studioRunConfig, studioWorkspaceFiles } from "./studio";
 import type { SceneIssue } from "../core/scene";
 import * as services from "./services";
 import { fault } from "./errors";
@@ -275,6 +277,8 @@ async function initialize(root: string, packageSource: string | undefined, reque
 }
 async function load(root: string) {
   const portable = await stateFor(root);
+  // Any-site mode: the studio lives in the managed workspace; the project holds only scenes and state.
+  if (portable.project?.adapter === "site") return portable.project;
   if (portable.project?.adapter) { await verifyPortable(root, portable.project); return portable.project; }
   const host = await inspectProject(root);
   const saved = await stateFor(root);
@@ -297,6 +301,15 @@ async function load(root: string) {
 }
 async function openPreview(root: string, input: z.output<typeof RESOURCES["open-preview"]>) {
   const project = await load(root);
+  if (project.adapter === "site") {
+    // The managed studio serves this project at <origin>/__velora/ and proxies everything else to the site.
+    const url = new URL(STUDIO_BASE + "?velora-preview=1", input.url).href;
+    const html = await services.fetchText(url, 30_000);
+    if (!html.includes('name="velora-project"') || !html.includes(project.projectId))
+      throw fault("wrong-dev-server", "This URL is not this project's Velora studio. Start it with velora studio --site <your site URL> and use the origin it prints.");
+    if (input.launch) await services.openBrowser(root, url);
+    return {success:true as const,data:{project,url}};
+  }
   if (project.adapter) {
     if (project.adapter === "react") throw fault("manual-preview", "Open your React renderer's route with ?velora-preview=1 after mounting src/velora/ProjectPreview.jsx. Electron renderers keep their own navigation and dev server.");
     const url = new URL("/velora?velora-preview=1", input.url).href;
@@ -372,8 +385,9 @@ async function portableHost(root:string, requested?:string):Promise<PortableHost
   const pkg = await packageAt(root,"package.json");
   if (!pkg) throw fault("unsupported-project","Run velora init in your existing React application's package directory.");
   const deps = {...pkg.devDependencies,...pkg.dependencies};
-  if (!deps.react || !deps["react-dom"]) throw fault("unsupported-project","This package needs a React DOM renderer. Run setup in the web/renderer package containing React and react-dom.");
+  if (!deps.react || !deps["react-dom"]) throw fault("unsupported-project","This package needs a React DOM renderer. Run setup in the web/renderer package containing React and react-dom. For a non-React site (Astro, SvelteKit, Rails, static HTML) use npx velora studio --site <its local dev URL>.");
   const saved = await stateFor(root);
+  if (saved.project?.adapter === "site") throw fault("conflict","This project uses any-site mode (velora studio --site); its studio runs outside the project. Remove .velora/project.json to switch to a React host connection.");
   if (saved.project?.adapter) return {adapter:saved.project.adapter,entry:saved.project.entry};
   if (requested === "react") return {adapter:"react",entry:"src/velora/ProjectPreview.jsx"};
   if (deps.next) {
@@ -507,7 +521,7 @@ async function verifyPortable(root:string,project:ProjectState) {
 async function synchronize(root:string):Promise<ProjectResult> {
   const project=(await stateFor(root)).project;
   if(!project)throw fault("not-initialized","Run velora init first.");
-  if(!project.adapter){await load(root);return {success:true,data:{project,changed:false}};}
+  if(!project.adapter||project.adapter==="site"){await load(root);return {success:true,data:{project,changed:false}};}
   const transactionPath=".velora/catalog-pending.json";
   const interrupted=await services.readText(root,transactionPath);
   if(interrupted!==undefined) {
@@ -1717,4 +1731,118 @@ export async function executeEditorialCommand(operation: "audio-beats" | "compos
     const issues = (nested ?? [{ code: known ? String((error as { code: unknown }).code) : "ERR_INTERNAL", message: error instanceof Error ? error.message : `${command} failed.`, ...(known && typeof (error as { target?: unknown }).target === "string" ? { path: (error as unknown as { target: string }).target } : {}) }]).map(normalizeIssue);
     return { success: false, command, issues, next: nextForIssues(issues) };
   }
+}
+/** SOURCE OF TRUTH: executeCreateCommand.
+ * WHAT: `velora create <dir>` writes the starter (project/starter) into a new or empty directory, create-only.
+ * WHY: a launch studio for teams without a React app, one npm install away from a first render.
+ * WHERE: cli `create`; the generated README and npm scripts run init, skills and a blueprint after install.
+ */
+export type CreateCommandResult =
+  | { success: true; command: "create"; data: { dir: string; files: string[]; blueprint: string; next: string[] } }
+  | { success: false; command: "create"; issues: CliIssue[]; next: string[] };
+export async function executeCreateCommand(input: { dir: string; name?: string; blueprint?: string }, context: { root: string; version?: string }): Promise<CreateCommandResult> {
+  const fail = (code: string, message: string, path?: string): CreateCommandResult => {
+    const issues = [normalizeIssue({ code, message, ...(path ? { path } : {}) })];
+    return { success: false, command: "create", issues, next: nextForIssues(issues) };
+  };
+  const dir = input.dir.replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+$/, "");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/.test(dir)) return fail("invalid-input", "Use a relative directory name such as my-launch.", "dir");
+  const blueprint = input.blueprint ?? "launch-film-30s";
+  if (!starterBlueprintIds().includes(blueprint)) return fail("ERR_TEMPLATE_NOT_FOUND", `Unknown blueprint "${blueprint}". Run velora templates ls --category blueprint --json.`, "blueprint");
+  try {
+    const root = await services.canonicalRoot(context.root);
+    if ((await services.scanDirectory(root, dir, 16)).length) return fail("output-exists", `${dir} is not empty. Choose a new directory name.`, dir);
+    const slug = (dir.split("/").pop() ?? "launch").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "launch";
+    const name = input.name ?? slug.split("-").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+    const files = starterFiles({ name, slug, packageVersion: /^\d+\.\d+\.\d+/.test(context.version ?? "") ? context.version! : "0.1.2", blueprint });
+    const written: string[] = [];
+    for (const [file, content] of Object.entries(files)) {
+      await services.atomicWrite(root, `${dir}/${file}`, content, undefined);
+      written.push(`${dir}/${file}`);
+    }
+    return { success: true, command: "create", data: { dir, files: written, blueprint, next: [`cd ${dir}`, "npm install", "npm run velora:setup", "npm run dev"] } };
+  } catch (error) {
+    const known = error as { code?: string; message?: string; target?: string };
+    return fail(known.code ?? "invalid-input", known.message ?? "Could not create the starter.", known.target);
+  }
+}
+
+/** The base URL scenes and capture layers load from: <origin>/__velora/ in any-site mode, else the origin root. */
+export async function previewBase(root: string, url: string): Promise<string> {
+  const project = (await stateFor(await services.canonicalRoot(root)).catch(() => ({ project: undefined }))).project;
+  return new URL(project?.adapter === "site" ? STUDIO_BASE : "/", url).href;
+}
+/** SOURCE OF TRUTH: executeStudioCommand.
+ * WHAT: any-site mode. studio-init records a site project (.velora/project.json with adapter "site" and the
+ * loopback site origin, plus the VELORA.md handoff); studio-start provisions the managed workspace in the user
+ * cache, writes the run config, starts Vite on loopback and verifies the studio and the proxy; studio-check
+ * does the same and stops the server.
+ * WHY: non-React sites get the studio, templates, compositions and delivery without React entering the repo.
+ * WHERE: cli `studio`; services own the cache directory, npm, the child process and HTTP probes.
+ */
+export type StudioResult =
+  | { success: true; command: "studio"; data: { project: ProjectState; site: string; studio?: string; url?: string; workspace?: string; installed?: boolean; workspaceBytes?: number; checks?: { id: string; pass: boolean; detail: string }[]; warnings: CliIssue[] }; server?: services.StudioServer }
+  | { success: false; command: "studio"; issues: CliIssue[]; next: string[] };
+export async function executeStudioCommand(operation: "studio-init" | "studio-start" | "studio-check", input: { site?: string; port?: number }, context: { root: string; version?: string }): Promise<StudioResult> {
+  const fail = (code: string, message: string, path?: string): StudioResult => {
+    const issues = [normalizeIssue({ code, message, ...(path ? { path } : {}) })];
+    return { success: false, command: "studio", issues, next: nextForIssues(issues) };
+  };
+  let server: services.StudioServer | undefined;
+  try {
+    const root = await services.canonicalRoot(context.root);
+    const saved = await stateFor(root);
+    if (saved.project && saved.project.adapter !== "site")
+      return fail("conflict", "This project already has a React host connection; open its own studio with velora open. Any-site mode is for non-React sites.", statePath);
+    const site = input.site ?? saved.project?.site;
+    if (!site) return fail("ERR_MISSING_VALUE", "Pass --site with your site's loopback dev URL, for example --site http://127.0.0.1:4321.", "site");
+    if (!isLoopbackUrl(site)) return fail("ERR_SITE_NOT_LOOPBACK", `${site} is not a loopback http(s) URL. Any-site mode proxies only local dev servers (127.0.0.1, localhost, [::1]).`, "site");
+    const origin = new URL(site).origin;
+    // Record (or update) the site project. Create-only for new state; the expected text guards concurrent edits.
+    let project = saved.project;
+    if (!project || project.site !== origin) {
+      project = ProjectStateSchema.parse({ version: 1, projectId: project?.projectId ?? services.newProjectId(), entry: "velora:site", packageManager: "npm", adapter: "site", site: origin });
+      await services.atomicWrite(root, statePath, JSON.stringify(project, null, 2) + "\n", saved.text);
+      const handoff = agentHandoff();
+      if ((await services.readText(root, handoff.handoff.path)) === undefined) await services.atomicWrite(root, handoff.handoff.path, handoff.text, undefined);
+    }
+    if (operation === "studio-init") return { success: true, command: "studio", data: { project, site: origin, warnings: [] } };
+    const probe = await services.probeSite(origin + "/");
+    if (!probe.reachable) return fail("ERR_SITE_UNREACHABLE", `Nothing answers at ${origin}. Start your site's dev server, then retry.`, "site");
+    if (probe.status && probe.status >= 300 && probe.status < 400 && probe.location && !isLoopbackUrl(new URL(probe.location, origin).href))
+      return fail("ERR_SITE_REDIRECT_EXTERNAL", `${origin}/ redirects to ${probe.location}, off this machine. Point --site at the local dev server, or disable that redirect in development.`, "site");
+    const warnings: CliIssue[] = probe.frameHeaders.length
+      ? [normalizeIssue({ code: "WARN_SITE_FRAME_HEADERS", message: `The site sends ${probe.frameHeaders.join(" and ")}; the studio's development proxy removes them so routes can be framed. Production is unaffected.` })]
+      : [];
+    const packageRoot = services.locatePackageRoot();
+    if (!packageRoot) return fail("ERR_STUDIO_FAILED", "Could not locate the installed Velora package (dist/library). Reinstall Velora and retry.");
+    const version = context.version ?? "development";
+    const workspace = await services.provisionStudioWorkspace(version, studioWorkspaceFiles(version));
+    const port = input.port ?? STUDIO_DEFAULT_PORT;
+    const configFile = await services.writeStudioRunConfig(workspace.dir, project.projectId, studioRunConfig({ projectRoot: root, projectId: project.projectId, site: origin, port, packageRoot }));
+    server = await services.startStudioServer(workspace.dir, configFile, port);
+    const studio = `${server.origin}${STUDIO_BASE}`;
+    const checks: { id: string; pass: boolean; detail: string }[] = [];
+    const home = await services.fetchText(`${studio}?velora-preview=1`, 30_000).catch(() => "");
+    checks.push({ id: "studio", pass: home.includes(project.projectId), detail: home.includes(project.projectId) ? `Studio answers at ${studio}.` : "The studio page does not carry this project's identity." });
+    const proxied = await services.probeSite(server.origin + "/");
+    checks.push({ id: "proxy", pass: proxied.reachable && proxied.status === probe.status, detail: proxied.reachable ? `${server.origin}/ proxies to ${origin}/ (HTTP ${proxied.status}).` : "The proxy did not answer." });
+    checks.push({ id: "frame-headers", pass: proxied.frameHeaders.length === 0, detail: proxied.frameHeaders.length ? `Still blocked by ${proxied.frameHeaders.join(", ")}.` : "Routes can be framed from the studio origin." });
+    const data = { project, site: origin, studio, url: `${studio}?velora-preview=1`, workspace: workspace.dir, installed: workspace.installed, workspaceBytes: workspace.bytes, checks, warnings };
+    if (checks.some(check => !check.pass)) {
+      await server.stop();
+      return fail("ERR_STUDIO_FAILED", checks.filter(check => !check.pass).map(check => check.detail).join(" "));
+    }
+    if (operation === "studio-check") { await server.stop(); return { success: true, command: "studio", data }; }
+    return { success: true, command: "studio", data, server };
+  } catch (error) {
+    await server?.stop();
+    const known = error as { code?: string; message?: string; target?: string };
+    return fail(known.code ?? "ERR_STUDIO_FAILED", known.message ?? "The studio could not start.", known.target);
+  }
+}
+/** Frame cache default: node_modules/.cache for npm hosts; .velora/cache for any-site projects (no node_modules there). */
+export async function defaultFrameCacheDir(root: string): Promise<string> {
+  const project = (await stateFor(await services.canonicalRoot(root)).catch(() => ({ project: undefined }))).project;
+  return project?.adapter === "site" ? ".velora/cache/frames" : "node_modules/.cache/velora/frames";
 }

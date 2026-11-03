@@ -1,0 +1,104 @@
+{
+  "$schema": "../../../node_modules/@adityadeokar/velora/schemas/scene-recipe.schema.json",
+  "version": 1,
+  "id": "hero-1-float-loop",
+  "title": "Website hero loop (8 s): The living hero",
+  "description": "A gentle bob and slow arc that return exactly to the start: a seamless website hero background.",
+  "template": {
+    "id": "float-loop",
+    "version": 1,
+    "aspect": "16:9",
+    "params": {
+      "intensity": "subtle",
+      "lens": 50,
+      "durationMs": 8000
+    }
+  },
+  "definition": {
+    "width": 1920,
+    "height": 1080,
+    "scene": {
+      "camera": {
+        "perspective": 2250,
+        "x": 0,
+        "y": 0,
+        "z": 217.11,
+        "rotateX": 8,
+        "rotateY": -12,
+        "rotateZ": 0
+      },
+      "focus": {
+        "distance": 2467.11,
+        "fStop": 5.6,
+        "focalLength": 50,
+        "maxBlur": 8
+      },
+      "nodes": [
+        {
+          "id": "subject"
+        }
+      ]
+    },
+    "motion": {
+      "durationMs": 8000,
+      "speed": 1,
+      "loop": true,
+      "tracks": [
+        {
+          "target": {
+            "kind": "camera"
+          },
+          "property": "rotateY",
+          "keyframes": [
+            {
+              "timeMs": 0,
+              "value": -16,
+              "easing": "sine.inOut"
+            },
+            {
+              "timeMs": 4000,
+              "value": -8,
+              "easing": "sine.inOut"
+            },
+            {
+              "timeMs": 8000,
+              "value": -16
+            }
+          ]
+        },
+        {
+          "target": {
+            "kind": "camera"
+          },
+          "property": "y",
+          "keyframes": [
+            {
+              "timeMs": 0,
+              "value": 0,
+              "easing": "sine.inOut"
+            },
+            {
+              "timeMs": 2000,
+              "value": -8,
+              "easing": "sine.inOut"
+            },
+            {
+              "timeMs": 4000,
+              "value": 0,
+              "easing": "sine.inOut"
+            },
+            {
+              "timeMs": 6000,
+              "value": 8,
+              "easing": "sine.inOut"
+            },
+            {
+              "timeMs": 8000,
+              "value": 0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

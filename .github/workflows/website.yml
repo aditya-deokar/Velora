@@ -1,0 +1,48 @@
+name: Website
+# Builds and deploys the docs site (website/) to GitHub Pages. Separate from CI and never part of verify:*.
+# The hero video is rendered locally by Velora (velora deliver --targets website-hero) and committed under
+# website/public/media/hero; this workflow only generates reference data and builds static files.
+on:
+  push:
+    branches: [main, master]
+    paths: ["website/**", "src/**", "skills/**", "schemas/**", "tests/agent/**", ".github/workflows/website.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: website
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: npm ci --no-audit --no-fund
+        working-directory: website
+      - run: npm run generate
+        working-directory: website
+      - run: npx vite build --base "/${{ github.event.repository.name }}/"
+        working-directory: website
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: website/dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

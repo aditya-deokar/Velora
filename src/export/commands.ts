@@ -5,13 +5,14 @@ import { resolveAssetId } from "../core/assets";
 import { formatSrt, parseCaptions } from "../core/captions";
 import { findDeliveryPreset, deliveryWarnings } from "../core/delivery";
 import { ASPECT_FRAMES } from "../core/shots";
-import { ALPHA_CODECS, CODEC_CONTAINERS, CaptureManifestSchema, RenderManifestSchema, resolveFinishing, shutterSamples, type ResolvedFinishing, type CheckRenderResult, type ExportVideoResult, type FrameRenderResult, type FramesRenderResult, type ShotRenderResult, type VideoRenderResult, type VisualCheck } from "../core/export";
+import { ALPHA_CODECS, CODEC_CONTAINERS, CaptureManifestSchema, RenderManifestSchema, resolveFinishing, shutterSamples, type ResolvedFinishing, type CheckRenderResult, type ExportVideoResult, type FrameRenderResult, type FramesRenderResult, type ShotRenderResult, type VideoRenderResult, type VisualCheck, type VideoCodec } from "../core/export";
 import { frameAt, layersAt, localTime, segmentAt, timeAtFrame, timelineDuration, timelineFromComposition, validateTimeline, TimelineSchema, type Timeline, type TimelineSegment } from "../core/timeline";
 import { SceneRecipeSchema, SceneSnapshotSchema, type SceneCatalog } from "../core/recipes";
 import {executeRecipeCommand} from "../project/recipes";
 import {discoverRecipes, loadComposition} from "../project/discovery";
-import {checkCompositionFull} from "../project/commands";
-import { canonicalRoot, readText, readBytes } from "../project/services";
+import {checkCompositionFull, defaultFrameCacheDir, previewBase} from "../project/commands";
+import { canonicalRoot, readText, readBytes, removeFile } from "../project/services";
+import { ALL_DELIVER_TARGETS, DeliverInputSchema, DeliverablesManifestSchema, galleryTimesMs, heroEmbedHtml, heroTimeMs, heroVideoTsx, resolveDeliverTargets, sizeLadder, type DeliverTarget, type DeliverablesManifest } from "../core/deliverables";
 import { fault } from "../project/errors";
 import * as services from "./services";
 import { blendTransition, composite, compositeOverlay, finishLook, type Lut3d } from "./compositor";
@@ -203,7 +204,7 @@ async function renderTimelineFrames(options: {
   const { root, url, version, fps, width, height, seed, catalog, timeline, wanted, noCache, parallel, signal, onProgress, spill } = options;
   const finishing = options.finishing ?? resolveFinishing({}, { width, height });
   const output = capturedSize(width, height, finishing.supersample);
-  const cacheDir = options.cacheDir ?? DEFAULT_FRAME_CACHE;
+  const cacheDir = options.cacheDir ?? await defaultFrameCacheDir(options.root);
   // Host edits change pixels without touching the binding; an unfingerprintable tree renders uncached.
   const hostSha = noCache ? undefined : await services.hostFingerprint(root);
   const caching = hostSha !== undefined;
@@ -249,7 +250,7 @@ async function renderTimelineFrames(options: {
     let sceneId = entry.recipeId ?? "captions";
     if (entry.captions) {
       const captions = entry.captions;
-      opened = `${url.replace(/\/$/, "")}/?velora-preview=1&velora-captions=${encodeURIComponent(captions.file)}&velora-caption-style=${captions.style}&velora-caption-size=${width}x${height}&velora-caption-duration=${Math.ceil(captions.durationMs)}${captions.wordsFile ? `&velora-caption-words=${encodeURIComponent(captions.wordsFile)}` : ""}`;
+      opened = `${await previewBase(root, url)}?velora-preview=1&velora-captions=${encodeURIComponent(captions.file)}&velora-caption-style=${captions.style}&velora-caption-size=${width}x${height}&velora-caption-duration=${Math.ceil(captions.durationMs)}${captions.wordsFile ? `&velora-caption-words=${encodeURIComponent(captions.wordsFile)}` : ""}`;
       recipeSha = services.sha256Hex(`${captions.style}|${captions.text}|${captions.words ?? ""}`);
       bindingSha = "velora-captions-v1";
     } else {
@@ -378,7 +379,7 @@ export async function executeFrameRender(
     if (!(timeMs < timeline.durationMs))
       throw fault("ERR_FRAME_OUT_OF_RANGE", `Frame ${frame} (${timeMs}ms) is outside the ${timeline.durationMs}ms timeline.`, "render.frame");
     const noCache = parsed.data.noCache ?? false;
-    const cacheDir = parsed.data.cacheDir ?? DEFAULT_FRAME_CACHE;
+    const cacheDir = parsed.data.cacheDir ?? await defaultFrameCacheDir(root);
     const scope = await services.prepareFileOutput(root, parsed.data.out);
     const manifestPath = parsed.data.out.replace(/\.png$/i, "") + ".manifest.json";
     const catalog = await discoverRecipes(root);
@@ -441,6 +442,7 @@ export async function executeVideoRender(
     const composition = full.composition!;
     // A delivery preset supplies defaults; explicit flags win.
     const target = parsed.data.preset === undefined ? undefined : findDeliveryPreset(parsed.data.preset);
+    const preset = target;
     if (parsed.data.preset !== undefined && !target) throw fault("invalid-input", `Unknown delivery preset "${parsed.data.preset}". List presets with velora guide --json (capabilities.delivery).`, "render.preset");
     const fps = parsed.data.fps ?? (target && !(target.fps as number[]).includes(composition.fps) ? target.fps[0] : composition.fps);
     const width = parsed.data.width ?? target?.width ?? composition.width;
@@ -477,7 +479,7 @@ export async function executeVideoRender(
     if (sourceText === undefined) throw fault("source-changed", "Composition source disappeared. Restore it and retry.");
     const wanted: FrameWanted[] = Array.from({ length: total }, (_, frame) => ({ frame, timeMs: timeAtFrame(frame, fps) }));
     const noCache = parsed.data.noCache ?? false;
-    const cacheDir = parsed.data.cacheDir ?? DEFAULT_FRAME_CACHE;
+    const cacheDir = parsed.data.cacheDir ?? await defaultFrameCacheDir(root);
     const parallel = parsed.data.parallel ?? services.defaultParallelism();
     tmpDir = await services.makeTempDir(root, ".velora-video-");
     const frameDir = `${tmpDir}/frames`;
@@ -493,7 +495,7 @@ export async function executeVideoRender(
     const ordered = wanted.map((w) => rendered.get(w.frame)!);
     const pngs = services.spilledFrames(frameDir, ordered.map((entry) => entry.frame));
     const finalAbs = await services.resolveOutput(root, parsed.data.out);
-    const encode = { fps, width, height, cwd: root, signal: context.signal, codec: finishing.codec, quality: finishing.quality, transparent: finishing.transparent, gifFps: finishing.gifFps, x264: finishing.x264, crf: finishing.crf };
+    const encode = { fps, width, height, cwd: root, signal: context.signal, codec: finishing.codec, quality: finishing.quality, transparent: finishing.transparent, gifFps: finishing.gifFps, x264: finishing.x264, crf: finishing.crf, ...(finishing.crfOverride !== undefined ? { crfOverride: finishing.crfOverride } : {}) };
     // GIF carries no audio or captions; say so instead of failing the render.
     const silent = finishing.codec === "gif";
     if (silent && (composition.audio.length || composition.captions))
@@ -550,7 +552,8 @@ export async function executeVideoRender(
       ffmpegArgs = (await services.muxAudioCaptions({ video: tmpVideo, tracks, ...(captionsFile ? { captionsFile } : {}), ...(fontsDir ? { fontsDir } : {}), output: finalAbs })).ffmpegArgs;
       // Two-pass loudness normalization of the mix (default -14 LUFS / -1 dBTP; loudness: false skips it).
       if (tracks.length && composition.loudness !== false) {
-        const target = LoudnessSchema.parse(composition.loudness ?? {});
+        // The composition's loudness wins; otherwise the delivery preset's target (e.g. -14 LUFS for social).
+        const target = LoudnessSchema.parse(composition.loudness ?? (preset?.loudnessLufs !== undefined ? { integrated: preset.loudnessLufs } : {}));
         loudnessData = { target, ...(await services.normalizeLoudness(finalAbs, target)) };
       }
       if (tracks.length) {
@@ -685,7 +688,7 @@ export async function executeFramesRender(
     const rendered = await renderTimelineFrames({
       root, url, version, fps, width: composition.width, height: composition.height, seed: composition.seed, look: composition.look, overlays: composition.overlays, captions: await captionLayerFor(root, composition),
       catalog: full.catalog, timeline, wanted,
-      cacheDir: parsed.data.cacheDir ?? DEFAULT_FRAME_CACHE, noCache: parsed.data.noCache ?? false,
+      cacheDir: parsed.data.cacheDir ?? await defaultFrameCacheDir(root), noCache: parsed.data.noCache ?? false,
       parallel: services.defaultParallelism(), signal: context.signal, onProgress: context.onProgress,
     });
     const pad = (n: number) => String(n).padStart(5, "0");
@@ -1095,5 +1098,156 @@ export async function executeCheck(
       issues: [{ code: known.code ?? "export-failed", message: known.code && known.message ? known.message : `Visual check failed${detailOf(error)}. Check the rendered evidence and retry.`, ...(typeof known.target === "string" ? { path: known.target } : {}) }] };
   } finally {
     if (tmpDir) await services.cleanupTemp(tmpDir).catch(() => {});
+  }
+}
+
+/** Every launch asset from one composition.
+ * WHAT: for each requested target (core/deliverables) render the preset's video through executeVideoRender
+ * (size, codec, quality, loudness from the preset), climb a deterministic CRF ladder until the file fits the
+ * preset's byte budget, and publish it with its poster; website-hero adds an H.264 fallback, a JPEG poster
+ * and embed snippets; og-image and product-hunt add exact-size stills. deliverables.json records every file,
+ * SHA, size, attempt, loudness and warning.
+ * WHY: a launch needs a dozen correctly sized files; one reproducible command replaces hand-tuned exports.
+ * WHERE: cli `deliver` adapts arguments; attempts live in <out>/.velora-attempts and are removed at the end.
+ */
+export type DeliverResult =
+  | { success: true; data: { out: string; manifest: string; targets: { name: string; preset: string; files: string[]; warnings: { code: string; message: string }[] }[] } }
+  | { success: false; issues: { code: string; message: string; path?: string }[] };
+export async function executeDeliver(
+  input: unknown,
+  context: { root: string; url?: string; version?: string; signal?: AbortSignal; onProgress?: ProgressFn },
+  render: typeof executeVideoRender = executeVideoRender,
+  still: typeof executeFrameRender = executeFrameRender,
+): Promise<DeliverResult> {
+  const parsed = DeliverInputSchema.safeParse(input);
+  if (!parsed.success) return { success: false, issues: parsed.error.issues.map((i) => ({ code: "invalid-input", message: `${i.path.join(".")}: ${i.message}` })) };
+  const options = parsed.data;
+  let root: string;
+  try { root = await canonicalRoot(context.root); }
+  catch { return { success: false, issues: [{ code: "invalid-scope", message: "Provide an absolute local project directory." }] }; }
+  const { targets, unknown } = resolveDeliverTargets(options.targets);
+  if (unknown.length) return { success: false, issues: unknown.map((name) => ({ code: "ERR_DELIVER_TARGET", path: "targets", message: `Unknown target "${name}". Use ${ALL_DELIVER_TARGETS.join(", ")} or a delivery preset id.` })) };
+  const full = await checkCompositionFull(root, options.composition);
+  if (full.issues.length) return { success: false, issues: full.issues.map((i) => ({ code: i.code, path: i.path, message: i.message })) };
+  const composition = full.composition!;
+  const outDir = (options.out ?? `deliverables/${composition.id}`).replace(/\\/g, "/").replace(/\/+$/, "");
+  if (await services.existingDir(root, outDir)) return { success: false, issues: [{ code: "output-exists", path: outDir, message: `${outDir} already exists. Deliver writes a fresh directory; choose another --out or move the old one.` }] };
+  const scratch = `${outDir}/.velora-attempts`;
+  const hero = heroTimeMs(composition);
+  const durationMs = timelineDuration(composition.scenes);
+  const shared = { composition: options.composition, ...(options.parallel ? { parallel: options.parallel } : {}), ...(options.noCache ? { noCache: true } : {}) };
+  const manifestFor = (out: string) => out.toLowerCase().endsWith(".mp4") ? out.slice(0, -4) + ".manifest.json" : out + ".manifest.json";
+  const report: DeliverablesManifest["targets"] = [];
+  let attemptId = 0;
+  type RenderedVideo = { out: string; bytes: number; width: number; height: number; durationMs: number; codec: string; manifest: string; poster?: string; measuredLufs?: number; warnings: { code: string; message: string }[] };
+  // One video at a preset through the size ladder; returns the published file (or the last attempt over budget).
+  async function deliverVideo(target: DeliverTarget, finalName: string, attempts: DeliverablesManifest["targets"][number]["attempts"], extra: { codec?: VideoCodec; poster?: boolean } = {}): Promise<RenderedVideo> {
+    const codec = extra.codec ?? target.preset.codec;
+    const quality = options.quality ?? target.preset.quality;
+    const ladder = sizeLadder(codec, quality, target.preset.gifFps ?? 15);
+    let chosen: { out: string; data: Extract<VideoRenderResult, { success: true }>["data"]; bytes: number } | undefined;
+    for (const step of ladder) {
+      const out = `${scratch}/${attemptId++}-${finalName}`;
+      const result = await render({ ...shared, out, preset: target.preset.id, quality, codec,
+        ...(step.crf !== undefined ? { crf: step.crf } : {}), ...(step.gifFps !== undefined ? { gifFps: step.gifFps } : {}),
+        ...(extra.poster !== false && codec !== "gif" ? { poster: hero } : {}) }, { ...context, root });
+      if (!result.success) throw fault(result.issues[0]?.code ?? "export-failed", `${target.name}: ${result.issues[0]?.message ?? "render failed"}`, `targets.${target.name}`);
+      const bytes = (await services.fileSize(await services.resolveOutput(root, out))) ?? 0;
+      const withinBudget = !target.preset.maxBytes || bytes <= target.preset.maxBytes;
+      attempts.push({ ...(step.crf !== undefined ? { crf: step.crf } : {}), ...(step.gifFps !== undefined ? { gifFps: step.gifFps } : {}), bytes, withinBudget });
+      chosen = { out, data: result.data, bytes };
+      if (withinBudget) break;
+    }
+    const finalOut = `${outDir}/${finalName}`;
+    await services.promoteFile(root, chosen!.out, finalOut);
+    await services.promoteFile(root, chosen!.data.manifest, manifestFor(finalOut));
+    let poster: string | undefined;
+    if (chosen!.data.poster) {
+      poster = finalOut.replace(/\.[a-z0-9]+$/i, "") + ".poster.png";
+      await services.promoteFile(root, chosen!.data.poster, poster);
+    }
+    // Loudness evidence from the render manifest; very long manifests (over the 2 MB read cap) simply omit it.
+    const manifestText = await readText(root, manifestFor(finalOut), 2_000_000).catch(() => undefined);
+    const renderManifest = RenderManifestSchema.safeParse(manifestText ? JSON.parse(manifestText) : {});
+    const measured = renderManifest.success ? renderManifest.data.loudness?.result?.integrated ?? undefined : undefined;
+    const warnings = [...(chosen!.data.warnings ?? [])];
+    if (!attempts.at(-1)!.withinBudget)
+      warnings.push({ code: "WARN_DELIVER_BUDGET", message: `${target.preset.title}: ${finalName} is ${(chosen!.bytes / 1048576).toFixed(1)} MB after ${attempts.length} attempts, over the ${((target.preset.maxBytes ?? 0) / 1048576).toFixed(0)} MB budget. Shorten the cut or lower the frame rate.` });
+    return { out: finalOut, bytes: chosen!.bytes, width: chosen!.data.width, height: chosen!.data.height, durationMs: chosen!.data.durationMs, codec: chosen!.data.codec ?? codec,
+      manifest: manifestFor(finalOut), ...(poster ? { poster } : {}), ...(typeof measured === "number" ? { measuredLufs: measured } : {}), warnings };
+  }
+  // One exact-size still: the composition frame at timeMs, cover-cropped to the preset (or given) size.
+  async function deliverStill(name: string, timeMs: number, size: { width: number; height: number }, warnings: { code: string; message: string }[]): Promise<string> {
+    const frameOut = `${scratch}/${attemptId++}-${name.replace(/\.[a-z]+$/i, "")}.png`;
+    const result = await still({ composition: options.composition, timeMs, out: frameOut, ...(options.noCache ? { noCache: true } : {}) }, { ...context, root });
+    if (!result.success) throw fault(result.issues[0]?.code ?? "export-failed", `${name}: ${result.issues[0]?.message ?? "frame render failed"}`, `targets.${name}`);
+    const png = await services.readRendered(root, frameOut);
+    if (!png) throw fault("export-failed", `${name}: the rendered frame is missing.`);
+    const out = `${outDir}/${name}`;
+    await services.encodeStill(root, png, out, size);
+    if (Math.abs(composition.width / composition.height - size.width / size.height) > 0.02 && !warnings.some((w) => w.code === "WARN_DELIVER_CROPPED"))
+      warnings.push({ code: "WARN_DELIVER_CROPPED", message: `${composition.width}x${composition.height} frames are center-cropped to ${size.width}x${size.height}; compose a dedicated scene if the crop loses the subject.` });
+    return out;
+  }
+  try {
+    await services.ensureDir(root, scratch);
+    for (const target of targets) {
+      const files: DeliverablesManifest["targets"][number]["files"] = [];
+      const attempts: DeliverablesManifest["targets"][number]["attempts"] = [];
+      const warnings: { code: string; message: string }[] = [];
+      const add = async (filePath: string, role: DeliverablesManifest["targets"][number]["files"][number]["role"], meta: Partial<DeliverablesManifest["targets"][number]["files"][number]> = {}) => {
+        files.push({ path: filePath, role, bytes: (await services.fileSize(await services.resolveOutput(root, filePath))) ?? 0, sha256: await services.sha256File(root, filePath), ...meta });
+      };
+      let measuredLufs: number | undefined;
+      const addVideo = async (video: RenderedVideo, role: "video" | "fallback") => {
+        await add(video.out, role, { width: video.width, height: video.height, durationMs: video.durationMs, codec: video.codec, renderManifest: video.manifest });
+        warnings.push(...video.warnings.filter((w) => !warnings.some((seen) => seen.code === w.code && seen.message === w.message)));
+        measuredLufs ??= video.measuredLufs;
+      };
+      if (target.kind === "video" || target.kind === "product-hunt") {
+        const extension = CODEC_CONTAINERS[target.preset.codec][0];
+        const video = await deliverVideo(target, `${target.name}${extension}`, attempts);
+        await addVideo(video, "video");
+        if (video.poster) await add(video.poster, "poster", { width: video.width, height: video.height });
+        if (target.kind === "product-hunt")
+          for (const [index, timeMs] of galleryTimesMs(durationMs).entries())
+            await add(await deliverStill(`${target.name}-${index + 1}.png`, timeMs, target.preset, warnings), "still", { width: target.preset.width, height: target.preset.height });
+      } else if (target.kind === "website-hero") {
+        const webm = await deliverVideo(target, "hero.webm", attempts);
+        const mp4 = await deliverVideo(target, "hero.mp4", attempts, { codec: "h264", poster: false });
+        await addVideo(webm, "video");
+        await addVideo(mp4, "fallback");
+        const posterPng = webm.poster ? await services.readRendered(root, webm.poster) : undefined;
+        if (!posterPng) throw fault("export-failed", "website-hero: the poster frame is missing.");
+        await services.encodeStill(root, posterPng, `${outDir}/hero.poster.jpg`, { width: webm.width, height: webm.height });
+        await removeFile(root, webm.poster!);
+        await add(`${outDir}/hero.poster.jpg`, "poster", { width: webm.width, height: webm.height });
+        const heroFiles = { webm: "hero.webm", mp4: "hero.mp4", poster: "hero.poster.jpg", width: webm.width, height: webm.height, title: composition.title };
+        await services.writeNewTextFile(await services.prepareFileOutput(root, `${outDir}/embed.html`), heroEmbedHtml(heroFiles));
+        await services.writeNewTextFile(await services.prepareFileOutput(root, `${outDir}/HeroVideo.tsx`), heroVideoTsx(heroFiles));
+        await add(`${outDir}/embed.html`, "embed");
+        await add(`${outDir}/HeroVideo.tsx`, "component");
+        if (durationMs > 15_000) warnings.push({ code: "WARN_DELIVER_HERO_LONG", message: `Website heroes read best at 8-15 s; this film is ${(durationMs / 1000).toFixed(1)} s.` });
+      } else {
+        await add(await deliverStill(`${target.name}.png`, hero, target.preset, warnings), "still", { width: target.preset.width, height: target.preset.height });
+      }
+      report.push({ name: target.name, preset: target.preset.id, kind: target.kind, presetLastVerified: target.preset.lastVerified,
+        ...(target.preset.loudnessLufs !== undefined && target.kind !== "still" ? { loudnessLufs: composition.loudness === false ? undefined : composition.loudness?.integrated ?? target.preset.loudnessLufs } : {}),
+        ...(measuredLufs !== undefined ? { measuredLufs } : {}), files, attempts, warnings });
+    }
+    const sourceText = (await readText(root, options.composition, 2_000_000)) ?? "";
+    const manifest = DeliverablesManifestSchema.parse({
+      version: 1, composition: options.composition, compositionId: composition.id, compositionSha: services.sha256Hex(sourceText),
+      heroTimeMs: hero, veloraVersion: context.version ?? "development", createdAt: new Date().toISOString(), targets: report,
+    });
+    const manifestPath = `${outDir}/deliverables.json`;
+    await services.writeNewTextFile(await services.prepareFileOutput(root, manifestPath), JSON.stringify(manifest, null, 2) + "\n");
+    return { success: true, data: { out: outDir, manifest: manifestPath, targets: report.map((t) => ({ name: t.name, preset: t.preset, files: t.files.map((f) => f.path), warnings: t.warnings })) } };
+  } catch (error) {
+    const known = error as { code?: string; message?: string; target?: string };
+    return { success: false, issues: [{ code: known.code ?? "export-failed", message: known.code && known.message ? known.message : `Deliver failed${detailOf(error)}.`, ...(typeof known.target === "string" ? { path: known.target } : {}) }] };
+  } finally {
+    await services.removeScratchDir(root, scratch).catch(() => {});
+    await services.removeEmptyDir(root, outDir);
   }
 }

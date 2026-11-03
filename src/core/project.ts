@@ -39,7 +39,9 @@ export const ProjectStateSchema = z.strictObject({
   projectId: z.uuid(),
   entry: z.string().min(1),
   packageManager: z.literal("npm"),
-  adapter: z.enum(["next-app", "next-pages", "react"]).optional(),
+  adapter: z.enum(["next-app", "next-pages", "react", "site"]).optional(),
+  // Any-site mode: the loopback origin of the non-React site the managed studio proxies.
+  site: z.string().url().optional(),
 });
 export const ProjectIssueSchema = z.strictObject({
   code: z.string(),

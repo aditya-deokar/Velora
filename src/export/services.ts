@@ -1,4 +1,4 @@
-import { lstat, mkdir, mkdtemp, link, rm, readdir, open, writeFile, readFile, rename } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, link, rm, rmdir, readdir, open, writeFile, readFile, rename } from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
 import { cpus, freemem } from "node:os";
@@ -104,7 +104,7 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
         await page.evaluate(elapsed=>(window as unknown as {__VELORA_CAPTURE__:CaptureBridge}).__VELORA_CAPTURE__.seek(elapsed),timeMs);
         const rect=await locator.boundingBox();
         if(!rect||rect.width<1||rect.height<1||rect.width>3840||rect.height>3840)throw fault("invalid-capture","Scene viewport must be visible and bounded.");
-        const png=await page.screenshot({clip:rect,type:"png",animations:"disabled",omitBackground:transparent,timeout:10_000});check();
+        const png=await page.screenshot({clip:rect,type:"png",animations:"disabled",omitBackground:transparent,timeout:30_000});check();
         return "data:image/png;base64,"+png.toString("base64");
       },
       async encode(scope: { root: string; output: string }, options: ExportVideo & Partial<ResolvedFinishing>, manifest: CaptureManifest, frames: number, produce?: FrameProducer, onFrame?: (index: number, png: Buffer) => Promise<void> | void) {
@@ -287,7 +287,7 @@ export function luminanceStats(pixels: Buffer): { mean: number; variance: number
 export function coverFilter(width: number, height: number, transparent = false): string {
   return `scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2${transparent ? ":color=black@0" : ""}`;
 }
-export type EncodeOptions = { fps: number; width: number; height: number; frames: number } & Partial<Pick<ResolvedFinishing, "codec" | "quality" | "transparent" | "gifFps" | "x264" | "crf">>;
+export type EncodeOptions = { fps: number; width: number; height: number; frames: number } & Partial<Pick<ResolvedFinishing, "codec" | "quality" | "transparent" | "gifFps" | "x264" | "crf" | "crfOverride">>;
 // Broadcast colorimetry: full-range sRGB PNGs convert to limited-range BT.709 YUV and the stream is
 // tagged so browsers and editors decode the same colors (FFmpeg defaults to an untagged BT.601 matrix).
 const BT709_TAGS = ["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"];
@@ -316,9 +316,11 @@ export function videoEncodeArgs(options: EncodeOptions, output: string): string[
       "-loop", "0", "-n", output];
   }
   if (codec === "h264")
-    return [...input, "-vf", `${cover},${toYuv("yuv420p")}`, "-c:v", "libx264", "-preset", options.x264 ?? "medium", "-crf", String(options.crf ?? 18),
+    return [...input, "-vf", `${cover},${toYuv("yuv420p")}`, "-c:v", "libx264", "-preset", options.x264 ?? "medium", "-crf", String(options.crfOverride ?? options.crf ?? 18),
       "-profile:v", "high", "-pix_fmt", "yuv420p", ...BT709_TAGS, "-movflags", "+faststart", ...frames, "-n", output];
-  const tuning = CODEC_QUALITY[codec];
+  const base = CODEC_QUALITY[codec];
+  // The deliver size ladder overrides rate control; speed stays the preset's.
+  const tuning = { speed: base.speed, crf: options.crfOverride === undefined ? base.crf : [options.crfOverride, options.crfOverride, options.crfOverride] as [number, number, number] };
   if (codec === "hevc")
     return [...input, "-vf", `${cover},${toYuv("yuv420p")}`, "-c:v", "libx265", "-preset", tuning.speed[level], "-crf", String(tuning.crf[level]),
       "-tag:v", "hvc1", "-pix_fmt", "yuv420p", ...BT709_TAGS, "-movflags", "+faststart", ...frames, "-n", output];
@@ -622,7 +624,10 @@ export type MuxRequest = { video: string; tracks: MuxTrack[]; captionsFile?: str
 // them a drive-letter colon splits the filter options (verified against real
 // FFmpeg). Pure and unit-tested; a wrong escape silently burns nothing.
 export function escapeSubtitlesPath(absolutePath: string): string {
-  const escaped = absolutePath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
+  // Inside FFmpeg's single quotes a backslash is literal, so a quote would end the string and let the rest of the
+  // path become filter-graph syntax. Such paths are refused rather than escaped.
+  if (/['\r\n]/.test(absolutePath)) throw fault("denied-path", "Caption and font paths cannot contain quotes or line breaks for FFmpeg; rename the project folder and retry.", absolutePath);
+  const escaped = absolutePath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
   return `'${escaped}'`;
 }
 // Build the single-pass mux filter: per-track delay/gain/fades, optional
@@ -901,4 +906,56 @@ export async function normalizeLoudness(fileAbs: string, target: Loudness): Prom
 /** Integrated loudness of a file (one measurement pass), for checks and tests. */
 export async function measureLoudness(fileAbs: string, target: Loudness = DEFAULT_LOUDNESS): Promise<LoudnessMeasurement> {
   return loudnormReport(await runFfmpeg(["-hide_banner", "-nostdin", "-i", fileAbs, "-af", `loudnorm=I=${target.integrated}:TP=${target.truePeak}:LRA=${target.range}:print_format=json`, "-f", "null", "-"]), "input");
+}
+/** SHA-256 of a project file (deliverables manifest); read in one pass, files are launch-sized. */
+export async function sha256File(root: string, target: string): Promise<string> {
+  return sha256Hex(await readFile(await scopedPath(root, target)));
+}
+/** One still at an exact size: cover-scale and center-crop a rendered PNG, written as PNG or JPEG; never overwrites. */
+export async function encodeStill(root: string, sourcePng: Buffer, output: string, size: { width: number; height: number }): Promise<void> {
+  const scope = await prepareFileOutput(root, output);
+  const target = await scopedPath(scope.root, scope.output);
+  await mkdir(path.dirname(target), { recursive: true });
+  const dir = await mkdtemp(path.join(path.dirname(target), ".velora-still-"));
+  try {
+    const source = path.join(dir, "source.png");
+    await writeFile(source, sourcePng);
+    const jpeg = /\.jpe?g$/i.test(output);
+    await runFfmpeg(["-hide_banner", "-loglevel", "error", "-nostdin", "-i", source, "-vf", coverFilter(size.width, size.height),
+      "-frames:v", "1", ...(jpeg ? ["-q:v", "3"] : []), "-n", target]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+/** Publish a finished attempt under its final project-relative name without ever overwriting (hard link, then unlink). */
+export async function promoteFile(root: string, from: string, to: string): Promise<void> {
+  const scope = await prepareFileOutput(root, to);
+  const source = await scopedPath(scope.root, from);
+  const target = await scopedPath(scope.root, scope.output);
+  await mkdir(path.dirname(target), { recursive: true });
+  try { await link(source, target); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") throw fault("output-exists", `Output ${to} already exists. Choose another output directory.`);
+    // Filesystems without hard links: rename stays atomic inside one directory tree.
+    await rename(source, target);
+    return;
+  }
+  await rm(source, { force: true });
+}
+/** Remove a project-scoped scratch directory created by deliver (its attempts). */
+export async function removeScratchDir(root: string, target: string): Promise<void> {
+  if (!/(^|\/)\.velora-attempts$/.test(target.replace(/\\/g, "/"))) throw fault("denied-path", "Only .velora-attempts scratch directories are removed.", target);
+  await rm(await scopedPath(root, target), { recursive: true, force: true });
+}
+/** Create a project-scoped directory (and parents) for outputs that renderers expect to exist. */
+export async function ensureDir(root: string, target: string): Promise<void> {
+  await mkdir(await scopedPath(root, target), { recursive: true });
+}
+/** Read a rendered project file (frame PNGs can exceed the 2 MB text-read cap). */
+export async function readRendered(root: string, target: string): Promise<Buffer | undefined> {
+  try { return await readFile(await scopedPath(root, target)); } catch { return undefined; }
+}
+/** Remove a project directory only when it is empty (a failed deliver leaves no stray output folder). */
+export async function removeEmptyDir(root: string, target: string): Promise<void> {
+  try { await rmdir(await scopedPath(root, target)); } catch { /* not empty or already gone */ }
 }

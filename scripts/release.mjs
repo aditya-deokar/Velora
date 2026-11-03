@@ -31,6 +31,8 @@ export function validateIdentity(manifest, {repository, tag, publishing = false}
   }
   if (tag !== undefined) assert.equal(tag, 'v' + manifest.version, 'Git tag must match package version');
 }
+// 1.0 package budget: 2.8 MB unpacked at 0.1.2; regressions past these limits fail the release check.
+export const PACKAGE_BUDGET = Object.freeze({ unpackedBytes: 6 * 1024 * 1024, fileBytes: 2 * 1024 * 1024 });
 export function validateRelease(manifest, files, options = {}) {
   validateIdentity(manifest, options);
   const names = files.map(file => file.path);
@@ -40,6 +42,11 @@ export function validateRelease(manifest, files, options = {}) {
     assert.ok(/^(package\.json|README\.md|LICENSE|dist\/(library|cli)\/.+\.(js|map|ts)|schemas\/[a-z-]+\.schema\.json|skills\/velora\/SKILL\.md|skills\/velora\/(REFERENCE|COMPATIBILITY)\.md|skills\/velora\/templates\/[^/]+\/[^/]+\.(json|tsx|jsx|md|srt|txt)|skills\/velora\/scripts\/[A-Za-z0-9-]+\.mjs|skills\/velora-[a-z0-9-]+\/SKILL\.md)$/.test(name),
       'Unexpected packed file: ' + name);
   }
+  // Size budget: installs stay light (sizes come from npm pack --json; fixtures without sizes skip the check).
+  const sized = files.filter(file => typeof file.size === 'number');
+  for (const file of sized) assert.ok(file.size <= PACKAGE_BUDGET.fileBytes, `Packed file over the ${PACKAGE_BUDGET.fileBytes} byte budget: ${file.path} (${file.size})`);
+  const total = sized.reduce((sum, file) => sum + file.size, 0);
+  assert.ok(total <= PACKAGE_BUDGET.unpackedBytes, `Unpacked package ${total} bytes exceeds the ${PACKAGE_BUDGET.unpackedBytes} byte budget`);
   const required = ['package.json','README.md','LICENSE',manifest.bin.velora.slice(2)];
   for (const entry of Object.values(manifest.exports)) {
     assert.equal(typeof entry.types, 'string');

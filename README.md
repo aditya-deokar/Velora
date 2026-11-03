@@ -98,7 +98,8 @@ person still reviews taste (`requiresVisualReview: true`).
 | Surface | Supported |
 |---|---|
 | Agents | Claude Code, Codex CLI, Cursor, any skill-compatible agent (`--json` contract is the coupling surface; snippets are additive) |
-| React | DOM 18.2+ or 19 (Next.js App/Pages Router, Vite, portable wrapper, Electron renderer) |
+| React | DOM 18.2+ or 19 (Next.js App/Pages Router, Vite, portable wrapper, Electron renderer) for component-level shots |
+| Any website | Astro, SvelteKit, Rails, Django, static HTML through `velora studio --site` (route-level shots; no React in your project) |
 | Node | 22.12+ for the CLI |
 | FFmpeg | Required for audio mix, caption burn, MP4 encode, and audio probing |
 | Chromium | Required via Playwright for capture, snapshots, and video sampling |
@@ -112,6 +113,58 @@ source exists to integrate. The command name `velora` runs the
 same CLI; recipe files stay at version 1 and scenes at focus version 3, and
 older wrappers and `VELORA.md` handoffs (from the unscoped `velora` package or
 guide v2) are upgraded by re-running `velora init` (never hand-edited).
+
+## Ship every platform at once
+
+`velora deliver` renders every launch file from one composition into a fresh directory:
+- each platform video at its preset's size, codec, quality and loudness, stepped down until it fits the preset's size budget;
+- a website hero (WebM plus MP4 fallback, a poster, `embed.html` and `HeroVideo.tsx`);
+- Open Graph and Product Hunt stills;
+- `deliverables.json` with every SHA and size.
+
+```sh
+npx velora deliver --composition launch.composition.json --targets youtube,reels,tiktok,website-hero,readme-gif,og-image --url http://127.0.0.1:5173 --json
+```
+
+Targets: `youtube`, `x`, `x-square`, `linkedin`, `reels`, `instagram-feed`, `tiktok`, `shorts`, `website-hero`, `readme-gif`, `og-image`, `product-hunt` (or any delivery preset id).
+
+## No React app yet?
+
+`velora create` writes a launch studio: a blank Vite React stage with a branded landing page, `velora.brand.json` and a blueprint, for motion graphics and screen recordings.
+
+```sh
+npx @adityadeokar/velora create my-launch --name "Your product"
+```
+
+Then `cd my-launch`, `npm install`, `npm run velora:setup` and `npm run dev`.
+
+## Any website: Astro, SvelteKit, Rails, static HTML
+
+Any-site mode films the real routes of a non-React site.
+- Velora runs a managed studio from your user cache, so React and Vite never enter your repository.
+- The studio is served at `/__velora/`; every other path is proxied to your site's local dev server, so routes frame same-origin.
+- Scenes, compositions and assets stay in your project.
+
+```sh
+npm install --save-dev @adityadeokar/velora
+npx velora studio init --site http://127.0.0.1:4321
+npx velora new scene --template scroll-through --id tour --route / --json
+npx velora studio --site http://127.0.0.1:4321
+```
+
+Render and deliver against the studio origin it prints (for example `--url http://127.0.0.1:5180`). Limits:
+- shots are route-level, not component-level;
+- the site's own animations are frozen;
+- interactive states must be reachable by route or query parameter.
+
+The development proxy strips `X-Frame-Options` and `frame-ancestors` so pages can be framed; production is unaffected.
+
+## Compatibility policy and migrating to 1.0
+
+- **Additive within a major version.** New optional fields never break existing files. Old CLIs reject fields they don't know, so upgrade the CLI before using new fields.
+- **Breaking changes bump the file version** (`version` in recipes, compositions, `velora.brand.json` and the guide) and ship an upgrade path. Re-running `velora init` upgrades generated adapters and `VELORA.md`; you never hand-edit generated files.
+- **Deprecations warn for one minor version** before removal.
+- **0.x to 1.0:** recipe version 1, scene version 3 and composition version 1 are unchanged, so existing scenes and compositions keep working. Re-run `npx velora init` once to refresh the adapter and the guide v3 handoff, then `npx velora skills install --agent claude` (or your agent) to get the 22-skill library.
 
 ## Scenes and studio
 

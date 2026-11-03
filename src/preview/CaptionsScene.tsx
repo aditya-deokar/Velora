@@ -4,6 +4,7 @@ import { Surface } from "../react";
 import { BrandProvider, CaptionTrack, type CaptionCueInput, type CaptionStyle, type CaptionWord } from "../kit";
 import { ScenePreview } from "./ScenePreview";
 import { useProjectBrand } from "./TemplateLayout";
+import { projectFileUrl } from "./projectFiles";
 
 /** SOURCE OF TRUTH: CaptionsScene, readCaptionsRequest.
  * WHAT: a full-frame captions layer opened by URL (velora-captions, velora-caption-style, velora-caption-size,
@@ -32,12 +33,12 @@ export function CaptionsScene({ request }: { request: CaptionsRequest }) {
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const text = await fetch(new URL("/" + request.file.replace(/^\.?\//, ""), location.origin)).then(response => { if (!response.ok) throw new Error(`Caption file ${request.file} is not served by the dev server.`); return response.text(); });
+      const text = await fetch(projectFileUrl(request.file)).then(response => { if (!response.ok) throw new Error(`Caption file ${request.file} is not served by the dev server.`); return response.text(); });
       const parsed = parseCaptions(text, request.file.toLowerCase().endsWith(".vtt") ? "vtt" : "srt");
       if ("issues" in parsed) throw new Error(parsed.issues[0].message);
       let words: CaptionWord[] = [];
       if (request.wordsFile) {
-        const document = await fetch(new URL("/" + request.wordsFile.replace(/^\.?\//, ""), location.origin)).then(response => response.json() as Promise<WordsDocument>);
+        const document = await fetch(projectFileUrl(request.wordsFile)).then(response => response.json() as Promise<WordsDocument>);
         words = document.words ?? [];
       }
       // Words belong to the cue whose span holds their start.

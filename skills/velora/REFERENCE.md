@@ -30,10 +30,13 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `templates` | `--category`, `--tag`, `--aspect`, `--id`, `--json` | `velora templates ls --json` |
 | `new` | `--template`, `--blueprint`, `--id`, `--component`, `--route`, `--set`, `--aspect`, `--duration`, `--title`, `--project`, `--json` | `velora new scene --template hero-push --id home-hero --route / --json` |
 | `transitions` | `--type`, `--json` | `velora transitions ls --json` |
+| `deliver` | `--composition`, `--targets`, `--out`, `--quality`, `--parallel`, `--no-cache`, `--no-stream`, `--url`, `--project`, `--json` | `velora deliver --composition launch.composition.json --targets youtube,reels,website-hero --json` |
+| `studio` | `--site`, `--port`, `--check`, `--project`, `--json` | `velora studio --site http://127.0.0.1:4321 --json` |
+| `create` | `--name`, `--blueprint`, `--json` | `velora create my-launch --name Fieldnote --json` |
 | `prompts` | `--id`, `--json` | `velora prompts show --id launch-film --json` |
 | `skills` | `--dir`, `--agent`, `--source`, `--json` | `velora skills install --dir <path> --json` |
 
-Subcommands: `audio ls|check|beats`, `captions validate|check`, `transitions ls|describe`, `prompts ls|show`, `templates ls|show|check`, `new scene|video`, `brand init|check`, `compose snap`, `skills install|ls|check`, `assets ls|check|add|rm`. Every command supports `--help`; exit `0` ok, `1` operational failure, `2` usage error.
+Subcommands: `audio ls|check|beats`, `captions validate|check`, `transitions ls|describe`, `prompts ls|show`, `studio init`, `templates ls|show|check`, `new scene|video`, `brand init|check`, `compose snap`, `skills install|ls|check`, `assets ls|check|add|rm`. Every command supports `--help`; exit `0` ok, `1` operational failure, `2` usage error.
 
 ## Envelope and ERR_* catalog
 
@@ -54,6 +57,8 @@ Success: `{ success: true, command, data, warnings?, next? }`. Failure: `{ succe
 | `ERR_COMPONENT_EXPORT_MISSING`, `ERR_ROUTE_INVALID`, `ERR_ROUTE_FRAME_BLOCKED`, `ERR_SCENE_EXISTS` | Scaffolding (`velora new`) | `velora new --help` |
 | `ERR_MARKERS_MISSING` | Beat snapping before beat detection | `velora audio beats --composition <file> --write-markers --json` |
 | `ERR_PROMPT_NOT_FOUND` | Prompt library | `velora prompts ls --json` |
+| `ERR_DELIVER_TARGET` | Unknown deliver target | `velora deliver --composition <file> --targets youtube --json` |
+| `ERR_SITE_NOT_LOOPBACK`, `ERR_SITE_UNREACHABLE`, `ERR_SITE_REDIRECT_EXTERNAL`, `ERR_STUDIO_FAILED` | Any-site studio | `velora studio --site <url> --check --json` |
 | `ERR_BRAND_INVALID`, `ERR_LOOK_INVALID` | Brand file and looks | `velora brand check --json` |
 | `ERR_CODEC_UNAVAILABLE`, `ERR_OUTPUT_UNWRITABLE` | Encoding and output paths | `velora doctor --json`, `velora render --help` |
 | `ERR_FLASH_RISK` | Photosensitivity (WCAG 2.3.1) | `velora check --video <file> --json` |
@@ -63,7 +68,7 @@ Success: `{ success: true, command, data, warnings?, next? }`. Failure: `{ succe
 | `ERR_WEBGL_CONTEXT`, `ERR_WEBGL_TIMELOOP` | WebGL | `velora validate --json`, `velora doctor --json` |
 | `ERR_VISUAL_MANIFEST`, `ERR_VISUAL_BLANK`, `ERR_VISUAL_DIMENSIONS`, `ERR_VISUAL_COVERAGE`, `ERR_VISUAL_DRIFT`, `ERR_VISUAL_BUDGET` | Visual gates | `velora frames --help`, `velora render --help`, `velora check --help` |
 | `ERR_SKILL_MISSING`, `ERR_SKILL_VERSION`, `ERR_SKILL_INVALID`, `ERR_SKILL_CONFLICT` | Skills library | `velora skills ls`, `velora skills check`, `velora skills install --help` |
-| `WARN_BEATS_UNCERTAIN`, `WARN_BRAND_CONTRAST`, `WARN_BRAND_LOGO`, `WARN_TEMPLATE_PLACEHOLDER`, `ADV_BANDING` | Warnings and advisories (exit 0) | `velora audio beats --help`, `velora brand check --json`, `velora validate --json`, `velora check --help` |
+| `WARN_BEATS_UNCERTAIN`, `WARN_BRAND_CONTRAST`, `WARN_BRAND_LOGO`, `WARN_TEMPLATE_PLACEHOLDER`, `WARN_SITE_FRAME_HEADERS`, `ADV_BANDING` | Warnings and advisories (exit 0) | `velora audio beats --help`, `velora brand check --json`, `velora validate --json`, `velora check --help` |
 | `ERR_INTERNAL` plus legacy `conflict`, `missing-dev-server`, `denied-path`, `not-initialized` and others | Fallback and compat | `velora doctor --json` |
 
 ## JSON schemas (shapes, not copies)

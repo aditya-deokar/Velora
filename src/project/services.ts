@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { constants, existsSync } from "node:fs";
-import { lstat, realpath, open, opendir, mkdir, rename, link, unlink, copyFile } from "node:fs/promises";
+import { lstat, realpath, open, opendir, mkdir, rename, link, unlink, copyFile, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -255,7 +255,14 @@ export function probeExecutable(executable: string, args: string[], timeoutMs = 
 
 function run(root: string, executable: string, args: string[], timeout = 120_000): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, args, { cwd: root, shell: process.platform === "win32", stdio: "ignore" });
+    // Only Windows .cmd shims (npm.cmd) need a shell; their arguments must not carry cmd metacharacters,
+    // because the shell concatenates them (a --package path with & or | would run a second command).
+    const shell = process.platform === "win32" && /\.cmd$/i.test(executable);
+    if (shell && args.some(arg => /[&|<>^%!"\r\n]/.test(arg))) {
+      reject(fault("denied-path", "Paths passed to npm on Windows cannot contain & | < > ^ % ! or quotes. Rename the file or folder and retry."));
+      return;
+    }
+    const child = spawn(executable, args.map(arg => shell && /\s/.test(arg) ? `"${arg}"` : arg), { cwd: root, shell, stdio: "ignore" });
     const timer = setTimeout(() => { child.kill(); reject(fault("process-failed", "Local process timed out; retry after checking the project.")); }, timeout);
     child.once("error", error => { clearTimeout(timer); reject(error); });
     child.once("exit", code => {
@@ -558,4 +565,102 @@ export function skillNameFromRel(rel: string): string | undefined {
   if (rel === "velora/SKILL.md") return "velora";
   const match = /^(velora-[a-z0-9-]+)\/SKILL\.md$/.exec(rel);
   return match ? match[1] : undefined;
+}
+// ---- Any-site mode: managed studio workspace (outside the user's project) ----
+/** Per-user cache root: VELORA_CACHE_DIR, else the platform cache directory. */
+export function userCacheDir(): string {
+  if (process.env.VELORA_CACHE_DIR) return path.resolve(process.env.VELORA_CACHE_DIR);
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
+  if (process.platform === "win32") return process.env.LOCALAPPDATA ?? path.join(home, "AppData", "Local");
+  if (process.platform === "darwin") return path.join(home, "Library", "Caches");
+  return process.env.XDG_CACHE_HOME ?? path.join(home, ".cache");
+}
+/** The running Velora package root (has dist/library/preview.js); the studio aliases imports to it. */
+export function locatePackageRoot(): string | undefined {
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 5; i++) {
+    if (existsSync(path.join(dir, "dist", "library", "preview.js")) && existsSync(path.join(dir, "package.json"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+  return undefined;
+}
+async function directoryBytes(dir: string, budget = 200_000): Promise<number> {
+  let total = 0, seen = 0;
+  const walk = async (current: string): Promise<void> => {
+    let handle;
+    try { handle = await opendir(current); } catch { return; }
+    for await (const entry of handle) {
+      if (++seen > budget) return;
+      const child = path.join(current, entry.name);
+      if (entry.isDirectory()) await walk(child);
+      else if (entry.isFile()) total += (await lstat(child)).size;
+    }
+  };
+  await walk(dir);
+  return total;
+}
+/** Write the managed workspace's files (CLI-owned; rewritten when they differ) and install its pinned dependencies once. */
+export async function provisionStudioWorkspace(version: string, files: Record<string, string>): Promise<{ dir: string; installed: boolean; bytes: number }> {
+  const dir = path.join(userCacheDir(), "velora", `studio-${version.replace(/[^0-9A-Za-z.-]/g, "_")}`);
+  await mkdir(dir, { recursive: true });
+  for (const [name, content] of Object.entries(files)) {
+    const file = path.join(dir, name);
+    const current = await readFile(file, "utf8").catch(() => undefined);
+    if (current !== content) await writeFile(file, content, "utf8");
+  }
+  let installed = false;
+  if (!existsSync(path.join(dir, "node_modules", "vite", "package.json")) || !existsSync(path.join(dir, "node_modules", "react-dom", "package.json"))) {
+    await run(dir, process.platform === "win32" ? "npm.cmd" : "npm", ["install", "--no-audit", "--no-fund", "--loglevel=error"], 10 * 60_000);
+    installed = true;
+  }
+  return { dir, installed, bytes: await directoryBytes(path.join(dir, "node_modules")) };
+}
+/** Per-project run config read by the workspace's vite.config.mjs (VELORA_STUDIO_CONFIG). */
+export async function writeStudioRunConfig(workspace: string, projectId: string, text: string): Promise<string> {
+  const file = path.join(workspace, "runs", `${projectId.replace(/[^0-9a-f-]/gi, "")}.json`);
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, text, "utf8");
+  return file;
+}
+export type SiteProbe = { reachable: boolean; status?: number; location?: string; frameHeaders: string[] };
+/** One request to the target site without following redirects (the proxy must stay on loopback). */
+export async function probeSite(url: string, timeoutMs = 5000): Promise<SiteProbe> {
+  try {
+    const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
+    await response.body?.cancel();
+    const frameHeaders: string[] = [];
+    if (response.headers.get("x-frame-options")) frameHeaders.push(`X-Frame-Options: ${response.headers.get("x-frame-options")}`);
+    if (/frame-ancestors/i.test(response.headers.get("content-security-policy") ?? "")) frameHeaders.push("Content-Security-Policy: frame-ancestors");
+    return { reachable: true, status: response.status, ...(response.headers.get("location") ? { location: response.headers.get("location")! } : {}), frameHeaders };
+  } catch {
+    return { reachable: false, frameHeaders: [] };
+  }
+}
+export type StudioServer = { origin: string; closed: Promise<number | null>; stop: () => Promise<void>; log: () => string };
+/** Start the workspace's Vite on loopback and resolve once its studio base answers (or reject with its log). */
+export async function startStudioServer(workspace: string, configFile: string, port: number, timeoutMs = 90_000): Promise<StudioServer> {
+  const vite = path.join(workspace, "node_modules", "vite", "bin", "vite.js");
+  const child = spawn(process.execPath, [vite, "--config", path.join(workspace, "vite.config.mjs")], {
+    cwd: workspace, shell: false, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, VELORA_STUDIO_CONFIG: configFile },
+  });
+  let output = "";
+  child.stdout?.on("data", chunk => { output = (output + chunk.toString()).slice(-20_000); });
+  child.stderr?.on("data", chunk => { output = (output + chunk.toString()).slice(-20_000); });
+  const closed = new Promise<number | null>(resolve => child.once("exit", code => resolve(code)));
+  const origin = `http://127.0.0.1:${port}`;
+  const stop = async () => { if (child.exitCode === null) { child.kill(); await Promise.race([closed, pause(5000)]); } };
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) throw fault("ERR_STUDIO_FAILED", `The studio server exited: ${output.slice(-1200)}`);
+    try {
+      const response = await fetch(`${origin}/__velora/`, { signal: AbortSignal.timeout(3000) });
+      await response.body?.cancel();
+      if (response.ok) return { origin, closed, stop, log: () => output };
+    } catch { /* not listening yet */ }
+    await pause(300);
+  }
+  await stop();
+  throw fault("ERR_STUDIO_FAILED", `The studio server did not answer within ${timeoutMs / 1000}s: ${output.slice(-1200)}`);
 }

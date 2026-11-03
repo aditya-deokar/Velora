@@ -38,7 +38,7 @@ The default Vite build ships only the product entry. Demo applications, gallerie
 
 ## Current scope
 
-The final local MVP joins installation, agent handoff, scene authoring, studio, snapshots and MP4 export. A focus-position editor, visual builder, hosted connection, product accounts and licensing are not implemented. Future adapters must call the existing operation boundaries rather than copy their policy. Previous demo/trial evidence remains in Morphite history; its old routes and application directories are retired.
+Velora 1.0 joins installation (React hosts, the starter and any-site mode), agent handoff, templates, kit, brand and looks, editorial tools, studio, master rendering and launch delivery. A focus-position editor, visual builder, hosted connection, product accounts and licensing are not implemented. Future adapters must call the existing operation boundaries rather than copy their policy. Previous demo/trial evidence remains in Morphite history; its old routes and application directories are retired.
 
 ## Source recipe catalog and library
 
@@ -209,6 +209,57 @@ Tests check every named template, skill, command, flag and preset against the ca
 **Skills.** The root skill is an intent router: each intent names at most four skills, and tests resolve every row against the registry. `velora-launch` covers the brief, story structures, platform pacing, deliverables and website hero practice. Craft skills carry descriptive Craft Notes and cross-link one another.
 
 **Validation.** `velora validate --composition` runs the same timeline gate as render (overlap windows, three-way overlaps), so a bad cut fails before any capture.
+
+## Launch delivery
+
+`src/core/deliverables.ts` owns the delivery plan. It is pure and depends only on core:
+- the target vocabulary (`DELIVER_TARGETS`: short names to `DELIVERY_PRESETS` and a kind: video, website-hero, still, product-hunt);
+- `sizeLadder`: per-codec CRF or GIF frame-rate steps, deterministic and monotonic;
+- `heroTimeMs`: the middle of the longest shot; `galleryTimesMs`: 25/50/75%;
+- the website-hero snippets (`heroEmbedHtml`, `heroVideoTsx`);
+- `DeliverablesManifestSchema`.
+
+`executeDeliver` lives in `src/export/commands.ts` because it orchestrates `executeVideoRender` and `executeFrameRender`.
+- **Per target:** it renders at the preset's size, codec and quality. The composition's loudness wins; otherwise the preset's target applies.
+- **Size budget:** it climbs the ladder until the file fits the preset's byte budget. The internal `crf` render option overrides rate control and has no CLI flag. Captured frames come from the content-hash cache, so retries only re-encode.
+- **Publishing:** attempts render into `<out>/.velora-attempts/` and the chosen one is published with a no-overwrite hard link (`promoteFile`).
+- **Stills:** cover-cropped by FFmpeg (`encodeStill`).
+- **Output:** the directory must be new. `deliverables.json` records files, SHA-256, sizes, attempts, measured loudness, warnings and each preset's `lastVerified` date.
+
+## Starter
+
+`src/project/starter.ts` (pure) plans the `velora create <dir>` file set:
+- a Vite React host with a branded landing page;
+- `velora.brand.json`, a README and `.gitignore`;
+- npm scripts: `velora:setup` runs init, installs the skills and scaffolds the blueprint.
+
+`executeCreateCommand` writes them create-only into a new or empty directory. Product names are stripped of markup before they reach HTML, CSS or TSX.
+
+## Any-site mode
+
+`src/project/studio.ts` (pure) plans a managed studio for non-React sites; `executeStudioCommand` (project commands) runs it through services.
+
+- **Workspace.** It lives at `<user cache>/velora/studio-<version>/` (`VELORA_CACHE_DIR` overrides) and installs pinned `react`, `react-dom`, `vite` and `@vitejs/plugin-react` once. `@adityadeokar/velora`, `/preview` and `/kit` are aliased to the running CLI's own `dist/library`. `resolve.dedupe` gives the studio, the library and the project's bindings one React. The user's project gains only `.velora/project.json` (adapter `site`, the site origin), `VELORA.md`, its scenes, compositions and assets. React, Vite and `package.json` never enter it, and the frame cache defaults to `.velora/cache/frames` there.
+- **Proxy.** The studio is served under `base: "/__velora/"`. Every other path, including WebSockets, is proxied to the loopback site (`STUDIO_PROXY_PATTERN` excludes the studio base and Vite internals), so `RouteFrame` routes are same-origin. In this development proxy only, `X-Frame-Options` and CSP `frame-ancestors` are removed.
+- **Project loading.** Project files reach the studio through Vite's `/@fs/` server. The studio entry sets `__VELORA_PROJECT_FILES__`, so `projectFileUrl` (captions, brand) never fetches from the proxied site root. `previewBase` gives capture and the captions layer `<origin>/__velora/`.
+- **Diagnostics:**
+  - `ERR_SITE_NOT_LOOPBACK`, `ERR_SITE_UNREACHABLE`, `ERR_SITE_REDIRECT_EXTERNAL`, `ERR_STUDIO_FAILED`;
+  - `WARN_SITE_FRAME_HEADERS` when headers were stripped;
+  - `velora studio --check` verifies the studio identity, the proxy and framing, then stops.
+- **Limits.** Shots are route-level, the site's animations are frozen, and states must be reachable by route or query.
+
+## 1.0 hardening and compatibility
+
+- **Compatibility.** Schemas evolve additively within a major version (old CLIs reject unknown fields, so minor versions are forward-only). A breaking change bumps the file's `version` (recipe, composition, brand, guide) and ships an upgrade path, as `velora init` does for older adapters and guide-v2 handoffs. Deprecations warn for one minor version before removal.
+- **Security review (pinned by `tests/project/security.test.ts`):**
+  - capture and export URLs are HTTP loopback without credentials, and the site proxy targets loopback only;
+  - `RouteFrame` refuses cross-origin documents;
+  - every write is project-scoped and no-overwrite;
+  - child processes take argument arrays. The Windows shell is used only for `npm.cmd`, and refuses cmd metacharacters;
+  - FFmpeg filter graphs interpolate no user text: subtitle and font paths with quotes or line breaks are refused, and SFX and looks come from schemas.
+- **Package budget.** `scripts/release.mjs` (`PACKAGE_BUDGET`): 6 MB unpacked, 2 MB per file. `website/`, tests and demo media can never be packed.
+- **CI.** Fast gates and the browser, export and installed-app tier run on Linux, Windows and macOS. Agent-demo replay, any-site mode (`test:site`) and hardware timing need registry access or real hardware, and stay local release gates.
+- **Performance evidence** is recorded per release in the exit reports (device-specific, never promised).
 
 ## Framework-independent host integration
 

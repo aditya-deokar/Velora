@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "composition": "hero.composition.json",
+  "compositionId": "hero",
+  "compositionSha": "96fbb3f4e262a4bb697a6a7037055dcc3d292e82828a41fe9a002c896794466f",
+  "heroTimeMs": 4000,
+  "veloraVersion": "0.1.2",
+  "createdAt": "2026-11-03T06:26:36.246Z",
+  "targets": [
+    {
+      "name": "website-hero",
+      "preset": "website-hero",
+      "kind": "website-hero",
+      "presetLastVerified": "2026-10-27",
+      "files": [
+        {
+          "path": "public/media/hero/hero.webm",
+          "role": "video",
+          "bytes": 1854189,
+          "sha256": "6e8d0092a364c02f0ebf8308033d73298b3ecdb5d73b0aa5de92d6d6742b1dab",
+          "width": 1920,
+          "height": 1080,
+          "durationMs": 8000,
+          "codec": "vp9",
+          "renderManifest": "public/media/hero/hero.webm.manifest.json"
+        },
+        {
+          "path": "public/media/hero/hero.mp4",
+          "role": "fallback",
+          "bytes": 2120854,
+          "sha256": "98e6b4618283691a2d0e0887fd1da1d6b4d53d901b0016170efd22b3a4200000",
+          "width": 1920,
+          "height": 1080,
+          "durationMs": 8000,
+          "codec": "h264",
+          "renderManifest": "public/media/hero/hero.manifest.json"
+        },
+        {
+          "path": "public/media/hero/hero.poster.jpg",
+          "role": "poster",
+          "bytes": 111182,
+          "sha256": "854da31c05b19b55236215efe990b7b0dd08d2ddd183a0eb32e1cc389578f742",
+          "width": 1920,
+          "height": 1080
+        },
+        {
+          "path": "public/media/hero/embed.html",
+          "role": "embed",
+          "bytes": 823,
+          "sha256": "48e9ace0ee6f20e8dadc3989570d4410e9e6a410602fd84bbe176ca628bcce04"
+        },
+        {
+          "path": "public/media/hero/HeroVideo.tsx",
+          "role": "component",
+          "bytes": 1099,
+          "sha256": "0bcb071ded07dc7300021760d2e5e0a4409b380ee1c152f4c3448645fc569a1b"
+        }
+      ],
+      "attempts": [
+        {
+          "crf": 31,
+          "bytes": 1854189,
+          "withinBudget": true
+        },
+        {
+          "crf": 18,
+          "bytes": 2120854,
+          "withinBudget": true
+        }
+      ],
+      "warnings": []
+    }
+  ]
+}
