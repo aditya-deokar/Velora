@@ -19,7 +19,7 @@ describe("velora templates", () => {
     expect(result.code).toBe(0);
     const data = envelope(result.stdout).data;
     expect(data.templates.map((t: { id: string }) => t.id)).toContain("hero-push");
-    expect(data.blueprints.map((b: { id: string }) => b.id)).toEqual(["product-reel-20s", "website-hero-loop-8s"]);
+    expect(data.blueprints.map((b: { id: string }) => b.id)).toEqual(["product-reel-20s", "website-hero-loop-8s", "launch-film-30s", "feature-drop-15s", "social-teaser-9x16", "changelog-20s", "product-hunt-kit", "app-preview-25s"]);
   }, 30_000);
   it("filters, shows one template and certifies the catalog", async () => {
     const loops = envelope((await run(["templates", "ls", "--tag", "loop", "--json"])).stdout).data.templates.map((t: { id: string }) => t.id);
@@ -62,5 +62,24 @@ describe("velora new", () => {
     const result = await run([...argv, "--json"], vi.fn());
     expect(result.code).toBe(2);
     expect(JSON.parse(result.stderr).issues[0].code).toBe(code);
+  });
+});
+
+describe("velora brand", () => {
+  it("dispatches init and check, and prints help", async () => {
+    const calls: [string, Record<string, unknown>][] = [];
+    const manager = (async (operation: string, input: Record<string, unknown>) => {
+      calls.push([operation, input]);
+      return { success: true, command: "brand", data: { file: "velora.brand.json", brand: { name: "Acme", motion: "crisp", colors: { accent: "#f36" } } } };
+    }) as never;
+    const environment = { root: "/project" };
+    const init = await runCli(["brand", "init", "--from-css", "src/index.css", "--json"], environment, ...Array(16).fill(undefined), manager);
+    expect(init.code).toBe(0);
+    expect(JSON.parse(init.stdout)).toMatchObject({ success: true, command: "brand" });
+    const check = await runCli(["brand", "check"], environment, ...Array(16).fill(undefined), manager);
+    expect(check.stdout).toContain("Valid velora.brand.json: Acme, motion crisp");
+    expect(calls).toEqual([["brand-init", { fromCss: "src/index.css" }], ["brand-check", {}]]);
+    expect((await runCli(["brand", "--help"], environment)).stdout).toContain("velora brand init");
+    expect((await runCli(["brand", "paint"], environment)).code).not.toBe(0);
   });
 });

@@ -51,33 +51,47 @@ The underlying `ProjectPreview` export accepts `projectId`, `enabled`, optional 
 
 Replace “dashboard” with the page you want. Claude Code, Codex CLI or another repository-capable agent can use the same installed guide; Velora does not run or authenticate the agent for you.
 
+For launch work, start from the prompt library instead. Each prompt names the blueprint or template, the skills to load and the proof loop; replace its `<placeholders>`:
+
+```sh
+npx velora prompts ls
+npx velora prompts show --id launch-film
+```
+
+Prompts: `launch-film`, `feature-announcement`, `website-hero-loop`, `vertical-teaser`, `dashboard-cinematic`, `changelog-video`, `product-hunt-assets` and `first-scene`. The generated `VELORA.md` and the studio's Getting started panel offer the same prompts.
+
 The guide explains concepts, tradeoffs, exact APIs and a tested file-pair example. It leaves the composition to the creator. Ask your agent to revise the source when you want a different shot.
 
 ## Five-minute path (CLI + skills, `--json`-first)
 
+Run these in your app's root with its dev server running (here on port 5173). Each step works on a fresh install:
+
 ```sh
 npm install @adityadeokar/velora
-npx velora init
-npx velora guide --json
-npx velora skills install --dir .skills --json
-npx velora doctor --json
-npx velora validate --composition teaser.composition.json --json
-npx velora render --composition teaser.composition.json --frame 0 --out proof.png --json
+npx velora init --json
+npx velora doctor --url http://127.0.0.1:5173 --json
+npx velora skills install --agent claude --json
+npx velora new scene --template hero-push --id home-hero --route / --json
+npx velora shot --scene home-hero --time 3000 --out home-hero.png --url http://127.0.0.1:5173 --json
 ```
 
-Then extract evidence and gate it before calling the video done:
+`home-hero.png` is a cinematic still of your real home page. For a whole launch film, scaffold a blueprint, check it, and draft it:
 
 ```sh
-npx velora frames --composition teaser.composition.json --out stills --json
-npx velora check --frames stills --json
+npx velora new video --blueprint launch-film-30s --id launch --route / --json
+npx velora validate --composition launch.composition.json --json
+npx velora review --composition launch.composition.json --platform youtube-1080p --json
+npx velora frames --composition launch.composition.json --out board --every 30 --contact-sheet --url http://127.0.0.1:5173 --json
+npx velora render --composition launch.composition.json --out launch.mp4 --quality draft --url http://127.0.0.1:5173 --json
+npx velora check --video launch.mp4 --manifest launch.manifest.json --json
 ```
 
 Every command supports `--help` and `--json`; exit `0` ok, `1` operational
 failure with `issues[].code`, `2` usage error. The root skill
-(`velora/SKILL.md`, loaded first) routes each request to one specialized
-skill; `npx velora skills check --json` verifies the installed library.
-`velora check` runs technical gates only — a human still reviews taste
-(`requiresVisualReview: true`).
+(`velora/SKILL.md`, loaded first) routes each intent to at most four
+specialized skills; `npx velora skills check --json` verifies the installed
+library. `velora check` and `velora review` are technical and advisory only; a
+person still reviews taste (`requiresVisualReview: true`).
 
 ## Compatibility and limits
 
@@ -96,7 +110,8 @@ transcription, and universal quality or performance promises (evidence is
 device- and scene-specific). Ewmotion integration is deferred until a real
 source exists to integrate. The command name `velora` runs the
 same CLI; recipe files stay at version 1 and scenes at focus version 3, and
-older wrappers are upgraded by re-running `velora init` (never hand-edited).
+older wrappers and `VELORA.md` handoffs (from the unscoped `velora` package or
+guide v2) are upgraded by re-running `velora init` (never hand-edited).
 
 ## Scenes and studio
 

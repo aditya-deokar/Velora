@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "id": "hero",
+  "title": "Website hero loop",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "scenes": [
+    { "id": "loop", "recipe": "hero", "startMs": 0, "durationMs": 8000 }
+  ],
+  "assets": [],
+  "loudness": false
+}

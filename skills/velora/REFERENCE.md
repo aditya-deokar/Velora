@@ -11,23 +11,29 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `open` | `--scene`, `--project`, `--url`, `--no-open`, `--json` | `velora open --no-open --json` |
 | `sync` | `--project`, `--json` | `velora sync --json` |
 | `scenes` | `--project`, `--json` | `velora scenes --json` |
-| `load` | `--scene`, `--project`, `--json` | `velora load --scene demo --json` |
+| `load` | `--scene`, `--project`, `--json` | `velora load --scene <id> --json` |
 | `validate` | `--project`, `--composition`, `--json` | `velora validate --composition teaser.composition.json --json` |
-| `inspect` | `--project`, `--scene`, `--composition`, `--json` | `velora inspect --scene demo --json` |
+| `inspect` | `--project`, `--scene`, `--composition`, `--json` | `velora inspect --scene <id> --json` |
 | `assets` | `--as`, `--id`, `--yes`, `--project`, `--json` | `velora assets ls --json` |
-| `snapshot` | `--scene`, `--url`, `--time`, `--project`, `--json` | `velora snapshot --scene demo --url http://127.0.0.1:5173 --json` |
-| `export` | `--url`, `--output`, `--fps`, `--width`, `--height`, `--audio`, `--captions`, `--project`, `--json` | `velora export --url http://127.0.0.1:5173/?velora-preview=1 --output clip.mp4 --json` |
+| `snapshot` | `--scene`, `--url`, `--time`, `--project`, `--json` | `velora snapshot --scene <id> --url <origin> --json` |
+| `export` | `--url`, `--output`, `--fps`, `--width`, `--height`, `--audio`, `--captions`, `--quality`, `--codec`, `--transparent`, `--motion-blur`, `--motion-samples`, `--gif-fps`, `--poster`, `--project`, `--json` | `velora export --url <scene-url> --output clip.mp4 --quality master --json` |
 | `doctor` | `--project`, `--url`, `--json` | `velora doctor --json` |
-| `render` | `--composition`, `--frame`, `--time`, `--out`, `--parallel`, `--no-cache`, `--cache-dir`, `--fps`, `--width`, `--height`, `--url`, `--project`, `--json`, `--no-stream` | `velora render --composition teaser.composition.json --out teaser.mp4 --json` |
-| `frames` | `--composition`, `--out`, `--every`, `--at`, `--no-cache`, `--cache-dir`, `--url`, `--project`, `--json` | `velora frames --composition teaser.composition.json --out stills --every 30 --json` |
-| `shot` | `--scene`, `--time`, `--out`, `--url`, `--project`, `--json` | `velora shot --scene demo --time 500 --out shot.png --json` |
+| `render` | `--composition`, `--frame`, `--time`, `--out`, `--parallel`, `--no-cache`, `--cache-dir`, `--fps`, `--width`, `--height`, `--url`, `--project`, `--json`, `--no-stream`, `--quality`, `--codec`, `--transparent`, `--motion-blur`, `--motion-samples`, `--gif-fps`, `--poster`, `--preset`, `--aspects` | `velora render --composition teaser.composition.json --out teaser.mp4 --quality master --json` |
+| `frames` | `--composition`, `--out`, `--every`, `--at`, `--contact-sheet`, `--columns`, `--no-cache`, `--cache-dir`, `--url`, `--project`, `--json` | `velora frames --composition teaser.composition.json --out stills --every 30 --json` |
+| `shot` | `--scene`, `--time`, `--out`, `--url`, `--quality`, `--motion-blur`, `--motion-samples`, `--fps`, `--transparent`, `--finish`, `--project`, `--json` | `velora shot --scene demo --time 500 --out shot.png --json` |
 | `check` | `--frames`, `--video`, `--manifest`, `--budget-ms`, `--project`, `--json` | `velora check --frames stills --json` |
-| `audio` | `--composition`, `--project`, `--json` | `velora audio check --composition teaser.composition.json --json` |
+| `audio` | `--composition`, `--file`, `--write-markers`, `--project`, `--json` | `velora audio check --composition teaser.composition.json --json` |
 | `captions` | `--file`, `--composition`, `--project`, `--json` | `velora captions validate --file subs.srt --json` |
+| `compose` | `--composition`, `--to`, `--tolerance`, `--write`, `--project`, `--json` | `velora compose snap --composition launch.composition.json --to beats --json` |
+| `review` | `--composition`, `--platform`, `--project`, `--json` | `velora review --composition launch.composition.json --platform youtube-1080p --json` |
+| `brand` | `--from-css`, `--name`, `--project`, `--json` | `velora brand init --from-css src/index.css --json` |
+| `templates` | `--category`, `--tag`, `--aspect`, `--id`, `--json` | `velora templates ls --json` |
+| `new` | `--template`, `--blueprint`, `--id`, `--component`, `--route`, `--set`, `--aspect`, `--duration`, `--title`, `--project`, `--json` | `velora new scene --template hero-push --id home-hero --route / --json` |
 | `transitions` | `--type`, `--json` | `velora transitions ls --json` |
+| `prompts` | `--id`, `--json` | `velora prompts show --id launch-film --json` |
 | `skills` | `--dir`, `--agent`, `--source`, `--json` | `velora skills install --dir <path> --json` |
 
-Subcommands: `audio ls|check`, `captions validate|check`, `transitions ls|describe`, `skills install|ls|check`, `assets ls|check|add|rm`. Every command supports `--help`; exit `0` ok, `1` operational failure, `2` usage error.
+Subcommands: `audio ls|check|beats`, `captions validate|check`, `transitions ls|describe`, `prompts ls|show`, `templates ls|show|check`, `new scene|video`, `brand init|check`, `compose snap`, `skills install|ls|check`, `assets ls|check|add|rm`. Every command supports `--help`; exit `0` ok, `1` operational failure, `2` usage error.
 
 ## Envelope and ERR_* catalog
 
@@ -44,18 +50,30 @@ Success: `{ success: true, command, data, warnings?, next? }`. Failure: `{ succe
 | `ERR_AUDIO_INVALID`, `ERR_AUDIO_CODEC`, `ERR_AUDIO_DRIFT` | Audio | `velora audio check --composition <file> --json` |
 | `ERR_CAPTION_INVALID`, `ERR_CAPTION_OVERLAP`, `ERR_CAPTION_TIMING` | Captions | `velora captions validate --file <file> --json` |
 | `ERR_TRANSITION_INVALID` | Transitions | `velora transitions ls --json` |
+| `ERR_TEMPLATE_NOT_FOUND`, `ERR_TEMPLATE_PARAM`, `ERR_TEMPLATE_ASPECT`, `ERR_TEMPLATE_FRAMING` | Templates and blueprints | `velora templates ls --json`, `velora templates show --id <id> --json` |
+| `ERR_COMPONENT_EXPORT_MISSING`, `ERR_ROUTE_INVALID`, `ERR_ROUTE_FRAME_BLOCKED`, `ERR_SCENE_EXISTS` | Scaffolding (`velora new`) | `velora new --help` |
+| `ERR_MARKERS_MISSING` | Beat snapping before beat detection | `velora audio beats --composition <file> --write-markers --json` |
+| `ERR_PROMPT_NOT_FOUND` | Prompt library | `velora prompts ls --json` |
+| `ERR_BRAND_INVALID`, `ERR_LOOK_INVALID` | Brand file and looks | `velora brand check --json` |
+| `ERR_CODEC_UNAVAILABLE`, `ERR_OUTPUT_UNWRITABLE` | Encoding and output paths | `velora doctor --json`, `velora render --help` |
+| `ERR_FLASH_RISK` | Photosensitivity (WCAG 2.3.1) | `velora check --video <file> --json` |
+| `ERR_SNAPSHOT_STALE` | Scene changed during a snapshot | `velora snapshot --help` |
+| `ERR_NODE_UNSUPPORTED`, `ERR_REACT_UNSUPPORTED`, `ERR_TOOLKIT_MISSING` | Host prerequisites | `velora doctor --json` |
 | `ERR_PROCEDURAL_BUDGET`, `ERR_ANIMATION_CLOCK` | Procedural and clocks | `velora validate --json` |
 | `ERR_WEBGL_CONTEXT`, `ERR_WEBGL_TIMELOOP` | WebGL | `velora validate --json`, `velora doctor --json` |
 | `ERR_VISUAL_MANIFEST`, `ERR_VISUAL_BLANK`, `ERR_VISUAL_DIMENSIONS`, `ERR_VISUAL_COVERAGE`, `ERR_VISUAL_DRIFT`, `ERR_VISUAL_BUDGET` | Visual gates | `velora frames --help`, `velora render --help`, `velora check --help` |
 | `ERR_SKILL_MISSING`, `ERR_SKILL_VERSION`, `ERR_SKILL_INVALID`, `ERR_SKILL_CONFLICT` | Skills library | `velora skills ls`, `velora skills check`, `velora skills install --help` |
+| `WARN_BEATS_UNCERTAIN`, `WARN_BRAND_CONTRAST`, `WARN_BRAND_LOGO`, `WARN_TEMPLATE_PLACEHOLDER`, `ADV_BANDING` | Warnings and advisories (exit 0) | `velora audio beats --help`, `velora brand check --json`, `velora validate --json`, `velora check --help` |
 | `ERR_INTERNAL` plus legacy `conflict`, `missing-dev-server`, `denied-path`, `not-initialized` and others | Fallback and compat | `velora doctor --json` |
 
 ## JSON schemas (shapes, not copies)
 
-- `CompositionSchema` version 1: `id`, `title`, `width` and `height` even 64 to 3840, `fps` 30, `scenes` 1 to 256 butt-joined segments with `id`, `recipe`, `startMs`, `durationMs`, optional `transition`, plus `assets`, `audio` to 16 tracks, optional `captions`, `seed`.
+- `CompositionSchema` version 1: `id`, `title`, `width` and `height` even 64 to 3840, `fps` 24, 25, 30 (default), 50, 60 or 120, `scenes` 1 to 256 V1 segments with `id`, `recipe`, `startMs`, `durationMs`, optional `transition` (gaps are black void; overlaps only inside an overlap transition's window), plus `assets`, `audio` to 16 tracks, optional `captions` (`file`, `style`, `wordsFile`, `burnIn`), `overlays` to 64, `markers`, `sfx`, `loudness`, `look`, `seed`. The JSON Schema ships at `schemas/composition.schema.json`.
 - `SceneRecipeSchema` version 1: `id` slug, `title`, `definition` with `scene.nodes`, optional `motion`, `width`, `height`, optional `snapshot`.
-- `MotionSchema`: `durationMs` plus tracks for `surface`, `camera`, `focus` with `timeMs` keyframes and `linear`, `easeInOut`, or `cinematic` easing.
-- `AudioTrackSchema`: `id`, `assetId`, `startMs`, `offsetMs`, `gain`, `fadeInMs`, `fadeOutMs`, optional `duckUnder`.
+- `MotionSchema`: `durationMs`, `speed`, `loop`, plus tracks for `surface`, `camera`, `focus` and `channel` with `timeMs` keyframes; easing names, `cubicBezier`, `spring`, `steps` or `hold`; track `interpolation` (`segments` or `smooth`), `ease` and seeded `noise` (`velora guide --json` lists the catalog).
+- `AudioTrackSchema`: `id`, `assetId`, optional `kind` (`music`, `voice`, `sfx`), `startMs`, `offsetMs`, `gain`, `fadeInMs`, `fadeOutMs`, optional `duckUnder`.
+- `BrandSchema` (`velora.brand.json`, `schemas/brand.schema.json`): colors, gradients, fonts, logo, radius, voice and motion personality.
+- `PromptSchema`: `id`, `title`, `intent`, `text` with `<placeholders>`, `templates`, `skills` (at most four).
 - `TextStyleSchema`: `family`, `size`, `weight`, `tracking`, `leading`, `color` `#rrggbb`, `align`, optional `kinetic` preset.
 - `WebGLSceneSchema`: `seed`, `width`, `height`, `pixelRatioCap` 1 to 2, `antialias`.
 - `RenderManifestSchema` version 1: `kind`, `seed`, `fps`, dimensions, `durationMs`, segments, per-frame `sha`, audio drift, caption windows, `ffmpegArgs`.
@@ -78,8 +96,9 @@ Success: `{ success: true, command, data, warnings?, next? }`. Failure: `{ succe
 | Composition assets | 256 files | Schema rejection |
 | Asset bytes | 50MB each | `ERR_ASSET_TOO_LARGE` |
 | Audio tracks | 16 | Schema rejection |
-| Render parallel | 1 to 4 | Usage error |
-| Export FPS | 30, 60, 120 | `ERR_FPS_UNSUPPORTED` |
+| Render parallel | 1 to 8 (default memory-aware, at most 4) | Usage error |
+| Export FPS | 24, 25, 30, 50, 60, 120 | `ERR_FPS_UNSUPPORTED` |
+| Overlays | 64 per composition | Schema rejection |
 | Canvas | 64 to 3840, even | Schema rejection |
 | A/V drift | 40ms | `ERR_AUDIO_DRIFT` or `ERR_VISUAL_DRIFT` |
 | Caption speed | 20 chars per second | `ERR_CAPTION_TIMING` |

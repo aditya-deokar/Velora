@@ -4,6 +4,7 @@ import type { PreviewDefinitionInput } from "../core";
 import { ScenePreview } from "./ScenePreview";
 import {SceneModuleLibrary,type SceneModules,type CompositionModules} from "./modules";
 import { QuickShot } from "./QuickShot";
+import { CaptionsScene, readCaptionsRequest } from "./CaptionsScene";
 export {SceneLibrary} from "./SceneLibrary";
 export type {SceneLibraryProps} from "./SceneLibrary";
 export type {SceneModules,CompositionModules} from "./modules";
@@ -36,11 +37,14 @@ export function ProjectPreview({children, projectId, enabled, active, hot, scene
     const requested = url.searchParams.get("velora-preview") === "1";
     url.searchParams.delete("velora-preview");
     const quick = url.searchParams.has("velora-quick");
+    const captions = readCaptionsRequest(url.search);
     for (const key of ["velora-scene", "velora-tab", "velora-quick", "velora-route", "velora-params", "velora-composition"]) url.searchParams.delete(key);
-    return {requested, quick, back: url.pathname + url.search + url.hash};
+    return {requested, quick, captions, back: url.pathname + url.search + url.hash};
   }, [location]);
   const content = useMemo(() => <Surface id="velora-application" style={{width:"100%",minHeight:980}}>{children}</Surface>, [children]);
   if (!enabled || !(active ?? entry?.requested)) return children;
+  // The captions layer used by renders: no scene files involved, so it takes precedence over the library.
+  if(entry?.captions) return <div data-velora-project={projectId}><CaptionsScene request={entry.captions}/></div>;
   if(sceneModules) return <div data-velora-project={projectId}><SceneModuleLibrary modules={sceneModules} compositionModules={compositionModules} assetUrls={assetUrls} hot={hot} backHref={entry?.back}>{children}</SceneModuleLibrary></div>;
   if(entry?.quick) return <div data-velora-project={projectId}><QuickShot hot={hot} backHref={entry.back}>{children}</QuickShot></div>;
   return <div data-velora-project={projectId}><ScenePreview title="Your application" definition={initialDefinition} backHref={entry?.back} hot={hot}>

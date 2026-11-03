@@ -1,4 +1,4 @@
-// Phase 09 replay gate: both agent demos' CLI transcripts replay cleanly in
+// Replay gate: every agent demo's CLI transcript replays cleanly in
 // disposable hosts, determinism holds (same seed -> same hashes), and every
 // transcript step maps to a loaded skill that owns its command.
 // Browser/video steps are recorded evidence (replayable: false) and replay
@@ -149,10 +149,23 @@ async function runDemo(name) {
   }
 }
 
-for (const name of ['demo-a', 'demo-b']) await runDemo(name);
+const DEMOS = ['demo-a', 'demo-b', 'demo-c', 'demo-d', 'demo-e'];
+for (const name of DEMOS) await runDemo(name);
+// Director-workflow coverage: the launch commands are exercised by at least one replayed step.
+{
+  const replayed = new Set();
+  for (const name of DEMOS) {
+    const transcript = JSON.parse(await readFile(path.join(root, 'tests', 'agent', name, 'transcript.json'), 'utf8'));
+    for (const step of transcript.steps) if (step.replayable) replayed.add(step.cmd.slice(0, 2).join(' '));
+  }
+  for (const required of ['prompts show', 'templates ls', 'templates show', 'templates check', 'new video', 'new scene', 'review --composition', 'captions check', 'compose snap']) {
+    if (![...replayed].some((cmd) => cmd.startsWith(required.split(' ')[0]) && (required.split(' ')[1].startsWith('--') || cmd === required)))
+      failures.push(`coverage: no replayed step runs velora ${required}`);
+  }
+}
 if (failures.length) {
   for (const f of failures) console.error(`check-agent-demos: ${f}`);
   console.error(`check-agent-demos: ${failures.length} failure(s)`);
   process.exit(1);
 }
-console.log('check-agent-demos: both transcripts replay, determinism holds, skill traces cover every step.');
+console.log(`check-agent-demos: ${DEMOS.length} transcripts replay, determinism holds, skill traces cover every step.`);

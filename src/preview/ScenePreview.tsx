@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useId, type ReactNod
 import { createPortal } from "react-dom";
 import { SUPPORTED_EXPORT_FPS, ExportFrameRateSchema, QualityPresetSchema, VideoCodecSchema, CODEC_CONTAINERS, type PreviewDefinitionInput, type QualityPreset, type VideoCodec } from "../core";
 import { Scene, SceneErrorBoundary, useSceneCapture } from "../react";
+import { LookLayer } from "../kit";
+import { decodeBase64Url, hasExportFinishing, resolveLook, LookSchema, type LookInput } from "../core";
 import { usePreviewSession } from "./session";
 import { usePreviewConnection, type PreviewHot } from "./connection";
 import { BrandAttribution } from "./BrandAttribution";
@@ -47,8 +49,8 @@ function Glyph({kind}: {kind: "play" | "pause" | "restart" | "export"}) {
       kind === "restart" ? <path d="M5 9a8 8 0 1 1 0 7M5 3v6h6"/> : <path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4"/>}
   </svg>;
 }
-function Capture({durationMs, seek}: {durationMs: number; seek: (ms: number) => void}) {
-  useSceneCapture({durationMs, seek});
+function Capture({durationMs, seek, look}: {durationMs: number; seek: (ms: number) => void; look?: LookInput}) {
+  useSceneCapture({durationMs, seek, look});
   return null;
 }
 function ExportMenu({disabled, panelHost, size}: {disabled: boolean; panelHost: HTMLDivElement | null; size?: {width: number; height: number}}) {
@@ -121,6 +123,15 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
   }, [viewport]);
   const definition = session.definition;
   const blocked = !session.valid || !connection.connected || !!connection.error || !!renderError;
+  // A scene's own look wins; a composition render passes its default as velora-look (base64url JSON).
+  const look = useMemo<LookInput | undefined>(() => {
+    if (definition?.look) return definition.look;
+    if (typeof location === "undefined") return undefined;
+    const packed = new URLSearchParams(location.search).get("velora-look");
+    if (!packed) return undefined;
+    try { const parsed = LookSchema.safeParse(JSON.parse(decodeBase64Url(packed) ?? "")); return parsed.success ? parsed.data : undefined; } catch { return undefined; }
+  }, [definition?.look]);
+  const exportOnly = useMemo(() => { try { return hasExportFinishing(resolveLook(look)); } catch { return false; } }, [look]);
   useTransportKeys(session, fps, !blocked);
   const captureSeek = useCallback((ms: number) => {
     if (blocked) throw new Error("Correct the scene before exporting.");
@@ -157,13 +168,15 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
               style={{width: "100%", height: "100%"}}>
               {/* One aspect-preserving cover frame fills preview and capture; overflow is cropped, never stretched. */}
               <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
-                <Scene camera={definition.scene.camera} focus={definition.scene.focus} motion={definition.motion}
-                  timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}}>
-                  {children}
-                </Scene>
+                <LookLayer look={look} timeMs={session.timeMs} width={definition.width} height={definition.height}>
+                  <Scene camera={definition.scene.camera} focus={definition.scene.focus} motion={definition.motion}
+                    timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}}>
+                    {children}
+                  </Scene>
+                </LookLayer>
                 <StudioOverlays width={definition.width} height={definition.height} state={overlays} root={frame} timeMs={session.timeMs}/>
               </div>
-              <Capture durationMs={session.durationMs} seek={captureSeek}/>
+              <Capture durationMs={session.durationMs} seek={captureSeek} look={look}/>
             </div>, viewport)}
         </SceneErrorBoundary>
         <div className="velora-header">
@@ -190,6 +203,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
             onChange={event => session.seek(Number(event.target.value))}/>
           <output className="velora-time" data-testid="scene-time">{timeLabel(session.timeMs)} / {timeLabel(session.durationMs)}</output>
         </div>
+        {exportOnly && <p className="velora-status">Bloom, halation, aberration, sharpen and LUT are export finishing: preview them with <code>velora shot --finish</code>.</p>}
         <div className="velora-preview-meta"><span className="velora-status" role="status"><span className="velora-status-dot"/>{stateText}</span><BrandAttribution/></div>
       </div>
     </footer>

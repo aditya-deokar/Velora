@@ -33,11 +33,14 @@ Use this skill at segment boundaries. Pick a catalog type, fit it inside the seg
 - `velora validate --json`: checks span fit and leaf-targeted declarations.
 - `velora render --composition teaser.composition.json --frame 0 --out proof.png --json`: proves the entrance replays.
 
-Catalog: `cut` (no tracks), `dissolve` (fade), `slide-push` (x travel), `wipe-mask` (true left-to-right reveal through a `clipRight` inset mask on each entering leaf), `iris-mask` (true circular reveal through a `clipRadius` mask), `depth-dolly` (camera z), `focus-pull` (focus distance), `cascade-handoff` (staggered depth plus opacity).
+Overlap mode (true A/B, blended by the renderer): `crossfade`, `dip-to-black`, `dip-to-white`, `wipe`, `iris`, `push`, `zoom`, `whip`, `light-leak`. The incoming segment starts exactly `durationMs` before the outgoing one ends; options `direction`, `ease`, `seed`, `sfx`. See `velora-editing`.
+
+Entering catalog: `cut` (no tracks), `dissolve` (fade), `slide-push` (x travel), `wipe-mask` (true left-to-right reveal through a `clipRight` inset mask on each entering leaf), `iris-mask` (true circular reveal through a `clipRadius` mask), `depth-dolly` (camera z), `focus-pull` (focus distance), `cascade-handoff` (staggered depth plus opacity).
 
 ## Prerequisites
 
-- Butt-joined segments; transitions do not overlap prior content.
+- Entering transitions: butt-joined segments; they do not overlap prior content.
+- Overlap transitions: the only legal overlap, exactly the transition's length.
 - `durationMs` positive and within the segment span.
 - Leaf-targeted types (`dissolve`, `slide-push`, `wipe-mask`, `iris-mask`, `cascade-handoff`) resolve to scenes that declare leaves.
 

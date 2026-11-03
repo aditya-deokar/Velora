@@ -1,0 +1,47 @@
+{
+ "success": true,
+ "command": "audio",
+ "data": {
+  "file": "assets/music.wav",
+  "bpm": 120,
+  "confidence": 0.981,
+  "beats": [
+   30,
+   530,
+   1030,
+   1530,
+   2030,
+   2530,
+   3030,
+   3530,
+   4030,
+   4530,
+   5030,
+   5530,
+   6030,
+   6530,
+   7030,
+   7530,
+   8030,
+   8530,
+   9030,
+   9530,
+   10030,
+   10530
+  ],
+  "downbeats": [
+   30,
+   2030,
+   4030,
+   6030,
+   8030,
+   10030
+  ],
+  "onsets": 21,
+  "durationMs": 11000,
+  "markersWritten": 22
+ },
+ "next": [
+  "velora compose snap --composition teaser.composition.json --to beats --json"
+ ]
+}

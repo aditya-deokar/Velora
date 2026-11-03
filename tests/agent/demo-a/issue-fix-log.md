@@ -35,3 +35,11 @@ entrance, and steepened only the first word (`linear` fade over 400ms, with
 the advisory `linear-motion` note confirmed as intentional) so content is
 visible at sampling time. Re-rendered and re-checked → all suites green,
 including `no-blank` over 14 samples with gaps excluded.
+
+## Re-replay note (2026-11-03)
+
+The first draft (`s2` at 1500 ms) also overlapped `s1` by 500 ms under an entering
+`depth-dolly`, which only render rejected at the time. `velora validate --composition`
+now runs the same timeline gate, so the replayed draft step reports
+`ERR_TIMELINE_OVERLAP` first. The fix recorded above (butt-join at 2500 ms) resolves
+both issues; the recorded pixel hashes are unchanged.

@@ -15,6 +15,7 @@ export const VELORA_SKILL_NAMES = Object.freeze([
   "velora-gsap", "velora-threejs", "velora-ewmotion", "velora-typography",
   "velora-transitions", "velora-audio", "velora-export", "velora-debug",
   "velora-performance", "velora-verify", "velora-templates", "velora-cinematography",
+  "velora-brand", "velora-looks", "velora-motion-design", "velora-editing", "velora-launch",
 ]);
 export const REQUIRED_SKILL_SECTIONS = Object.freeze([
   "## When to Use This Skill",

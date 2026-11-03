@@ -1,0 +1,19 @@
+{
+ "success": true,
+ "data": {
+  "out": "hero.webm",
+  "manifest": "hero.webm.manifest.json",
+  "frames": 240,
+  "durationMs": 8000,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "seed": 0,
+  "cachedFrames": 0,
+  "renderedFrames": 240,
+  "codec": "vp9",
+  "quality": "standard",
+  "poster": "hero.poster.png"
+ },
+ "command": "render"
+}

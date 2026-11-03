@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
-import { CompositionSchema, parseCaptions, timelineFromComposition, type BoundRecipe, type CaptionCue, type PreviewDefinitionInput } from "../core";
+import { CompositionSchema, layersAt, parseCaptions, timelineFromComposition, type BoundRecipe, type CaptionCue, type PreviewDefinitionInput } from "../core";
 import { Scene, SceneErrorBoundary } from "../react";
 import { usePreviewSession } from "./session";
 import { useTransportKeys } from "./transport";
 import { OverlayMenu, StudioOverlays, useOverlays } from "./overlays";
-import { activeCue, audioStateAt, playerFrame, syncMedia } from "./player";
+import { activeCue, audioStateAt, blendStyle, playerFrame, syncMedia } from "./player";
 import { previewTheme } from "./theme";
 
 /** SOURCE OF TRUTH: CompositionPlayer.
@@ -75,21 +75,38 @@ export function CompositionPlayer({ path, document, scenes, bindings, assetUrls,
   const frame = timeline ? playerFrame(timeline, session.timeMs) : { localMs: 0 };
   // The frame sits above the controls (about 250px) instead of under them.
   const scale = composition && size.width && size.height ? Math.min((size.width - 32) / composition.width, (size.height - 270) / composition.height) : 1;
-  const visible = [frame.segment, frame.next].filter((segment): segment is NonNullable<typeof segment> => !!segment);
+  // Layers at the cursor: one segment, two inside an overlap transition (CSS-approximated), plus the preloaded next one.
+  // The final instant still shows the last frame (spans are end-exclusive).
+  const layers = timeline ? layersAt(timeline, Math.min(session.timeMs, Math.max(0, timeline.durationMs - 0.001))) : { segments: [] };
+  const shown = layers.segments.map(entry => entry.segment);
+  const visible = [...shown, ...(frame.next && !shown.includes(frame.next) ? [frame.next] : [])];
+  const localFor = (id: string) => layers.segments.find(entry => entry.segment.id === id)?.localMs ?? 0;
+  const tracks = composition?.overlays.filter(track => session.timeMs >= track.startMs && session.timeMs < track.startMs + track.durationMs) ?? [];
   const cue = activeCue(cues, session.timeMs);
   return <main data-velora-preview="" data-velora-player={composition?.id ?? ""}>
-    <style>{previewTheme}</style>
+    <style>{previewTheme + "[data-overlay] [data-velora-scene]{background:transparent!important;background-color:transparent!important}"}</style>
     <div className="velora-viewport" ref={viewport} aria-label="Composition preview" style={{ alignItems: "flex-start", paddingTop: 16 }}>
       {composition && <div ref={frameRef} data-velora-player-frame="" style={{ position: "absolute", left: "50%", top: 16, width: composition.width, height: composition.height, transform: `translateX(-50%) scale(${Math.max(0.05, scale)})`, transformOrigin: "50% 0", background: "#000", overflow: "hidden" }}>
         {visible.map(segment => {
           const recipe = scenes.find(entry => entry.id === segment.recipe);
           const Component = recipe && bindings[recipe.binding];
-          const current = segment === frame.segment;
+          const current = shown.includes(segment);
           if (!recipe || !Component) return null;
+          const side = layers.blend ? (segment === shown[0] ? "a" : "b") : undefined;
+          const blend = side && layers.blend ? blendStyle(layers.blend.transition.type, layers.blend.progress, side, layers.blend.transition.direction) : {};
           return <div key={segment.id} data-segment={segment.id} data-active={current ? "true" : "false"} aria-hidden={!current}
-            style={{ position: "absolute", inset: 0, visibility: current ? "visible" : "hidden" }}>
+            style={{ position: "absolute", inset: 0, visibility: current ? "visible" : "hidden", ...blend }}>
             <SceneErrorBoundary><Scene camera={recipe.definition.scene.camera} focus={recipe.definition.scene.focus} motion={recipe.definition.motion}
-              timeMs={current ? frame.localMs : 0} style={{ width: composition.width, height: composition.height }}><Component/></Scene></SceneErrorBoundary>
+              timeMs={current ? localFor(segment.id) : 0} style={{ width: composition.width, height: composition.height }}><Component/></Scene></SceneErrorBoundary>
+          </div>;
+        })}
+        {tracks.map(track => {
+          const recipe = scenes.find(entry => entry.id === track.recipe);
+          const Component = recipe && bindings[recipe.binding];
+          if (!recipe || !Component) return null;
+          return <div key={track.id} data-overlay={track.id} style={{ position: "absolute", inset: 0, opacity: track.opacity, mixBlendMode: track.blend === "normal" ? undefined : track.blend }}>
+            <SceneErrorBoundary><Scene camera={recipe.definition.scene.camera} focus={recipe.definition.scene.focus} motion={recipe.definition.motion}
+              timeMs={session.timeMs - track.startMs + (track.inMs ?? 0)} style={{ width: composition.width, height: composition.height }}><Component/></Scene></SceneErrorBoundary>
           </div>;
         })}
         {cue && <div className="velora-captions" data-velora-preview-chrome="" role="status" style={{ fontSize: composition.height / 22 }}>{cue.text}</div>}

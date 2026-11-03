@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LookSchema } from "./looks";
 
 /** SOURCE OF TRUTH: ExportVideoSchema, CaptureManifestSchema, FrameRenderSchema, RenderManifestSchema, QualityPresetSchema, VideoCodecSchema.
  * WHAT: runtime contracts for local video requests, the live browser capture bridge,
@@ -93,6 +94,8 @@ export const CaptureManifestSchema = z.strictObject({
   version: z.literal(1),
   durationMs: z.number().nonnegative().max(120_000),
   selector: z.literal('[data-velora-capture="scene"]'),
+  // The scene's look (browser layer already captured); export applies its finishing fields.
+  look: LookSchema.optional(),
 });
 export const ExportIssueSchema = z.strictObject({
   code: z.string(),
@@ -134,6 +137,8 @@ export const RenderFrameSchema = z.strictObject({
   cached: z.boolean().optional(),
   // Sub-frame SHAs when motion blur averaged several samples into this frame.
   subFrames: z.array(z.string().regex(/^[0-9a-f]{64}$/)).optional(),
+  // Layer SHAs (V1 segments of a transition, overlays, captions) composited into this frame.
+  layers: z.array(z.strictObject({ id: z.string(), sha: z.string().regex(/^[0-9a-f]{64}$/) })).optional(),
 });
 export type RenderFrame = z.output<typeof RenderFrameSchema>;
 export const RenderSegmentSchema = z.strictObject({
@@ -169,6 +174,9 @@ export const RenderManifestSchema = z.strictObject({
   supersample: z.number().positive().optional(),
   transparent: z.boolean().optional(),
   workers: z.number().int().positive().optional(),
+  // Loudness normalization: target, first-pass measurement and the measured result.
+  loudness: z.strictObject({ target: z.record(z.string(), z.number()), measured: z.record(z.string(), z.number().nullable()), result: z.record(z.string(), z.number().nullable()), skipped: z.literal(true).optional() }).optional(),
+  sfx: z.array(z.strictObject({ id: z.string(), preset: z.string(), atMs: z.number(), gainDb: z.number(), seed: z.number() })).optional(),
   poster: z.string().optional(),
   veloraVersion: z.string().min(1),
   checks: z.array(RenderCheckSchema).optional(),
@@ -261,6 +269,8 @@ export const ShotRenderSchema = z.strictObject({
   motionSamples: z.number().int().min(2).max(64).optional(),
   fps: ExportFrameRateSchema.optional(),
   transparent: z.boolean().optional(),
+  // Apply the look's export finishing (bloom, halation, aberration, sharpen, LUT) as video export does.
+  finish: z.boolean().optional(),
 });
 export type ShotRender = z.output<typeof ShotRenderSchema>;
 export const ShotRenderResultSchema = z.discriminatedUnion("success", [

@@ -16,6 +16,9 @@ related-skills:
 - velora-templates
 - velora-scenes
 - velora-render
+- velora-editing
+- velora-looks
+- velora-launch
 not-for: File wiring, composition timing, audio or export settings; use velora-scenes, velora-composition, velora-audio or velora-export.
 ---
 
@@ -138,24 +141,30 @@ Verify with `velora shot --scene <id> --time 8000 --out end.png --json`.
 - Opening, middle and final `velora shot` frames show the intended size, angle, crop and sharpness.
 - `velora validate --json` passes and `reviewAuthoring` advice is resolved or intentionally kept.
 
+## Craft Notes
+
+These techniques are named after where they are commonly taught and recognized; Velora implements the geometry, not anyone's style.
+
+- **Motivated restraint.** Film cinematography courses teach that a camera moves only when the story gives it a reason; the default single move and `subtle` intensity follow that convention.
+- **The slow push-in.** A locked-on, imperceptibly slow push is a thriller staple for building attention on a detail (`hero-push`).
+- **The long fluid take.** Continuous, unbroken camera travel through a space (`monumental-survey`, smooth rails with no waypoint stops).
+- **Symmetry and the whip pan.** One-point perspective and fast whip pans as punctuation (`whip-pan`, the `whip` transition).
+- **Monumental scale.** Low angles and wide lenses that make a surface feel architectural (`crane-down`, wide lenses).
+- **The dolly zoom.** Moving the camera while zooming the opposite way, first popularized in 1950s and 1970s suspense films (`dolly-zoom`).
+- **Macro inserts and light sweeps.** Product-film close-ups that isolate one detail before showing context (`macro-detail`, `LightSweep`).
+
 ## Related Skills
 
 - `velora-templates`: certified starting points that encode these moves.
 - `velora-scenes`: recipe mechanics, smooth rails, lens helpers, channels and masks.
 - `velora-render`: shots and frames for judging pixels.
 - `velora`: root router.
-
-Craft lineage, as technique references:
-- motivated restraint and single strong compositions (Deakins);
-- long, fluid camera (Lubezki);
-- precise, locked-on push-ins (Fincher);
-- symmetry and whip pans (Kubrick, Wes Anderson);
-- monumental scale (Villeneuve and Fraser);
-- the dolly zoom (Hitchcock's *Vertigo*, Spielberg's *Jaws*);
-- macro inserts and light in product films.
+- `velora-editing`: how shots cut together (eye trace, direction, rhythm).
+- `velora-looks`: grade and finishing once the shot is framed.
+- `velora-launch`: which shots a launch needs and for which platform.
 
 ## When NOT to Use This Skill
 
 - Not for wiring files, discovery or providers; use `velora-scenes` or `velora-init`.
-- Not for editing several shots into a film; timing between shots belongs to `velora-composition` and the editorial skill when it ships.
+- Not for editing several shots into a film; timing between shots belongs to `velora-editing` and `velora-composition`.
 - Not for claims about artistic quality from checks. Automated checks are technical; taste needs human review.

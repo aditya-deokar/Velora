@@ -93,3 +93,19 @@ transcription, or quality promises claimed anywhere.
 - [x] Prerequisites, limits, and deferrals stated in README/COMPATIBILITY.
 - [x] No mocks: every transcript step, hash, and manifest is a real run;
   browser steps are marked recorded-not-replayed with their requires tags.
+
+
+## Re-verification against v2 (2026-11-03)
+
+| Criterion | Finding | Resolution |
+|---|---|---|
+| Demos replay; determinism; skills-trace coverage | Demos A and B only | Demos C (launch film), D (website hero loop) and E (vertical teaser) added with real recorded runs; `check-agent-demos.mjs` replays all five and asserts replayed coverage of the director commands |
+| README five-minute path copy-pasteable | Validated `teaser.composition.json`, which a fresh install does not have; claimed one skill per request | Rewritten: init, doctor, skills install, `new scene --template hero-push`, `shot`; then a blueprint launch film through validate, review, contact sheet, draft and video check. Prompt library section added. Every README and USER_GUIDE command runs through the parser test |
+| Migration notes | Package rename covered | Adds the guide-v2 `VELORA.md` upgrade, which re-running `velora init` performs |
+| No unexecuted example in the shipped surface | Static only | Parser execution suite (see the Phase 08 re-verification) |
+| Package contents | Allowlist regex in `release.mjs` | Covers `skills/velora-launch` and `schemas/brand.schema.json` without changes; demo videos (`.mp4`, `.webm`, `.gif`) are git-ignored |
+| Gates folded into the verify chain | Unchanged script graph | All suites run, including the new tests; results are in the PR description |
+
+The real runs exposed four product bugs (validate skipping the timeline gate, a short teaser end card,
+feed pacing, dev-server capture timeouts). All are fixed with regression coverage; see each demo's
+`issue-fix-log.md`.

@@ -5,7 +5,7 @@ import { matrixFor, multiply, focusForSurface, sampleFocus, type Matrix } from "
 import { lensFor } from "./lens";
 import type { EasingInput } from "./easing";
 
-/** SOURCE OF TRUTH: ShotInputSchema, buildShot, framingReport, projectSubject, ASPECT_FRAMES.
+/** SOURCE OF TRUTH: ShotInputSchema, buildShot, framingReport, projectSubject, projectPoints, ASPECT_FRAMES.
  * WHAT: the camera-move vocabulary (push, survey, orbit, crane, rise, dolly zoom, rack focus,
  * scroll-through, macro, float loop, handheld, whip) compiled into plain scene + motion data,
  * plus a pure framing report that projects the subject through the canonical camera math.
@@ -300,17 +300,22 @@ export function framingReport(definition: ShotDefinition, subject: { width: numb
     worstRegionBlur: Math.max(...samples.map(s => s.regionBlur)),
   };
 }
-/** Screen-space corners (frame pixels, top-left origin) of the subject plane at one time: the
- * studio's schematic storyboards draw these without a live render. Points behind the camera are null. */
-export function projectSubject(definition: ShotDefinition, subject: { width: number; height: number }, timeMs: number): ({ x: number; y: number } | null)[] {
+/** Screen-space positions (frame pixels, top-left origin) of stage points (center origin, z toward the
+ * camera) at one time through the canonical camera. Points behind the camera are null. */
+export function projectPoints(definition: Pick<ShotDefinition, "width" | "height" | "scene" | "motion">, points: readonly (readonly [number, number, number])[], timeMs: number): ({ x: number; y: number } | null)[] {
   const state = evaluateMotion(definition.motion, timeMs);
   const c = CameraSchema.parse({ ...definition.scene.camera, ...state.camera });
   const m = cameraMatrix(c);
-  const corners: [number, number][] = [[-subject.width / 2, -subject.height / 2], [subject.width / 2, -subject.height / 2], [subject.width / 2, subject.height / 2], [-subject.width / 2, subject.height / 2]];
-  return corners.map(corner => {
-    const [x, y, z] = apply(m, [corner[0], corner[1], 0]);
+  return points.map(point => {
+    const [x, y, z] = apply(m, point);
     if (z >= c.perspective) return null;
     const k = c.perspective / (c.perspective - z);
     return { x: definition.width / 2 + x * k, y: definition.height / 2 + y * k };
   });
+}
+/** Screen-space corners of the centered subject plane at one time: the studio's schematic storyboards
+ * draw these without a live render. */
+export function projectSubject(definition: ShotDefinition, subject: { width: number; height: number }, timeMs: number): ({ x: number; y: number } | null)[] {
+  const w = subject.width / 2, h = subject.height / 2;
+  return projectPoints(definition, [[-w, -h, 0], [w, -h, 0], [w, h, 0], [-w, h, 0]], timeMs);
 }

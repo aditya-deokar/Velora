@@ -107,6 +107,23 @@ describe("composition video render", () => {
     expect(seeks.length).toBe(9);
     expect(seeks.slice(6).every((s) => s.url.endsWith("/demo-b"))).toBe(true);
   }, 180_000);
+  it("renders overlap transitions and overlays as recorded layers", async () => {
+    await writeFile(path.join(root, "teaser.composition.json"), JSON.stringify({
+      version: 1, id: "teaser", title: "Teaser", width: 128, height: 96, fps: 30, seed: 3,
+      scenes: [{ id: "s1", recipe: "demo-a", startMs: 0, durationMs: 200 }, { id: "s2", recipe: "demo-b", startMs: 100, durationMs: 200, transition: { type: "crossfade", durationMs: 100 } }],
+      overlays: [{ id: "title", recipe: "demo-b", startMs: 200, durationMs: 100 }], assets: [],
+    }));
+    const result = await run({ out: "layered.mp4" });
+    expect(result, JSON.stringify(result)).toMatchObject({ success: true, data: { frames: 9, durationMs: 300 } });
+    const manifest = JSON.parse(await readFile(path.join(root, "layered.manifest.json"), "utf8"));
+    expect(RenderManifestSchema.safeParse(manifest).success).toBe(true);
+    const layers = manifest.frames.map((f: { layers?: { id: string }[] }) => (f.layers ?? []).map(layer => layer.id).join("+"));
+    expect(layers).toEqual(["", "", "", "s1+s2", "s1+s2", "s1+s2", "s2+title", "s2+title", "s2+title"]);
+    expect(manifest.frames[2].segmentId).toBe("s1");
+    expect(manifest.frames[8].segmentId).toBe("s2");
+    // A frame inside the window captured A and B at their own local times.
+    expect(seeks.filter((s) => s.url.endsWith("/demo-b")).map((s) => Math.round(s.timeMs)).slice(0, 3)).toEqual([0, 33, 67]);
+  }, 180_000);
   it("renders gaps as black void and mixes audio with drift evidence", async () => {
     await writeFile(path.join(root, "teaser.composition.json"), JSON.stringify({
       version: 1, id: "teaser", title: "Teaser", width: 128, height: 96, fps: 30, seed: 3,
@@ -130,7 +147,7 @@ describe("composition video render", () => {
       captions: { file: "subs.srt", burnIn: true },
     }));
     const mixed = await run({ out: "mixed.mp4" });
-    expect(mixed).toMatchObject({ success: true });
+    expect(mixed, JSON.stringify(mixed)).toMatchObject({ success: true });
     const streams = ffprobe("mixed.mp4").map((s: { codec_type: string }) => s.codec_type);
     expect(streams).toContain("audio");
     const mixedManifest = JSON.parse(await readFile(path.join(root, "mixed.manifest.json"), "utf8"));

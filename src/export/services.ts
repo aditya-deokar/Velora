@@ -1,7 +1,7 @@
-import { lstat, mkdir, mkdtemp, link, rm, readdir, open, writeFile, readFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, link, rm, readdir, open, writeFile, readFile, rename } from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
-import { cpus } from "node:os";
+import { cpus, freemem } from "node:os";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
@@ -9,6 +9,7 @@ import { parsePng, pngChunk } from "./compositor";
 import type { Browser, Page } from "playwright";
 import type { CaptureBridge, CaptureManifest, ExportVideo, ResolvedFinishing, VideoCodec } from "../core/export";
 import { AUDIO_DRIFT_BUDGET_MS, SUPPORTED_AUDIO_CODECS } from "../core/audio";
+import { DEFAULT_LOUDNESS, SFX_PRESETS, sfxGraph, type Loudness, type SfxEntry } from "../core/sound";
 import { formatSrt, parseCaptions } from "../core/captions";
 import { SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 import { canonicalRoot, relativeTarget, scopedPath, readText, atomicWrite, probeExecutable, probeAudioFile, type AudioProbe } from "../project/services";
@@ -70,8 +71,14 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
     // marker and host development-tools portal only in this private export page; the user's preview stays untouched.
     await page.addStyleTag({content:'[data-velora-preview-chrome],nextjs-portal{visibility:hidden!important}'});
     if (transparent) await page.addStyleTag({ content: TRANSPARENT_CAPTURE_CSS });
-    try { await page.waitForFunction(() => typeof (window as unknown as { __VELORA_CAPTURE__?: CaptureBridge }).__VELORA_CAPTURE__?.seek === "function", undefined, { timeout: 5000 }); }
-    catch { throw fault("missing-capture", "This page has no ready Velora capture bridge. Open a scene with capture enabled and retry."); }
+    // Parallel renders load several copies of the app at once, so a Velora page that is still loading
+    // gets the same 30 s window as the page load; a page with no Velora markup at all fails after 5 s.
+    const bridged = await page.waitForFunction((started) => {
+      if (typeof (window as unknown as { __VELORA_CAPTURE__?: CaptureBridge }).__VELORA_CAPTURE__?.seek === "function") return "ready";
+      const velora = document.querySelector("[data-velora-project],[data-velora-preview],[data-velora-library]") || /Loading your scenes/.test(document.body?.textContent ?? "");
+      return !velora && Date.now() - started > 5000 ? "absent" : false;
+    }, Date.now(), { timeout: 30_000, polling: 100 }).then(handle => handle.jsonValue(), () => "timeout");
+    if (bridged !== "ready") throw fault("missing-capture", "This page has no ready Velora capture bridge. Open a scene with capture enabled and retry.");
     await page.evaluate(async () => {
       await Promise.race([
         Promise.all([document.fonts.ready, ...Array.from(document.images).map(image => image.decode().catch(() => {}))]),
@@ -82,11 +89,15 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
       close,
       manifest: () => page.evaluate(() => {
         const bridge = (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__;
-        return { version: bridge.version, durationMs: bridge.durationMs, selector: bridge.selector };
+        return { version: bridge.version, durationMs: bridge.durationMs, selector: bridge.selector, ...(bridge.look ? { look: bridge.look } : {}) };
       }),
       async snapshot(timeMs:number, manifest:CaptureManifest){
         check();
-        await page.waitForLoadState("networkidle",{timeout:10_000});
+        // Route frames load the dev app again inside the page; under parallel renders that can take a while.
+        // networkidle is a best-effort settle: a busy dev server (HMR, dependency optimizing, sibling workers)
+        // may never go quiet for 500 ms. Readiness is owned by the bridge: seek awaits every capture-settle
+        // hook (RouteFrame load, fonts, decoded images, video seeks), so a timeout here must not fail the render.
+        await page.waitForLoadState("networkidle",{timeout:15_000}).catch(()=>undefined);
         await page.evaluate(()=>document.fonts.ready.then(()=>{}));
         const locator=page.locator(manifest.selector);
         if(await locator.count()!==1)throw fault("invalid-capture","Capture must identify exactly one scene viewport.");
@@ -351,6 +362,15 @@ export async function spillFrame(dirAbs: string, frame: number, png: Buffer): Pr
   await mkdir(dirAbs, { recursive: true });
   await writeFile(path.join(dirAbs, spillName(frame)), png);
 }
+// Layer frames keyed by "<unit>:<frame>" (unit ids are scene, segment or overlay ids: safe file names).
+const layerName = (key: string) => `${key.replace(/[^a-zA-Z0-9_-]/g, "_")}.png`;
+export async function spillFile(dirAbs: string, key: string, png: Buffer): Promise<void> {
+  await mkdir(dirAbs, { recursive: true });
+  await writeFile(path.join(dirAbs, layerName(key)), png);
+}
+export async function readSpilledFile(dirAbs: string, key: string): Promise<Buffer> {
+  return readFile(path.join(dirAbs, layerName(key)));
+}
 export function spilledFrames(dirAbs: string, frames: readonly number[]): SpilledFrames {
   return { count: frames.length, read: (index) => readFile(path.join(dirAbs, spillName(frames[index]))) };
 }
@@ -407,11 +427,13 @@ export async function encodeFrameBuffers(source: Buffer[] | SpilledFrames, outpu
   });
   return { ffmpegArgs: args };
 }
-// Segment-worker default: one core left for the encoder and dev server, capped at 8. Frames stay
-// serial-deterministic inside each worker; only segments run concurrently.
+// Segment-worker default. Each worker is a whole Chromium running the live app (often twice, with route
+// frames), all served by one dev server, so the default leaves a core free, budgets ~700 MB of free memory
+// per worker and caps at 4; --parallel can go to 8 on big machines. Frames stay serial inside each worker.
+export const WORKER_MEMORY_BYTES = 700 * 1024 * 1024;
 export function defaultParallelism(): number {
   try {
-    return Math.min(8, Math.max(1, (cpus().length || 2) - 1));
+    return Math.min(4, Math.max(1, (cpus().length || 2) - 1), Math.max(1, Math.floor(freemem() / WORKER_MEMORY_BYTES)));
   } catch {
     return 2;
   }
@@ -498,6 +520,36 @@ export async function decodeVideoSamples(absolutePath: string, tmpDir: string, m
     outs.push({ png: await readFile(path.join(tmpDir, name)), atFrame, timeMs: (atFrame * 1000) / fps });
   }
   return outs;
+}
+// Average RGBA pixels into a cols x rows RGB grid (the same cells flash analysis uses for video).
+export function gridOf(pixels: Buffer, width: number, height: number, cols: number, rows: number): Buffer {
+  const out = Buffer.alloc(cols * rows * 3);
+  for (let gy = 0; gy < rows; gy++) for (let gx = 0; gx < cols; gx++) {
+    const x0 = Math.floor((gx * width) / cols), x1 = Math.floor(((gx + 1) * width) / cols), y0 = Math.floor((gy * height) / rows), y1 = Math.floor(((gy + 1) * height) / rows);
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let y = y0; y < y1; y += 2) for (let x = x0; x < x1; x += 2) { const o = (y * width + x) * 4; r += pixels[o]; g += pixels[o + 1]; b += pixels[o + 2]; n++; }
+    const o = (gy * cols + gx) * 3;
+    out[o] = Math.round(r / Math.max(1, n)); out[o + 1] = Math.round(g / Math.max(1, n)); out[o + 2] = Math.round(b / Math.max(1, n));
+  }
+  return out;
+}
+/** Every frame of a video averaged into a cols x rows RGB grid (area scaling), for flash analysis. */
+export async function decodeLuminanceGrid(absolutePath: string, cols = 8, rows = 8, timeoutMs = 5 * 60_000): Promise<{ fps: number; frames: { timeMs: number; rgb: Buffer }[] }> {
+  const probe = await probeVideoFile(absolutePath);
+  const fps = probe.video?.fps && probe.video.fps > 0 ? probe.video.fps : 30;
+  const raw = await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let child;
+    try { child = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-i", absolutePath, "-vf", `scale=${cols}:${rows}:flags=area,format=rgb24`, "-f", "rawvideo", "pipe:1"], { shell: false, stdio: ["ignore", "pipe", "ignore"] }); }
+    catch { reject(fault("missing-ffmpeg", "Install FFmpeg and ensure ffmpeg is available on PATH.")); return; }
+    const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+    child.stdout?.on("data", chunk => chunks.push(chunk));
+    child.once("error", () => { clearTimeout(timer); reject(fault("missing-ffmpeg", "Install FFmpeg and ensure ffmpeg is available on PATH.")); });
+    child.once("close", code => { clearTimeout(timer); code === 0 ? resolve(Buffer.concat(chunks)) : reject(fault("encoding-failed", "Frame decoding for flash analysis failed.")); });
+  });
+  const size = cols * rows * 3;
+  const frames = Array.from({ length: Math.floor(raw.length / size) }, (_, i) => ({ timeMs: (i * 1000) / fps, rgb: raw.subarray(i * size, (i + 1) * size) }));
+  return { fps, frames };
 }
 // Resolve a project-relative output to an absolute path for process spawns.
 // Traversal, absolute paths and symlinks stay denied by scopedPath.
@@ -796,4 +848,57 @@ export function contactSheet(pngs: readonly Buffer[], options: { columns?: numbe
   ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8; ihdr[9] = 2;
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk("IHDR", ihdr), pngChunk("IDAT", deflateSync(raw)), pngChunk("IEND", Buffer.alloc(0))]);
+}
+
+// One FFmpeg run with captured stderr (loudnorm reports its measurement there).
+function runFfmpeg(args: string[], timeoutMs = 10 * 60_000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let stderr = "";
+    let child;
+    try { child = spawn("ffmpeg", args, { shell: false, stdio: ["ignore", "ignore", "pipe"] }); }
+    catch { reject(fault("missing-ffmpeg", "Install FFmpeg and ensure ffmpeg is available on PATH.")); return; }
+    const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+    child.stderr?.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-65_536); });
+    child.once("error", () => { clearTimeout(timer); reject(fault("missing-ffmpeg", "Install FFmpeg and ensure ffmpeg is available on PATH.")); });
+    child.once("close", code => { clearTimeout(timer); code === 0 ? resolve(stderr) : reject(fault("encoding-failed", `FFmpeg failed. ${stderr.slice(-800)}`)); });
+  });
+}
+/** Render one procedural SFX entry to a mono 48 kHz WAV (bit-exact for the same preset, seed and gain). */
+export async function synthesizeSfx(entry: Pick<SfxEntry, "preset" | "gainDb" | "seed">, outputAbs: string): Promise<{ durationMs: number }> {
+  await mkdir(path.dirname(outputAbs), { recursive: true });
+  await runFfmpeg(["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-filter_complex", sfxGraph(entry, "out"), "-map", "[out]", "-c:a", "pcm_s16le", "-fflags", "+bitexact", "-flags:a", "+bitexact", "-map_metadata", "-1", outputAbs]);
+  return { durationMs: SFX_PRESETS[entry.preset].durationMs };
+}
+export type LoudnessMeasurement = { integrated: number; truePeak: number; range: number; threshold: number; offset: number };
+function loudnormReport(stderr: string, prefix: "input" | "output"): LoudnessMeasurement {
+  const json = stderr.slice(stderr.lastIndexOf("{"), stderr.lastIndexOf("}") + 1);
+  let report: Record<string, string>;
+  try { report = JSON.parse(json); } catch { throw fault("encoding-failed", "Loudness measurement produced no report."); }
+  const value = (key: string) => Number(report[`${prefix}_${key}`]);
+  return { integrated: value("i"), truePeak: value("tp"), range: value("lra"), threshold: value("thresh"), offset: Number(report.target_offset) };
+}
+/**
+ * Two-pass EBU R128 normalization of a finished file's audio to the target (video stream copied).
+ * Returns the first-pass measurement and the measured result.
+ */
+export async function normalizeLoudness(fileAbs: string, target: Loudness): Promise<{ measured: LoudnessMeasurement; result: LoudnessMeasurement; skipped?: true }> {
+  const spec = `I=${target.integrated}:TP=${target.truePeak}:LRA=${target.range}`;
+  const measured = loudnormReport(await runFfmpeg(["-hide_banner", "-nostdin", "-i", fileAbs, "-af", `loudnorm=${spec}:print_format=json`, "-f", "null", "-"]), "input");
+  // Too short or silent to gate (EBU R128 measures 400 ms blocks): leave the mix untouched and say so.
+  if (![measured.integrated, measured.truePeak, measured.range, measured.threshold, measured.offset].every(Number.isFinite)) return { measured, result: measured, skipped: true };
+  const temporary = path.join(path.dirname(fileAbs), `.loudnorm-${path.basename(fileAbs)}`);
+  try {
+    const second = `loudnorm=${spec}:measured_I=${measured.integrated}:measured_TP=${measured.truePeak}:measured_LRA=${measured.range}:measured_thresh=${measured.threshold}:offset=${measured.offset}:linear=true:print_format=json`;
+    const webm = /\.webm$/i.test(fileAbs);
+    const stderr = await runFfmpeg(["-hide_banner", "-nostdin", "-y", "-i", fileAbs, "-map", "0:v?", "-map", "0:a", "-c:v", "copy", "-af", `${second},aresample=48000`, "-c:a", webm ? "libopus" : "aac", "-b:a", "192k",
+      ...(/\.(mp4|mov)$/i.test(fileAbs) ? ["-movflags", "+faststart"] : []), temporary]);
+    const result = loudnormReport(stderr, "output");
+    await rm(fileAbs, { force: true });
+    await rename(temporary, fileAbs);
+    return { measured, result };
+  } finally { await rm(temporary, { force: true }); }
+}
+/** Integrated loudness of a file (one measurement pass), for checks and tests. */
+export async function measureLoudness(fileAbs: string, target: Loudness = DEFAULT_LOUDNESS): Promise<LoudnessMeasurement> {
+  return loudnormReport(await runFfmpeg(["-hide_banner", "-nostdin", "-i", fileAbs, "-af", `loudnorm=I=${target.integrated}:TP=${target.truePeak}:LRA=${target.range}:print_format=json`, "-f", "null", "-"]), "input");
 }

@@ -1,0 +1,42 @@
+{
+ "success": true,
+ "command": "check",
+ "data": {
+  "target": "hero.webm",
+  "checks": [
+   {
+    "id": "streams-present",
+    "pass": true,
+    "detail": "vp9 1920x1080, 8000ms."
+   },
+   {
+    "id": "manifest-valid",
+    "pass": true,
+    "detail": "Manifest matches the probed video."
+   },
+   {
+    "id": "no-blank",
+    "pass": true,
+    "detail": "16 sampled frames are non-blank."
+   },
+   {
+    "id": "dimensions",
+    "pass": true,
+    "detail": "Sampled frames share one size."
+   },
+   {
+    "id": "flash-safety",
+    "pass": true,
+    "detail": "At most 0 flashes per second over a large area (limit 3; WCAG 2.3.1 approximation)."
+   },
+   {
+    "id": "banding",
+    "pass": true,
+    "detail": "ADV_BANDING: 46% of sample-1 is flat 8-bit gradient steps; add look grain or render --codec hevc.",
+    "frameRefs": [
+     "sample-1"
+    ]
+   }
+  ]
+ }
+}

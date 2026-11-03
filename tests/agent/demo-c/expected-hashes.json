@@ -1,0 +1,11 @@
+{
+  "gapFrameSha256": "2bffac96a5d7812c93c93f452e162e6ef9b969de648df823e30d7f776d554d4c",
+  "gapFrames": [
+    33,
+    39
+  ],
+  "finalMp4Sha256": "f1b902e29fb42d53cc98481077d61f58254394883efbe694491c767e0ccd7d71",
+  "finalMp4Bytes": 2686935,
+  "finalMp4Frames": 895,
+  "finalMp4": "launch-draft.mp4 (draft quality, git-ignored; hash recorded here)"
+}

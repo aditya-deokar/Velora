@@ -1,3 +1,4 @@
+import { SegmentTransitionSchema } from "../../src/core/transitions";
 import { describe, expect, it } from "vitest";
 import { MotionSchema } from "../../src/core/motion";
 import { TRANSITION_CATALOG, buildTransition, describeTransition, type TransitionType } from "../../src/core/transitions";
@@ -9,11 +10,16 @@ function valid(type: TransitionType, surfaceIds: string[], extra: Record<string,
   return built;
 }
 describe("transition catalog", () => {
-  it("covers eight catalogued transitions with leaf requirements", () => {
-    expect(TRANSITION_CATALOG.map((t) => t.type)).toEqual(["cut", "dissolve", "slide-push", "wipe-mask", "iris-mask", "depth-dolly", "focus-pull", "cascade-handoff"]);
-    expect(describeTransition("dissolve")).toMatchObject({ needsLeaves: true });
+  it("covers eight entering and nine overlap transitions with leaf requirements and modes", () => {
+    expect(TRANSITION_CATALOG.map((t) => t.type)).toEqual(["cut", "dissolve", "slide-push", "wipe-mask", "iris-mask", "depth-dolly", "focus-pull", "cascade-handoff",
+      "crossfade", "dip-to-black", "dip-to-white", "wipe", "iris", "push", "zoom", "whip", "light-leak"]);
+    expect(describeTransition("dissolve")).toMatchObject({ needsLeaves: true, mode: "entering" });
     expect(describeTransition("cut")).toMatchObject({ needsLeaves: false });
-    expect(() => describeTransition("wipe" as TransitionType)).toThrow();
+    expect(describeTransition("whip")).toMatchObject({ needsLeaves: false, mode: "overlap" });
+    expect(() => describeTransition("spin" as TransitionType)).toThrow();
+    expect(SegmentTransitionSchema.safeParse({ type: "crossfade", durationMs: 400, mode: "entering" }).success).toBe(false);
+    expect(SegmentTransitionSchema.safeParse({ type: "dissolve", durationMs: 400, mode: "overlap" }).success).toBe(false);
+    expect(SegmentTransitionSchema.safeParse({ type: "whip", durationMs: 300, direction: "left", sfx: "whoosh" }).success).toBe(true);
   });
   it("compiles every transition to valid motion deterministically", () => {
     for (const entry of TRANSITION_CATALOG) {

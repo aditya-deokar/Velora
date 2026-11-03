@@ -26,3 +26,21 @@
 ## Gates
 
 typecheck, arch, check-skills, test:core 250/250, test:launch 364/364, built CLI `skills ls --json` and `skills check --json` green.
+
+
+## Re-verification against v2 (2026-11-03)
+
+v2 Phases 2-7 grew the library from 14 to 22 skills and the CLI from 20 to 26 commands. Each Phase 08
+criterion was re-checked against the current tree. Gaps were closed as follows.
+
+| Criterion | Finding | Resolution |
+|---|---|---|
+| REFERENCE flag matrix covers every command | 20 rows; 6 commands and many v2 flags missing | Regenerated from `CLI_COMMANDS` (26 rows); `skills-content.test.ts` now fails on any missing command or flag |
+| REFERENCE `ERR_*` catalog | 19 of 64 codes and 5 warning/advisory codes missing | Rows added for templates, scaffolding, beats, prompts, brand and looks, codecs, flash risk, host prerequisites and warnings; test requires every `ERR_`, `WARN_` and `ADV_` code |
+| JSON schema shapes and budgets | Stated fps 30 only, butt-joined segments, parallel 1 to 4, export fps 30/60/120 | Updated: fps 24-120, gaps and overlap windows, overlays, markers, sfx, loudness, look, motion v2 fields, `BrandSchema`, `PromptSchema`, parallel 1-8 |
+| Routing table extended to all skills | Root routed by request type | Intent router v2 (v2 Phase 7); test asserts every skill is reachable and each intent loads at most four |
+| "Every embedded CLI command runs" | Only static flag checks | New `tests/cli/skills-examples.test.ts`: every CLI line in every skill's fenced blocks, README.md and USER_GUIDE.md runs through the real `runCli` parser with execution stubbed (no usage errors); a negative case proves the gate can fail |
+| Templates are tested fixtures | Unchanged | `templates-valid.test.ts` and `skills-content.test.ts` still pass |
+| `velora-ewmotion` deferral | Unchanged | Kept as an explicit deferral; documented in the v2 Phase 7 exit |
+
+Gates: see `plan/v2/artifacts/phase-07-exit.md` and the PR description.

@@ -4,6 +4,7 @@ import { Surface } from "../react";
 import { RouteFrame } from "../kit";
 import { ScenePreview } from "./ScenePreview";
 import { ParamPanel } from "./ParamPanel";
+import { TemplateLayout, useProjectBrand } from "./TemplateLayout";
 import type { PreviewHot } from "./connection";
 
 /** SOURCE OF TRUTH: QuickShot.
@@ -58,11 +59,21 @@ export function QuickShot({ children, backHref, onBack, hot }: { children?: Reac
   if (shot?.definition) lastValid.current = shot.definition as PreviewDefinitionInput;
   const subject = ASPECT_FRAMES[state?.aspect ?? "16:9"].subject;
   const route = state?.route;
-  const content = useMemo(() => <Surface id={SUBJECT_ID} style={{ width: subject.width, height: subject.height, overflow: "hidden", background: "#fff" }}>
-    {route !== undefined
-      ? <RouteFrame route={route} width={subject.width} height={subject.height} scrollChannel={SCROLL_CHANNEL}/>
-      : children}
-  </Surface>, [children, route, subject.width, subject.height]);
+  const brand = useProjectBrand();
+  const layout = shot?.composite?.layout;
+  // Layered and motion-graphics templates render their layout; the slot holds the same live app or route.
+  const content = useMemo(() => layout
+    ? <TemplateLayout layout={layout} brand={brand} slot={props => {
+        const width = Number(props.width), height = Number(props.height);
+        return <div style={{ width, height, overflow: "hidden", background: "#fff" }}>
+          {route !== undefined ? <RouteFrame route={route} width={width} height={height}/> : children}
+        </div>;
+      }}/>
+    : <Surface id={SUBJECT_ID} style={{ width: subject.width, height: subject.height, overflow: "hidden", background: "#fff" }}>
+      {route !== undefined
+        ? <RouteFrame route={route} width={subject.width} height={subject.height} scrollChannel={SCROLL_CHANNEL}/>
+        : children}
+    </Surface>, [children, route, subject.width, subject.height, layout, brand]);
   if (!shot || !state) return null;
   const href = typeof location === "undefined" ? "http://localhost:5173/" + quickShotSearch(state) : location.origin + location.pathname + quickShotSearch(state, location.search);
   return <ScenePreview title={`Quick shot · ${shot.manifest?.title ?? shot.template}`} definition={lastValid.current} backHref={backHref} onBack={onBack} hot={hot}

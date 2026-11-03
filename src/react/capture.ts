@@ -21,8 +21,8 @@ export function useCaptureSettle(settle: Settle): void {
     return () => { settlers.delete(entry); };
   }, []);
 }
-export function useSceneCapture({durationMs,seek,selector='[data-velora-capture="scene"]'}:
-  {durationMs:number;seek:(elapsedMs:number)=>void;selector?:string}) {
+export function useSceneCapture({durationMs,seek,selector='[data-velora-capture="scene"]',look}:
+  {durationMs:number;seek:(elapsedMs:number)=>void;selector?:string;look?:unknown}) {
   const current=useRef(seek);
   current.current=seek;
   useEffect(()=>{
@@ -33,7 +33,7 @@ export function useSceneCapture({durationMs,seek,selector='[data-velora-capture=
       if(viewport?.matches('[data-velora-valid="false"]') || viewport?.querySelector('[data-velora-valid="false"]'))
         throw new Error("Correct scene diagnostics before exporting; some content may bypass depth of field.");
     };
-    const bridge:CaptureBridge={...CaptureManifestSchema.parse({version:1,durationMs,selector}),seek:(elapsedMs:number)=>{
+    const bridge:CaptureBridge={...CaptureManifestSchema.parse({version:1,durationMs,selector,...(look?{look}:{})}),seek:(elapsedMs:number)=>{
       if(!Number.isFinite(elapsedMs)||elapsedMs<0||elapsedMs>durationMs) throw new Error("Capture time is outside the scene.");
       flushSync(()=>current.current(elapsedMs));
       if(!settlers.size){verify();return;}
@@ -41,5 +41,5 @@ export function useSceneCapture({durationMs,seek,selector='[data-velora-capture=
     }};
     host.__VELORA_CAPTURE__=bridge;
     return ()=>{if(host.__VELORA_CAPTURE__===bridge)delete host.__VELORA_CAPTURE__};
-  },[durationMs,selector]);
+  },[durationMs,selector,look]);
 }

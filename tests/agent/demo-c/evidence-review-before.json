@@ -1,0 +1,27 @@
+{
+ "success": true,
+ "command": "review",
+ "data": {
+  "composition": "launch.composition.json",
+  "advisories": [
+   {
+    "code": "ADV_OFFBEAT_CUT",
+    "path": "composition.scenes.4",
+    "message": "The cut into \"shot-5\" lands 170ms off the nearest beat; run velora compose snap --composition <file> --to beats.",
+    "atMs": 19200
+   },
+   {
+    "code": "ADV_OFFBEAT_CUT",
+    "path": "composition.scenes.5",
+    "message": "The cut into \"shot-6\" lands 170ms off the nearest beat; run velora compose snap --composition <file> --to beats.",
+    "atMs": 23700
+   }
+  ],
+  "requiresVisualReview": true,
+  "pacing": {
+   "minMs": 2000,
+   "maxMs": 10000
+  },
+  "advisoryCount": 2
+ }
+}

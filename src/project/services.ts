@@ -314,6 +314,22 @@ export type AudioProbe = { codec: string | null; durationMs: number | null; peak
 // Single FFmpeg pass over an audio file: stream codec, container duration and
 // peak volume (volumedetect). No transcoding, bounded output, never throws.
 // Lives here (not export/services) so project validation can probe audio too.
+/** Decode an audio file to mono 32-bit float PCM at `sampleRate` (FFmpeg), for rhythm analysis. */
+export async function decodePcm(absolutePath: string, sampleRate: number, maxSeconds = 600, timeoutMs = 120_000): Promise<Float32Array> {
+  const bytes = await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let child;
+    try { child = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-i", absolutePath, "-t", String(maxSeconds), "-ac", "1", "-ar", String(sampleRate), "-f", "f32le", "pipe:1"], { shell: false, stdio: ["ignore", "pipe", "ignore"] }); }
+    catch { reject(fault("missing-ffmpeg", "Install FFmpeg and ensure ffmpeg is available on PATH.")); return; }
+    const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+    child.stdout?.on("data", chunk => chunks.push(chunk));
+    child.once("error", () => { clearTimeout(timer); reject(fault("missing-ffmpeg", "Install FFmpeg and ensure ffmpeg is available on PATH.")); });
+    child.once("close", code => { clearTimeout(timer); code === 0 ? resolve(Buffer.concat(chunks)) : reject(fault("ERR_AUDIO_CODEC", "The audio file could not be decoded.")); });
+  });
+  const samples = new Float32Array(Math.floor(bytes.length / 4));
+  for (let i = 0; i < samples.length; i++) samples[i] = bytes.readFloatLE(i * 4);
+  return samples;
+}
 export async function probeAudioFile(absolutePath: string, timeoutMs = 30_000): Promise<AudioProbe> {
   const stderr = await new Promise<string>((resolve) => {
     let settled = false;

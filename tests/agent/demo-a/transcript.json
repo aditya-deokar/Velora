@@ -7,7 +7,7 @@
     { "skill": "velora-init", "cmd": ["init", "--json"], "expect": { "code": 0 }, "replayable": true },
     { "skill": "velora-composition", "cmd": ["inspect", "--composition", "teaser.composition.json", "--json"], "expect": { "code": 0 }, "replayable": true },
     { "skill": "velora-composition", "cmd": ["scenes", "--json"], "expect": { "code": 0 }, "replayable": true },
-    { "skill": "velora-debug", "cmd": ["validate", "--composition", "teaser-draft.composition.json", "--json"], "expect": { "code": 1, "issue": "ERR_CAPTION_TIMING" }, "replayable": true, "draft": { "base": "teaser.composition.json", "patch": { "scenes.1.startMs": 1500 } }, "note": "first draft: cue outlives the 3500ms span; fixed by butt-joining to 4500ms, see issue-fix-log.md" },
+    { "skill": "velora-debug", "cmd": ["validate", "--composition", "teaser-draft.composition.json", "--json"], "expect": { "code": 1, "issue": "ERR_TIMELINE_OVERLAP" }, "replayable": true, "draft": { "base": "teaser.composition.json", "patch": { "scenes.1.startMs": 1500 } }, "note": "first draft: s2 at 1500ms overlaps s1 under an entering transition and the cue outlives the 3500ms span; validate gates the timeline first since 2026-11-03; fixed by butt-joining to 4500ms, see issue-fix-log.md" },
     { "skill": "velora-debug", "cmd": ["validate", "--composition", "teaser.composition.json", "--json"], "expect": { "code": 0 }, "replayable": true },
     { "skill": "velora-audio", "cmd": ["audio", "check", "--composition", "teaser.composition.json", "--json"], "expect": { "code": 0 }, "replayable": true, "requires": ["ffmpeg"] },
     { "skill": "velora-audio", "cmd": ["captions", "check", "--composition", "teaser.composition.json", "--json"], "expect": { "code": 0 }, "replayable": true },

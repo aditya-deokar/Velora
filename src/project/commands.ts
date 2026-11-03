@@ -8,20 +8,26 @@ import { normalizeIssue, nextForIssues, type CliIssue, type DoctorCheck, type Do
 import { ASSETS_DIRECTORY, AssetIdSchema, MAX_ASSET_BYTES, resolveAssetId, sniffAssetType, type DiscoveredAsset } from "../core/assets";
 import { compositionTotals, resolveCompositionSpec, type Composition } from "../core/composition";
 import { AUDIO_DRIFT_BUDGET_MS, audioPlacement } from "../core/audio";
-import { checkCaptions, parseCaptions } from "../core/captions";
+import { checkCaptions, formatSrt, parseCaptions } from "../core/captions";
 import { TRANSITION_CATALOG } from "../core/transitions";
 import { detectForbiddenClock } from "../core/gsap";
 import { AGENT_NAMES, VELORA_SKILL_NAMES, agentSnippet, parseSkillFrontmatter, validateSkillContent, type AgentName } from "./skills";
 import { SceneRecipeIdSchema, sceneMetadata, type SceneCatalog } from "../core/recipes";
 import { reviewAuthoring } from "../core/authoring";
+import { PROMPT_LIBRARY } from "../core/prompts";
 import type { SceneIssue } from "../core/scene";
 import * as services from "./services";
 import { fault } from "./errors";
 import { generatedPreview, htmlEntry, inspectConfig, inspectEntry, legacyPreviewTexts } from "./vite";
 import { componentExport, sceneImportPath, scaffoldScene, COMPOSITION_SCHEMA_POINTER, type Slot } from "./templates";
-import { BLUEPRINT_CATALOG, TEMPLATE_CATALOG, RouteSchema, certifyTemplate, findBlueprint, findTemplate, resolveTemplateParams, templateDefinition, type TemplateManifest } from "../core/templates";
+import { BLUEPRINT_CATALOG, TEMPLATE_CATALOG, RouteSchema, certifyTemplate, findBlueprint, findTemplate, resolveTemplateParams, templateDefinition, type Blueprint, type TemplateManifest } from "../core/templates";
 import { ASPECT_FRAMES, AspectSchema, type Aspect } from "../core/shots";
 import { SCENE_RECIPE_DIRECTORY } from "../core/recipes";
+import { BRAND_FILE, BrandSchema, brandTokensFromCss, completeBrandColors, contrastRatio } from "../core/brand";
+import { parseJsonDocument } from "../core/json";
+import { RHYTHM_SAMPLE_RATE, analyzeRhythm, snapToBeats } from "../core/rhythm";
+import { reviewComposition } from "../core/editorial";
+import { isOverlapTransition } from "../core/transitions";
 
 /** SOURCE OF TRUTH: executeProjectCommand trusted project operations.
  * WHAT: validate RESOURCES inputs, host compatibility, integration identity and recovery state.
@@ -45,12 +51,13 @@ const pendingPath = ".velora/pending.json";
  * WHERE: initialize journals the VELORA.md write through services; CLI presents returned metadata.
  */
 // pkg defaults to the published identity; earlier names reproduce bytes written by older installers.
-function agentHandoff(pkg: string = VELORA_PACKAGE.name) {
+// guideFormat 2 reproduces the handoff written before the prompt library (guide v2) so init can upgrade it.
+function agentHandoff(pkg: string = VELORA_PACKAGE.name, guideFormat?: 2) {
   const guide = RESOURCES["authoring-guide"]();
   const handoff = {
     path: "VELORA.md" as const,
     guideCommand: "npx velora guide --json" as const,
-    guideVersion: guide.version,
+    guideVersion: guideFormat ?? guide.version,
     prompt: "Read VELORA.md and run npx velora guide --json in this project. Create a Velora scene using the existing UI from this host page: <page route or component path>. Follow the installed guide, then show the scene in this app's running preview.",
   };
   const text = `<!-- velora:agent-handoff:v1 -->
@@ -66,11 +73,22 @@ Use the installed \`${pkg}\` and \`${pkg}/preview\` exports and their TypeScript
 
 Tell your coding agent the desired host page route or component path, together with this file. Run \`npx velora scenes --json\` to inspect the app's catalog and \`npx velora open --url <running-app-origin>\` to open its existing dev server.
 `;
-  return { handoff, text };
+  if (guideFormat === 2) return { handoff, text };
+  const featured = PROMPT_LIBRARY.filter(prompt => prompt.featured);
+  const prompts = `
+## Starting prompts
+
+Copy one into your coding agent and replace each \`<placeholder>\`. \`npx velora prompts ls\` lists them all; \`npx velora prompts show --id <id>\` prints the full text.
+
+${featured.map(prompt => `- **${prompt.title}** (\`${prompt.id}\`): ${prompt.intent}`).join("\n")}
+
+Start from the \`velora\` skill (\`npx velora skills install --agent claude\`) and follow its intent router.
+`;
+  return { handoff, text: text + prompts };
 }
 // Handoff bytes written by earlier installers; init upgrades exactly these, never an edited document.
 function legacyHandoffTexts() {
-  return VELORA_PACKAGE.legacyNames.map(name => agentHandoff(name).text);
+  return [VELORA_PACKAGE.name, ...VELORA_PACKAGE.legacyNames].map(name => agentHandoff(name, 2).text);
 }
 const configs = ["vite.config.ts", "vite.config.js", "vite.config.mts", "vite.config.mjs", "vite.config.cts", "vite.config.cjs"];
 const locks = ["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock", "bun.lockb"];
@@ -397,7 +415,10 @@ function integrationInfo(project:ProjectState) {
 }
 // Connection files exactly as earlier installers generated them, one set per legacy package name.
 function legacyPortableFiles(project:ProjectState, catalog:string):Record<string,string>[] {
-  return VELORA_PACKAGE.legacyNames.map(name=>({...portableIntegration(project,catalog,name+"/preview"),"VELORA.md":agentHandoff(name).text}));
+  return [
+    {...portableIntegration(project,catalog,VELORA_PACKAGE.preview),"VELORA.md":agentHandoff(VELORA_PACKAGE.name,2).text},
+    ...VELORA_PACKAGE.legacyNames.map(name=>({...portableIntegration(project,catalog,name+"/preview"),"VELORA.md":agentHandoff(name,2).text})),
+  ];
 }
 async function catalogSource(root:string) {
   const catalog = await discoverRecipes(root);
@@ -1396,6 +1417,41 @@ function planScene(manifest: TemplateManifest, overrides: Record<string, string 
   const base = `${SCENE_RECIPE_DIRECTORY}/${id}`;
   return { files: [{ path: `${base}.scene.json`, text: scaffold.recipe }, { path: `${base}.${extension}`, text: scaffold.binding }], durationMs: definition.motion.durationMs };
 }
+// Branded bindings import velora.brand.json; scaffold a default one (create-only) when the project has none.
+async function withBrandFile(root: string, manifests: TemplateManifest[], files: PlannedFile[]): Promise<void> {
+  if (!manifests.some(manifest => manifest.composite)) return;
+  if (await services.readText(root, BRAND_FILE, 256_000) !== undefined) return;
+  const brand = BrandSchema.parse({ version: 1, name: await packageTitle(root) });
+  files.push({ path: BRAND_FILE, text: JSON.stringify({ $schema: BRAND_SCHEMA_POINTER, ...brand }, null, 2) + "\n" });
+}
+/** The story brief written beside a blueprint composition: structure, shot list and the next commands. */
+function blueprintBrief(blueprint: Blueprint, id: string, scenes: { id: string; recipe: string; startMs: number; durationMs: number; transition?: { type: string; durationMs: number; sfx?: unknown } }[], durationMs: number): string {
+  const seconds = (ms: number) => (ms / 1000).toFixed(1);
+  const rows = scenes.map((scene, index) => `| ${index + 1} | ${seconds(scene.startMs)}-${seconds(scene.startMs + scene.durationMs)} s | ${blueprint.scenes[index].section ?? ""} | ${blueprint.scenes[index].template} | ${scene.transition ? `${scene.transition.type} ${scene.transition.durationMs} ms${scene.transition.sfx ? " + sfx" : ""}` : "cut"} |`);
+  return `# ${blueprint.title}
+
+${blueprint.summary}
+
+## Story
+
+${blueprint.brief}
+
+Structure: Hook, then Problem, Reveal, Proof and a call to action. Emotion and story come first; rhythm and eye-trace serve them.
+
+## Shot list (${seconds(durationMs)} s)
+
+| # | Time | Section | Template | Into this shot |
+|---|---|---|---|---|
+${rows.join("\n")}
+
+## Next
+
+1. Rewrite the copy (\`--set\` params in each scene's recipe \`template.params\`, or the bindings) and \`${id}.captions.srt\`${blueprint.captions.length ? "" : " (none in this blueprint)"}.
+2. Add licensed music to \`assets/\`, reference it in \`${id}.composition.json\` (\`assets\` + \`audio\` with \`"kind": "music"\`), then: \`velora audio beats --composition ${id}.composition.json --write-markers --json\` and \`velora compose snap --composition ${id}.composition.json --to beats --json\` (add \`--write\` to apply).
+3. \`velora review --composition ${id}.composition.json --json\`, then \`velora frames --composition ${id}.composition.json --out ${id}-board --every 30 --contact-sheet --json\`.
+4. \`velora render --composition ${id}.composition.json --out ${id}.mp4 --quality draft --json\`; the master: \`--quality master\`.
+`;
+}
 async function writePlanned(root: string, files: PlannedFile[]): Promise<void> {
   for (const file of files) {
     const siblings = file.path.endsWith(".scene.json") ? [file.path] : [file.path.replace(/\.[jt]sx$/, ".tsx"), file.path.replace(/\.[jt]sx$/, ".jsx")];
@@ -1453,6 +1509,7 @@ export async function executeTemplateCommand(operation: "list-templates" | "show
       const { slot, warnings } = await resolveSlot(root, request);
       const overrides: Record<string, string | number> = { ...request.set, ...(request.durationMs !== undefined ? { durationMs: request.durationMs } : {}) };
       const plan = planScene(manifest, overrides, request.id, request.title, aspect.data, slot, await bindingExtension(root, project));
+      await withBrandFile(root, [manifest], plan.files);
       await writePlanned(root, plan.files);
       const catalog = await discoverRecipes(root);
       const sceneIssues = catalog.issues.filter(issue => issue.path.startsWith(plan.files[0].path));
@@ -1474,17 +1531,37 @@ export async function executeTemplateCommand(operation: "list-templates" | "show
     const files: PlannedFile[] = [];
     const scenes: { id: string; recipe: string; startMs: number; durationMs: number }[] = [];
     let cursor = 0;
+    const markers: { atMs: number; label: string; kind: string }[] = [];
     blueprint.scenes.forEach((scene, index) => {
       const manifest = findTemplate(scene.template)!;
       const sceneId = `${request.id}-${index + 1}-${manifest.id}`;
       const plan = planScene(manifest, scene.params, sceneId, `${request.title ?? blueprint.title}: ${manifest.title}`, aspect.data, slot, extension);
       files.push(...plan.files);
-      scenes.push({ id: `shot-${index + 1}`, recipe: sceneId, startMs: cursor, durationMs: plan.durationMs });
-      cursor += plan.durationMs;
+      // Overlap transitions start the shot inside the previous one; everything else butt-joins.
+      const overlap = scene.transition && index > 0 && isOverlapTransition(scene.transition.type) ? scene.transition.durationMs : 0;
+      const startMs = cursor - overlap;
+      scenes.push({ id: `shot-${index + 1}`, recipe: sceneId, startMs, durationMs: plan.durationMs, ...(scene.transition && index > 0 ? { transition: scene.transition } : {}) });
+      if (scene.section) markers.push({ atMs: startMs + overlap, label: scene.section, kind: "section" });
+      cursor = startMs + plan.durationMs;
     });
+    // V2 graphics: scaffolded as their own scenes (backdrop off where the template has one).
+    const overlays = blueprint.overlays.map((overlay, index) => {
+      const manifest = findTemplate(overlay.template)!;
+      const sceneId = `${request.id}-ov${index + 1}-${manifest.id}`;
+      const params = { ...overlay.params, ...(manifest.params.some(param => param.name === "backdrop") ? { backdrop: "off" } : {}) };
+      files.push(...planScene(manifest, params, sceneId, `${request.title ?? blueprint.title}: ${manifest.title} (overlay)`, aspect.data, { kind: "placeholder" }, extension).files);
+      return { id: `overlay-${index + 1}`, recipe: sceneId, startMs: overlay.startMs, durationMs: overlay.durationMs };
+    });
+    for (const cue of blueprint.cues) markers.push({ atMs: cue.atMs, label: cue.label, kind: "cue" });
+    const captions = blueprint.captions.length ? `${request.id}.captions.srt` : undefined;
+    if (captions) files.push({ path: captions, text: formatSrt(blueprint.captions) });
     const frame = ASPECT_FRAMES[aspect.data];
-    const composition = { $schema: COMPOSITION_SCHEMA_POINTER, version: 1, id: request.id, title: request.title ?? blueprint.title, width: frame.width, height: frame.height, fps: 30, seed: 1, scenes, assets: [] };
+    const composition = { $schema: COMPOSITION_SCHEMA_POINTER, version: 1, id: request.id, title: request.title ?? blueprint.title, width: frame.width, height: frame.height, fps: 30, seed: 1, scenes, assets: [],
+      ...(overlays.length ? { overlays } : {}), ...(markers.length ? { markers: markers.sort((a, b) => a.atMs - b.atMs) } : {}),
+      ...(captions ? { captions: { file: captions, style: "karaoke" } } : {}) };
     files.push({ path: `${request.id}.composition.json`, text: JSON.stringify(composition, null, 2) + "\n" });
+    files.push({ path: `${request.id}.brief.md`, text: blueprintBrief(blueprint, request.id, composition.scenes, cursor) });
+    await withBrandFile(root, [...blueprint.scenes, ...blueprint.overlays].map(scene => findTemplate(scene.template)!), files);
     await writePlanned(root, files);
     const catalog = await discoverRecipes(root);
     const sceneIssues = catalog.issues.filter(issue => scenes.some(scene => issue.path.startsWith(`${SCENE_RECIPE_DIRECTORY}/${scene.recipe}.`)));
@@ -1496,6 +1573,148 @@ export async function executeTemplateCommand(operation: "list-templates" | "show
     const known = error instanceof Error && "code" in error;
     const nested = known && "issues" in error && Array.isArray(error.issues) ? (error.issues as CliIssue[]) : undefined;
     const issues = (nested ?? [{ code: known ? String(error.code) : "ERR_INTERNAL", message: error instanceof Error ? error.message : "Template command failed.", ...(known && "target" in error && typeof error.target === "string" ? { path: error.target } : {}) }]).map(normalizeIssue);
+    return { success: false, command, issues, next: nextForIssues(issues) };
+  }
+}
+
+export type BrandCommandResult =
+  | { success: true; command: "brand"; data: unknown; warnings?: CliIssue[]; next?: string[] }
+  | { success: false; command: "brand"; issues: CliIssue[]; next: string[] };
+const BRAND_SCHEMA_POINTER = "./node_modules/@adityadeokar/velora/schemas/brand.schema.json";
+/** velora brand init|check: scaffold velora.brand.json (optionally seeded from CSS custom properties) or validate it. */
+export async function executeBrandCommand(operation: "brand-init" | "brand-check", input: Record<string, unknown>, context: { root: string }): Promise<BrandCommandResult> {
+  try {
+    const root = await services.canonicalRoot(context.root);
+    const existing = await services.readText(root, BRAND_FILE, 256_000);
+    if (operation === "brand-check") {
+      if (existing === undefined) throw Object.assign(new Error(`No ${BRAND_FILE} in this project. Run velora brand init.`), { code: "ERR_BRAND_INVALID", target: BRAND_FILE });
+      let document: unknown;
+      try { document = parseJsonDocument(existing); }
+      catch { throw Object.assign(new Error(`${BRAND_FILE} is not valid JSON.`), { code: "ERR_BRAND_INVALID", target: BRAND_FILE }); }
+      const parsed = BrandSchema.safeParse(document);
+      if (!parsed.success) {
+        const issues = parsed.error.issues.map(issue => normalizeIssue({ code: "ERR_BRAND_INVALID", path: `${BRAND_FILE}#${issue.path.join(".")}`, message: issue.message }));
+        return { success: false, command: "brand", issues, next: nextForIssues(issues) };
+      }
+      const warnings: CliIssue[] = [];
+      for (const token of ["text", "muted"] as const) {
+        const ratio = contrastRatio(parsed.data.colors[token], parsed.data.colors.background);
+        if (ratio !== undefined && ratio < 4.5)
+          warnings.push(normalizeIssue({ code: "WARN_BRAND_CONTRAST", path: `${BRAND_FILE}#colors.${token}`, message: `colors.${token} has ${ratio.toFixed(2)}:1 contrast on the background; titles and captions need 4.5:1.` }));
+      }
+      if (parsed.data.logo && !(await services.isRegularFile(root, parsed.data.logo)) && !(await services.isRegularFile(root, `${ASSETS_DIRECTORY}/${parsed.data.logo}`)))
+        warnings.push(normalizeIssue({ code: "WARN_BRAND_LOGO", path: `${BRAND_FILE}#logo`, message: `Logo ${parsed.data.logo} is not a project file; templates show the brand name instead.` }));
+      return { success: true, command: "brand", data: { file: BRAND_FILE, brand: parsed.data }, ...(warnings.length ? { warnings } : {}) };
+    }
+    if (existing !== undefined) throw Object.assign(new Error(`${BRAND_FILE} already exists. Edit it, or run velora brand check.`), { code: "output-exists", target: BRAND_FILE });
+    const name = typeof input.name === "string" && input.name.trim() ? input.name.trim() : await packageTitle(root);
+    let seeded: ReturnType<typeof brandTokensFromCss> | undefined;
+    if (typeof input.fromCss === "string") {
+      const target = services.relativeTarget(input.fromCss.replace(/^\.\//, ""));
+      if (!/\.(css|scss|less|pcss)$/i.test(target)) throw Object.assign(new Error("--from-css takes a stylesheet (.css, .scss, .less)."), { code: "invalid-input", target: "fromCss" });
+      const css = await services.readText(root, target, 2_000_000);
+      if (css === undefined) throw Object.assign(new Error(`Stylesheet ${target} was not found.`), { code: "invalid-input", target: "fromCss" });
+      seeded = brandTokensFromCss(css);
+    }
+    const brand = BrandSchema.parse({ version: 1, name, ...(seeded ? { colors: completeBrandColors(seeded.colors), fonts: seeded.fonts, ...(seeded.radius !== undefined ? { radius: seeded.radius } : {}) } : {}) });
+    const text = JSON.stringify({ $schema: BRAND_SCHEMA_POINTER, ...brand }, null, 2) + "\n";
+    await services.atomicWrite(root, BRAND_FILE, text, undefined);
+    return { success: true, command: "brand", data: { file: BRAND_FILE, brand, ...(seeded ? { fromCss: { colors: Object.keys(seeded.colors), fonts: Object.keys(seeded.fonts), customProperties: seeded.found.length } } : {}) },
+      next: ["velora brand check --json"] };
+  } catch (error) {
+    const known = error instanceof Error && "code" in error;
+    const issues = [normalizeIssue({ code: known ? String((error as { code: unknown }).code) : "ERR_INTERNAL", message: error instanceof Error ? error.message : "Brand command failed.", ...(known && typeof (error as { target?: unknown }).target === "string" ? { path: (error as unknown as { target: string }).target } : {}) })];
+    return { success: false, command: "brand", issues, next: nextForIssues(issues) };
+  }
+}
+async function packageTitle(root: string): Promise<string> {
+  try {
+    const name = (parseJsonDocument((await services.readText(root, "package.json", 256_000)) ?? "{}") as { name?: unknown }).name;
+    return typeof name === "string" && name ? name.replace(/^@[^/]+\//, "").split(/[-_]/).map(part => part ? part[0].toUpperCase() + part.slice(1) : part).join(" ") : "Your product";
+  } catch { return "Your product"; }
+}
+
+export type EditorialCommandResult =
+  | { success: true; command: "audio" | "compose" | "review"; data: unknown; warnings?: CliIssue[]; next?: string[] }
+  | { success: false; command: "audio" | "compose" | "review"; issues: CliIssue[]; next: string[] };
+const editorialFault = (code: string, message: string, target?: string): never => { throw Object.assign(new Error(message), { code, ...(target ? { target } : {}) }); };
+/**
+ * Editorial operations: `audio beats` (beat report, optional --write-markers), `compose snap` (a dry-run
+ * diff of cut moves onto beat markers; --write applies it) and `review` (advisory editorial review).
+ * Compositions are only ever rewritten with an explicit write flag.
+ */
+export async function executeEditorialCommand(operation: "audio-beats" | "compose-snap" | "review", input: Record<string, unknown>, context: { root: string }): Promise<EditorialCommandResult> {
+  const command = operation === "audio-beats" ? "audio" as const : operation === "compose-snap" ? "compose" as const : "review" as const;
+  try {
+    const root = await services.canonicalRoot(context.root);
+    const compositionFile = typeof input.composition === "string" ? input.composition : undefined;
+    const load = async () => {
+      if (!compositionFile) return editorialFault("ERR_MISSING_VALUE", `${command} needs --composition.`, "composition");
+      const loaded = await loadCompositionTracks(root, compositionFile);
+      if ("issues" in loaded) throw Object.assign(new Error(loaded.issues[0].message), { code: loaded.issues[0].code, target: loaded.issues[0].path, issues: loaded.issues.map(normalizeIssue) });
+      return loaded;
+    };
+    if (operation === "review") {
+      const { composition } = await load();
+      const catalog = await discoverRecipes(root);
+      const result = reviewComposition(composition, catalog.scenes, { ...(typeof input.platform === "string" ? { platform: input.platform } : {}) });
+      return { success: true, command, data: { composition: compositionFile, ...result, advisoryCount: result.advisories.length } };
+    }
+    if (operation === "audio-beats") {
+      let file = typeof input.file === "string" ? input.file : undefined;
+      let loaded: Awaited<ReturnType<typeof load>> | undefined;
+      if (!file) {
+        loaded = await load();
+        const track = loaded.composition.audio.find(entry => entry.kind === "music") ?? loaded.composition.audio[0];
+        if (!track) return editorialFault("ERR_AUDIO_INVALID", "The composition has no audio track; pass --file <music file>.", "file");
+        file = resolveAssetId(loaded.assets, loaded.aliases, track.assetId);
+        if (!file) return editorialFault("ERR_ASSET_NOT_FOUND", `Audio asset "${track.assetId}" was not discovered.`, "file");
+      }
+      const target = services.relativeTarget(file.replace(/^\.\//, ""));
+      const absolute = await services.scopedPath(root, target);
+      if (!(await services.isRegularFile(root, target))) return editorialFault("ERR_ASSET_NOT_FOUND", `Audio file ${target} was not found.`, "file");
+      const report = analyzeRhythm(await services.decodePcm(absolute, RHYTHM_SAMPLE_RATE), RHYTHM_SAMPLE_RATE);
+      const warnings: CliIssue[] = report.confidence < 0.2 ? [normalizeIssue({ code: "WARN_BEATS_UNCERTAIN", path: target, message: `Beat confidence is ${report.confidence.toFixed(2)}; the music may lack a steady pulse. Check the beat grid by ear before snapping.` })] : [];
+      let markers: number | undefined;
+      if (input.writeMarkers) {
+        loaded ??= await load();
+        const text = await services.readText(root, compositionFile!, 256_000);
+        if (text === undefined) return editorialFault("source-changed", "Composition source disappeared.", "composition");
+        const document = parseJsonDocument(text) as Record<string, unknown>;
+        const keep = (Array.isArray(document.markers) ? document.markers as { kind?: string }[] : []).filter(marker => marker.kind !== "beat" && marker.kind !== "downbeat");
+        const downbeats = new Set(report.downbeats);
+        const written = [...keep, ...report.beats.map(atMs => ({ atMs, label: "", kind: downbeats.has(atMs) ? "downbeat" : "beat" }))].sort((a, b) => ((a as { atMs: number }).atMs) - ((b as { atMs: number }).atMs));
+        await services.atomicWrite(root, compositionFile!, JSON.stringify({ ...document, markers: written }, null, 2) + "\n", text);
+        markers = report.beats.length;
+      }
+      return { success: true, command, data: { file: target, bpm: report.bpm, confidence: Math.round(report.confidence * 1000) / 1000, beats: report.beats, downbeats: report.downbeats, onsets: report.onsets.length, durationMs: Math.round(report.durationMs), ...(markers !== undefined ? { markersWritten: markers } : {}) },
+        ...(warnings.length ? { warnings } : {}), next: compositionFile ? [`velora compose snap --composition ${compositionFile} --to beats --json`] : [] };
+    }
+    const { composition } = await load();
+    const to = input.to === "downbeats" ? "downbeat" : "beat";
+    const grid = composition.markers.filter(marker => to === "beat" ? marker.kind === "beat" || marker.kind === "downbeat" : marker.kind === "downbeat").map(marker => marker.atMs);
+    if (!grid.length) return editorialFault("ERR_MARKERS_MISSING", `The composition has no ${to} markers. Run velora audio beats --composition ${compositionFile} --write-markers first.`, "markers");
+    const tolerance = typeof input.tolerance === "number" ? input.tolerance : 120;
+    const plan = snapToBeats(composition.scenes.map(scene => ({ id: scene.id, startMs: scene.startMs, durationMs: scene.durationMs,
+      overlapMs: scene.transition && isOverlapTransition(scene.transition.type) ? scene.transition.durationMs : 0 })), grid, tolerance);
+    let written = false;
+    if (input.write && plan.changes.length) {
+      const text = await services.readText(root, compositionFile!, 256_000);
+      if (text === undefined) return editorialFault("source-changed", "Composition source disappeared.", "composition");
+      const document = parseJsonDocument(text) as { scenes: Record<string, unknown>[] };
+      for (const change of plan.changes) {
+        const scene = document.scenes.find(entry => entry.id === change.id);
+        if (scene) scene[change.field] = change.to;
+      }
+      await services.atomicWrite(root, compositionFile!, JSON.stringify(document, null, 2) + "\n", text);
+      written = true;
+    }
+    return { success: true, command, data: { composition: compositionFile, to: `${to}s`, toleranceMs: tolerance, changes: plan.changes, unsnapped: plan.unsnapped, written },
+      next: written ? [`velora validate --composition ${compositionFile} --json`] : plan.changes.length ? [`velora compose snap --composition ${compositionFile} --to ${to}s --write --json`] : [] };
+  } catch (error) {
+    const known = error instanceof Error && "code" in error;
+    const nested = known && "issues" in error && Array.isArray(error.issues) ? (error.issues as CliIssue[]) : undefined;
+    const issues = (nested ?? [{ code: known ? String((error as { code: unknown }).code) : "ERR_INTERNAL", message: error instanceof Error ? error.message : `${command} failed.`, ...(known && typeof (error as { target?: unknown }).target === "string" ? { path: (error as unknown as { target: string }).target } : {}) }]).map(normalizeIssue);
     return { success: false, command, issues, next: nextForIssues(issues) };
   }
 }

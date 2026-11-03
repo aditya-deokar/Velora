@@ -36,6 +36,8 @@ Use this skill when planning a whole video from one JSON file, auditing what exi
 - `velora inspect --json`: project identity plus recipe and asset counts without mutation.
 - `velora inspect --scene <id> --json`: one scene with dimensions, duration, and node IDs.
 - `velora inspect --composition teaser.composition.json --json`: resolved scenes, assets, and totals.
+- `velora review --composition teaser.composition.json --json`: advisory editorial review (hook, pacing, reading time, eye trace, off-beat cuts).
+- Editorial fields: `overlays[]` (V2/V3 scenes over the picture), `markers[]` (beat, downbeat, cue, section), `sfx[]`, `loudness`, `captions.style`; see `velora-editing`.
 - `velora assets ls --json`: discovered assets with IDs and paths.
 - `velora assets check --json`: oversize, unsupported, and dangling-alias diagnostics.
 - `velora validate --composition teaser.composition.json --json`: full gate including audio, captions, and transitions.
