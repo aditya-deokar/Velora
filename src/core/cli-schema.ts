@@ -97,6 +97,7 @@ export const CLI_ERROR_CATALOG: Record<string, { hint: string; next: string[] }>
   ERR_ROUTE_FRAME_BLOCKED: { hint: "Serve the route from the app's own origin and allow same-origin framing in development, or use --component.", next: ["velora doctor --json"] },
   ERR_SCENE_EXISTS: { hint: "Choose another --id, or move the existing scene files first; velora new never overwrites.", next: ["velora scenes --json"] },
   WARN_TEMPLATE_PLACEHOLDER: { hint: "Replace SlotPlaceholder in the generated binding with your real component, or re-run with --component or --route.", next: ["velora new --help"] },
+  ERR_FFMPEG_FILTER: { hint: "Install a full FFmpeg build with libass (Homebrew: brew install ffmpeg-full), or keep captions as a styled overlay instead of burning them in.", next: ["velora doctor --json"] },
   ERR_DELIVER_TARGET: { hint: "Use a target from velora deliver --help or a delivery preset id from velora guide --json (capabilities.delivery).", next: ["velora deliver --help"] },
   ERR_SITE_NOT_LOOPBACK: { hint: "Pass your site's local dev server, for example --site http://127.0.0.1:4321.", next: ["velora studio --help"] },
   ERR_SITE_UNREACHABLE: { hint: "Start your site's dev server (npm run dev, rails s, ...) and retry with its loopback URL.", next: ["velora studio --help"] },

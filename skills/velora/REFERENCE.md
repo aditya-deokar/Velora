@@ -60,7 +60,7 @@ Success: `{ success: true, command, data, warnings?, next? }`. Failure: `{ succe
 | `ERR_DELIVER_TARGET` | Unknown deliver target | `velora deliver --composition <file> --targets youtube --json` |
 | `ERR_SITE_NOT_LOOPBACK`, `ERR_SITE_UNREACHABLE`, `ERR_SITE_REDIRECT_EXTERNAL`, `ERR_STUDIO_FAILED` | Any-site studio | `velora studio --site <url> --check --json` |
 | `ERR_BRAND_INVALID`, `ERR_LOOK_INVALID` | Brand file and looks | `velora brand check --json` |
-| `ERR_CODEC_UNAVAILABLE`, `ERR_OUTPUT_UNWRITABLE` | Encoding and output paths | `velora doctor --json`, `velora render --help` |
+| `ERR_CODEC_UNAVAILABLE`, `ERR_FFMPEG_FILTER`, `ERR_OUTPUT_UNWRITABLE` | Encoding and output paths | `velora doctor --json`, `velora render --help` |
 | `ERR_FLASH_RISK` | Photosensitivity (WCAG 2.3.1) | `velora check --video <file> --json` |
 | `ERR_SNAPSHOT_STALE` | Scene changed during a snapshot | `velora snapshot --help` |
 | `ERR_NODE_UNSUPPORTED`, `ERR_REACT_UNSUPPORTED`, `ERR_TOOLKIT_MISSING` | Host prerequisites | `velora doctor --json` |

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,6 +24,7 @@ function toneWav(): Buffer {
 }
 const recipeDoc = (id: string) => ({ version: 1, id, title: id, definition: { width: 128, height: 96, scene: { nodes: [] } } });
 let root: string;
+const hasSubtitles = spawnSync("ffmpeg", ["-hide_banner", "-filters"], { encoding: "utf8" }).stdout?.split(/\r?\n/).some(line => line.trim().split(/\s+/)[1] === "subtitles") ?? false;
 let seeks: { url: string; timeMs: number }[];
 async function setup(files: Record<string, string | Buffer> = {}) {
   root = await mkdtemp(path.join(tmpdir(), "velora-video-"));
@@ -124,7 +125,7 @@ describe("composition video render", () => {
     // A frame inside the window captured A and B at their own local times.
     expect(seeks.filter((s) => s.url.endsWith("/demo-b")).map((s) => Math.round(s.timeMs)).slice(0, 3)).toEqual([0, 33, 67]);
   }, 180_000);
-  it("renders gaps as black void and mixes audio with drift evidence", async () => {
+  it.runIf(hasSubtitles)("renders gaps as black void and mixes audio with drift evidence", async () => {
     await writeFile(path.join(root, "teaser.composition.json"), JSON.stringify({
       version: 1, id: "teaser", title: "Teaser", width: 128, height: 96, fps: 30, seed: 3,
       scenes: [
