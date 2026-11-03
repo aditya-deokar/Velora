@@ -31,6 +31,8 @@ Use this skill when the timeline declares `audio` tracks or a `captions` file. I
 
 - `velora audio ls --composition teaser.composition.json --json`: tracks with frame-snapped placement.
 - `velora audio check --composition teaser.composition.json --json`: asset existence, type, size, codec, fades, and ducking refs.
+- `velora audio beats --composition teaser.composition.json --write-markers --json`: tempo, beats and downbeats of the music bed, stored as markers for `velora compose snap`.
+- Procedural sound: `sfx[]` entries and `transition.sfx` (whoosh, swish, click, pop, tick, riser, impact, shimmer) are synthesized deterministically; the mix is normalized to -14 LUFS / -1 dBTP unless `loudness` is `false`. See `velora-editing`.
 - `velora captions validate --file subs.srt --json`: file syntax with block-accurate paths.
 - `velora captions check --composition teaser.composition.json --json`: cues against the timeline span.
 - `velora render --composition teaser.composition.json --out teaser.mp4 --json`: bakes the mix plus caption burn when requested.

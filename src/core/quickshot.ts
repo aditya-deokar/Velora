@@ -1,4 +1,5 @@
 import { AspectSchema, ASPECT_FRAMES, type Aspect, type ShotDefinition } from "./shots";
+import { compositePreview, type CompositeDefinition } from "./composites";
 import { RouteSchema, findTemplate, resolveTemplateParams, templateDefinition, type ParamValue, type TemplateIssue, type TemplateManifest } from "./templates";
 
 /** SOURCE OF TRUTH: QUICK_SHOT_PARAMS, readQuickShot, quickShotQuery, quickShotCommands.
@@ -11,7 +12,7 @@ import { RouteSchema, findTemplate, resolveTemplateParams, templateDefinition, t
  */
 export const QUICK_SHOT_PARAMS = Object.freeze({ template: "velora-quick", route: "velora-route", params: "velora-params" });
 export type QuickShotState = { template: string; route?: string; aspect: Aspect; overrides: Record<string, string | number> };
-export type QuickShot = QuickShotState & { manifest?: TemplateManifest; params: Record<string, ParamValue>; definition?: ShotDefinition; issues: TemplateIssue[] };
+export type QuickShot = QuickShotState & { manifest?: TemplateManifest; params: Record<string, ParamValue>; definition?: ShotDefinition; composite?: CompositeDefinition; issues: TemplateIssue[] };
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 function utf8(text: string): number[] {
@@ -90,8 +91,9 @@ export function readQuickShot(query: QueryLookup): QuickShot | undefined {
     issues.push({ code: "ERR_TEMPLATE_ASPECT", path: "params.aspect", message: `${manifest.id} supports ${manifest.aspects.join(", ")}.` });
   const resolved = resolveTemplateParams(manifest, overrides);
   issues.push(...resolved.issues);
-  const definition = issues.length ? undefined : templateDefinition(manifest, resolved.params, state.aspect);
-  return { ...state, manifest, params: resolved.params, ...(definition ? { definition } : {}), issues };
+  const built = issues.length ? undefined : templateDefinition(manifest, resolved.params, state.aspect);
+  // Layered and motion-graphics templates also carry their layout; the definition stays recipe-shaped.
+  return { ...state, manifest, params: resolved.params, ...(built ? { definition: compositePreview(built) } : {}), ...(built && "layout" in built ? { composite: built as CompositeDefinition } : {}), issues };
 }
 
 /** The quick-shot query params for a state (absent keys must be removed from the URL). */

@@ -1,0 +1,18 @@
+{
+ "success": true,
+ "data": {
+  "out": "hero.mp4",
+  "manifest": "hero.manifest.json",
+  "frames": 240,
+  "durationMs": 8000,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "seed": 0,
+  "cachedFrames": 0,
+  "renderedFrames": 240,
+  "codec": "h264",
+  "quality": "standard"
+ },
+ "command": "render"
+}

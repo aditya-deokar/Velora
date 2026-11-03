@@ -1,3 +1,4 @@
+import { LookSchema } from "./looks";
 import { z } from "zod";
 import { SceneSchema, type SceneIssue } from "./scene";
 import { MotionSchema } from "./motion";
@@ -11,6 +12,8 @@ import { reviewAuthoring } from "./authoring";
 export const PreviewDefinitionSchema = z.strictObject({
   scene: SceneSchema,
   motion: MotionSchema.optional(),
+  // Finishing look: grade/grain/vignette/letterbox in the browser layer, the rest at export.
+  look: LookSchema.optional(),
   width: z.number().finite().positive().max(7680).default(1400),
   height: z.number().finite().positive().max(7680).default(980),
 });

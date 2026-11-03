@@ -1,0 +1,1 @@
+{"success":true,"command":"review","data":{"composition":"teaser.composition.json","advisories":[{"code":"ADV_READING_TIME","path":"composition.scenes.3","message":"Shot \"shot-4\" shows copy that needs about 3100ms to read but is on screen 2600ms.","atMs":6900}],"requiresVisualReview":true,"pacing":{"minMs":800,"maxMs":4000},"advisoryCount":1}}

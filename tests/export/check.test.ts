@@ -50,7 +50,7 @@ describe("check --frames", () => {
     const result = await run({ frames: "stills" });
     expect(result).toMatchObject({ success: true, command: "check" });
     expect(result.success && result.data.checks.map((c) => `${c.id}:${c.pass}`)).toEqual([
-      "manifest-valid:true", "dimensions:true", "no-blank:true", "caption-coverage:true", "fps-budget:true",
+      "manifest-valid:true", "dimensions:true", "no-blank:true", "caption-coverage:true", "flash-safety:true", "banding:true", "fps-budget:true",
     ]);
   });
   it("fails sha mismatches, missing files and bad manifests", async () => {

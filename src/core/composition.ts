@@ -1,9 +1,12 @@
+import { LookSchema } from "./looks";
 import { z } from "zod";
 import { AssetIdSchema, AssetTypeSchema, resolveAssetId, type DiscoveredAsset } from "./assets";
 import { AudioTrackSchema } from "./audio";
 import { ExportFrameRateSchema } from "./export";
 import { SceneRecipeIdSchema, type SceneCatalog } from "./recipes";
 import { SegmentTransitionSchema } from "./transitions";
+import { LoudnessSchema, SfxEntrySchema } from "./sound";
+import { timelineFromComposition, validateTimeline } from "./timeline";
 
 /** SOURCE OF TRUTH: CompositionSchema, composition resolution and totals.
  * WHAT: versioned multi-scene composition files plus pure resolution against a validated catalog.
@@ -29,9 +32,30 @@ export const CompositionAssetSchema = z.strictObject({
   type: AssetTypeSchema,
 });
 export type CompositionAsset = z.output<typeof CompositionAssetSchema>;
+export const CaptionStyleSchema = z.enum(["burn", "minimal", "karaoke", "bold-pop", "lower"]);
 export const CompositionCaptionsSchema = z.strictObject({
   file: z.string().min(1),
   burnIn: z.boolean().default(false),
+  // DOM styles render through kit CaptionTrack as an overlay over the picture; "burn" is the FFmpeg path.
+  style: CaptionStyleSchema.optional(),
+  // Optional per-word timing ({ words: [{ text, startMs, endMs }] }); otherwise words spread by length.
+  wordsFile: z.string().min(1).optional(),
+});
+// V2/V3: scenes rendered with transparent capture on their own local time, alpha-composited over V1 in order.
+export const CompositionOverlaySchema = z.strictObject({
+  id: z.string().min(1).max(128),
+  recipe: SceneRecipeIdSchema,
+  startMs: z.number().finite().nonnegative().max(120_000),
+  durationMs: z.number().finite().positive().max(120_000),
+  inMs: z.number().finite().nonnegative().max(120_000).optional(),
+  opacity: z.number().finite().min(0).max(1).default(1),
+  blend: z.enum(["normal", "screen", "multiply"]).default("normal"),
+});
+export type CompositionOverlay = z.output<typeof CompositionOverlaySchema>;
+export const CompositionMarkerSchema = z.strictObject({
+  atMs: z.number().finite().nonnegative().max(120_000),
+  label: z.string().max(80).default(""),
+  kind: z.enum(["beat", "downbeat", "cue", "section"]).default("cue"),
 });
 export type CompositionCaptions = z.output<typeof CompositionCaptionsSchema>;
 export const CompositionSchema = z.strictObject({
@@ -48,7 +72,20 @@ export const CompositionSchema = z.strictObject({
   audio: z.array(AudioTrackSchema).max(16).default([]),
   captions: CompositionCaptionsSchema.optional(),
   seed: z.number().int().nonnegative().max(4_294_967_295).default(0),
+  // Default look for scenes that declare none.
+  look: LookSchema.optional(),
+  overlays: z.array(CompositionOverlaySchema).max(64).default([]),
+  markers: z.array(CompositionMarkerSchema).max(4096).default([]),
+  sfx: z.array(SfxEntrySchema).max(256).default([]),
+  // Two-pass loudness normalization of the mix (false leaves levels untouched).
+  loudness: z.union([LoudnessSchema, z.literal(false)]).optional(),
 }).superRefine((composition, ctx) => {
+  const seenOverlays = new Set<string>();
+  for (const [index, overlay] of composition.overlays.entries()) {
+    if (seenOverlays.has(overlay.id) || composition.scenes.some(scene => scene.id === overlay.id))
+      ctx.addIssue({ code: "custom", path: ["overlays", index, "id"], message: `Duplicate track ID "${overlay.id}". Overlay IDs must differ from each other and from scene IDs.` });
+    seenOverlays.add(overlay.id);
+  }
   const seenScenes = new Set<string>();
   for (const [index, segment] of composition.scenes.entries()) {
     if (seenScenes.has(segment.id))
@@ -101,6 +138,9 @@ export function resolveCompositionSpec(
     }
     scenes.push({ ...segment, title: recipe.title, nodeCount: recipe.definition.scene.nodes.length });
   }
+  for (const [index, overlay] of composition.overlays.entries())
+    if (!catalog.scenes.some((scene) => scene.id === overlay.recipe))
+      issues.push({ code: "ERR_SCENE_NOT_FOUND", path: `composition.overlays.${index}.recipe`, message: `Overlay recipe "${overlay.recipe}" is not in the validated catalog. Run velora scenes --json to list available IDs.` });
   const resolvedAssets: ResolvedCompositionAsset[] = [];
   const byPath = new Map(assets.map((asset) => [asset.path, asset]));
   for (const [index, declared] of composition.assets.entries()) {
@@ -124,5 +164,8 @@ export function resolveCompositionSpec(
     }
     resolvedAssets.push({ ...declared, bytes: discovered.bytes });
   }
+  // The timeline gate render applies (overlaps, transition windows) runs here too, so validate fails first.
+  for (const issue of validateTimeline(timelineFromComposition(composition)).issues)
+    issues.push({ ...issue, path: issue.path.replace(/^timeline\.segments\./, "composition.scenes.") });
   return { resolved: { scenes, assets: resolvedAssets }, totals: compositionTotals(composition), issues };
 }

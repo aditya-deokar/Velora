@@ -51,40 +51,55 @@ The underlying `ProjectPreview` export accepts `projectId`, `enabled`, optional 
 
 Replace “dashboard” with the page you want. Claude Code, Codex CLI or another repository-capable agent can use the same installed guide; Velora does not run or authenticate the agent for you.
 
+For launch work, start from the prompt library instead. Each prompt names the blueprint or template, the skills to load and the proof loop; replace its `<placeholders>`:
+
+```sh
+npx velora prompts ls
+npx velora prompts show --id launch-film
+```
+
+Prompts: `launch-film`, `feature-announcement`, `website-hero-loop`, `vertical-teaser`, `dashboard-cinematic`, `changelog-video`, `product-hunt-assets` and `first-scene`. The generated `VELORA.md` and the studio's Getting started panel offer the same prompts.
+
 The guide explains concepts, tradeoffs, exact APIs and a tested file-pair example. It leaves the composition to the creator. Ask your agent to revise the source when you want a different shot.
 
 ## Five-minute path (CLI + skills, `--json`-first)
 
+Run these in your app's root with its dev server running (here on port 5173). Each step works on a fresh install:
+
 ```sh
 npm install @adityadeokar/velora
-npx velora init
-npx velora guide --json
-npx velora skills install --dir .skills --json
-npx velora doctor --json
-npx velora validate --composition teaser.composition.json --json
-npx velora render --composition teaser.composition.json --frame 0 --out proof.png --json
+npx velora init --json
+npx velora doctor --url http://127.0.0.1:5173 --json
+npx velora skills install --agent claude --json
+npx velora new scene --template hero-push --id home-hero --route / --json
+npx velora shot --scene home-hero --time 3000 --out home-hero.png --url http://127.0.0.1:5173 --json
 ```
 
-Then extract evidence and gate it before calling the video done:
+`home-hero.png` is a cinematic still of your real home page. For a whole launch film, scaffold a blueprint, check it, and draft it:
 
 ```sh
-npx velora frames --composition teaser.composition.json --out stills --json
-npx velora check --frames stills --json
+npx velora new video --blueprint launch-film-30s --id launch --route / --json
+npx velora validate --composition launch.composition.json --json
+npx velora review --composition launch.composition.json --platform youtube-1080p --json
+npx velora frames --composition launch.composition.json --out board --every 30 --contact-sheet --url http://127.0.0.1:5173 --json
+npx velora render --composition launch.composition.json --out launch.mp4 --quality draft --url http://127.0.0.1:5173 --json
+npx velora check --video launch.mp4 --manifest launch.manifest.json --json
 ```
 
 Every command supports `--help` and `--json`; exit `0` ok, `1` operational
 failure with `issues[].code`, `2` usage error. The root skill
-(`velora/SKILL.md`, loaded first) routes each request to one specialized
-skill; `npx velora skills check --json` verifies the installed library.
-`velora check` runs technical gates only — a human still reviews taste
-(`requiresVisualReview: true`).
+(`velora/SKILL.md`, loaded first) routes each intent to at most four
+specialized skills; `npx velora skills check --json` verifies the installed
+library. `velora check` and `velora review` are technical and advisory only; a
+person still reviews taste (`requiresVisualReview: true`).
 
 ## Compatibility and limits
 
 | Surface | Supported |
 |---|---|
 | Agents | Claude Code, Codex CLI, Cursor, any skill-compatible agent (`--json` contract is the coupling surface; snippets are additive) |
-| React | DOM 18.2+ or 19 (Next.js App/Pages Router, Vite, portable wrapper, Electron renderer) |
+| React | DOM 18.2+ or 19 (Next.js App/Pages Router, Vite, portable wrapper, Electron renderer) for component-level shots |
+| Any website | Astro, SvelteKit, Rails, Django, static HTML through `velora studio --site` (route-level shots; no React in your project) |
 | Node | 22.12+ for the CLI |
 | FFmpeg | Required for audio mix, caption burn, MP4 encode, and audio probing |
 | Chromium | Required via Playwright for capture, snapshots, and video sampling |
@@ -96,7 +111,60 @@ transcription, and universal quality or performance promises (evidence is
 device- and scene-specific). Ewmotion integration is deferred until a real
 source exists to integrate. The command name `velora` runs the
 same CLI; recipe files stay at version 1 and scenes at focus version 3, and
-older wrappers are upgraded by re-running `velora init` (never hand-edited).
+older wrappers and `VELORA.md` handoffs (from the unscoped `velora` package or
+guide v2) are upgraded by re-running `velora init` (never hand-edited).
+
+## Ship every platform at once
+
+`velora deliver` renders every launch file from one composition into a fresh directory:
+- each platform video at its preset's size, codec, quality and loudness, stepped down until it fits the preset's size budget;
+- a website hero (WebM plus MP4 fallback, a poster, `embed.html` and `HeroVideo.tsx`);
+- Open Graph and Product Hunt stills;
+- `deliverables.json` with every SHA and size.
+
+```sh
+npx velora deliver --composition launch.composition.json --targets youtube,reels,tiktok,website-hero,readme-gif,og-image --url http://127.0.0.1:5173 --json
+```
+
+Targets: `youtube`, `x`, `x-square`, `linkedin`, `reels`, `instagram-feed`, `tiktok`, `shorts`, `website-hero`, `readme-gif`, `og-image`, `product-hunt` (or any delivery preset id).
+
+## No React app yet?
+
+`velora create` writes a launch studio: a blank Vite React stage with a branded landing page, `velora.brand.json` and a blueprint, for motion graphics and screen recordings.
+
+```sh
+npx @adityadeokar/velora create my-launch --name "Your product"
+```
+
+Then `cd my-launch`, `npm install`, `npm run velora:setup` and `npm run dev`.
+
+## Any website: Astro, SvelteKit, Rails, static HTML
+
+Any-site mode films the real routes of a non-React site.
+- Velora runs a managed studio from your user cache, so React and Vite never enter your repository.
+- The studio is served at `/__velora/`; every other path is proxied to your site's local dev server, so routes frame same-origin.
+- Scenes, compositions and assets stay in your project.
+
+```sh
+npm install --save-dev @adityadeokar/velora
+npx velora studio init --site http://127.0.0.1:4321
+npx velora new scene --template scroll-through --id tour --route / --json
+npx velora studio --site http://127.0.0.1:4321
+```
+
+Render and deliver against the studio origin it prints (for example `--url http://127.0.0.1:5180`). Limits:
+- shots are route-level, not component-level;
+- the site's own animations are frozen;
+- interactive states must be reachable by route or query parameter.
+
+The development proxy strips `X-Frame-Options` and `frame-ancestors` so pages can be framed; production is unaffected.
+
+## Compatibility policy and migrating to 1.0
+
+- **Additive within a major version.** New optional fields never break existing files. Old CLIs reject fields they don't know, so upgrade the CLI before using new fields.
+- **Breaking changes bump the file version** (`version` in recipes, compositions, `velora.brand.json` and the guide) and ship an upgrade path. Re-running `velora init` upgrades generated adapters and `VELORA.md`; you never hand-edit generated files.
+- **Deprecations warn for one minor version** before removal.
+- **0.x to 1.0:** recipe version 1, scene version 3 and composition version 1 are unchanged, so existing scenes and compositions keep working. Re-run `npx velora init` once to refresh the adapter and the guide v3 handoff, then `npx velora skills install --agent claude` (or your agent) to get the 22-skill library.
 
 ## Scenes and studio
 

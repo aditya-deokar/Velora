@@ -9,6 +9,7 @@ import { perspectiveForFocalLength } from "./lens";
 import { CascadeSchema } from "./choreography";
 import { SUPPORTED_EXPORT_FPS, CaptureManifestSchema, QUALITY_PRESETS, CODEC_CONTAINERS, ALPHA_CODECS } from "./export";
 import { DELIVERY_PRESETS } from "./delivery";
+import { PROMPT_LIBRARY } from "./prompts";
 
 /** SOURCE OF TRUTH: getAuthoringGuide, reviewAuthoring, AuthoringGuideSchema.
  * WHAT: versioned cinematic concepts, actual capabilities and non-prescriptive review.
@@ -21,7 +22,7 @@ const ConceptSchema = z.strictObject({
   choices:z.string(), pitfalls:z.string(), verify:z.string(),
 });
 export const AuthoringGuideSchema = z.strictObject({
-  version:z.literal(2), purpose:z.string(), creativeFreedom:z.string(), stageBackdrop:z.literal(SCENE_BACKGROUND),
+  version:z.literal(3), purpose:z.string(), creativeFreedom:z.string(), stageBackdrop:z.literal(SCENE_BACKGROUND),
   concepts:z.array(ConceptSchema), workflow:z.array(z.string()),
   capabilities:z.record(z.string(),z.unknown()),
   cliVersion:z.string().min(1).optional(),
@@ -89,6 +90,36 @@ const concepts: z.infer<typeof ConceptSchema>[] = [
  choices:"Reuse the smallest meaningful component that preserves its data and styling dependencies. If a transparent element lifts from its background, it may need its original backing paint, not invented decoration. Host components may receive an existing supported progress/state prop driven by useSceneTime when internal animation is useful.",
  pitfalls:"Wrapper nodes can break direct-child selectors, flex/grid sizing, list semantics or inherited styling. Put li/tr/other semantic roots in the correct parent and adapt the wrapper placement. Host transforms, filters, opacity, overflow clipping and paint containment on spatial ancestors can flatten 3D; isolate those on visual leaves. Portals may leave the scene. Never duplicate React subtrees to fake focus.",
  verify:"Check normal and scene computed styles, keyboard and pointer interaction, provider requests and DOM identity. Visually inspect clipping, theme, menu behavior and responsive layout. A typecheck cannot prove visual fidelity."},
+ {id:"templates",title:"Templates are starting points you own",
+ meaning:"A template is a certified first draft of a known shot (hero-push, rack-focus, float-loop) or a whole film (a blueprint such as launch-film-30s). Scaffolding copies plain recipe JSON, a TSX binding and, for blueprints, a composition and brief.md into the project. From then on the files are the creator's: nothing re-reads the template at runtime.",
+ mechanism:"velora templates ls --json lists camera, layered, motion-graphics and blueprint entries with their params, aspects and duration range. velora new scene --template ID --id SLUG (--route /path or --component path#Export) writes the recipe and binding; velora new video --blueprint ID writes every scene plus the composition. Recipes record provenance (template id, version, params) so a shot can be re-scaffolded for comparison. In the studio, the Templates tab previews a template live on the real app and copies the exact scaffold command and agent prompt.",
+ choices:"Start from a template when the request names a known shot or a launch format; author bespoke when the brief needs a move no template makes. After scaffolding, replace placeholders with real components, then refine framing, focus and timing by hand. Across a film, vary template families so consecutive shots differ in size, angle or movement.",
+ pitfalls:"Do not repeat one template for every scene, keep SlotPlaceholder content in a delivered render, or treat template defaults as rules: user direction overrides them. Certification (velora templates check) proves framing, determinism and budget for the shipped defaults, not for your edits.",
+ verify:"Run velora validate, then velora shot at the start, middle and end of each scaffolded scene and compare against the brief. Confirm no placeholder remains."},
+ {id:"shot-vocabulary",title:"Shot vocabulary: size, angle and one motivated move",
+ meaning:"Directors describe a shot by its size (wide, medium, close-up, extreme close-up of a detail), its angle (eye level, low, high, overhead, oblique) and its movement (push, pull, truck, crane, orbit, tilt, rack, hold). In a UI film the subject is a page, a panel or one control; the vocabulary maps directly to camera distance, rotation and travel.",
+ mechanism:"Shot size is camera z relative to the subject: a wide shows the page with void around it, a close-up fills the frame with one panel, an extreme close-up isolates a number or button. Angle is camera rotateX/rotateY. Movement is one camera track family sharing timing and easing. Template intensity (subtle, standard, dramatic) scales the same move.",
+ choices:"Give each shot one motivated move: a push to direct attention, a pull or crane to reveal context, a truck to survey, a rack to shift attention between depths, a hold to let text read. Alternate sizes across cuts (wide to close, close to medium) so each cut adds information.",
+ pitfalls:"Stacking several moves in one shot (push plus orbit plus tilt) reads as noise. Two consecutive shots of the same size and angle feel like a jump cut. A move without a reason is decoration.",
+ verify:"Name the size, angle and move of every shot in the brief's shot list, then check the contact sheet (velora frames --contact-sheet) shows that variety."},
+ {id:"lens",title:"Lens language",
+ meaning:"Focal length sets how space feels. Wide lenses (24-35 mm) exaggerate depth and make near edges loom; normal (50 mm) reads natural; long lenses (85-135 mm) compress layers together and isolate a subject with shallow focus.",
+ mechanism:"perspectiveForFocalLength(mm, frameHeight) converts millimetres to CSS perspective and lensFor returns the matching focus focalLength. capabilities.lenses lists the values for common lenses. Animating perspective against camera z keeps the subject's size while the background stretches or compresses: a dolly zoom (the dolly-zoom template).",
+ choices:"Use a wide lens for monumental surveys and dramatic near edges, a normal lens for product truth, a long lens for macro details, rack focus and layered parallax that should feel calm. Keep one lens per shot unless the lens change is the effect.",
+ pitfalls:"Very wide perspective with large z travel crosses the projection plane. Long lenses flatten depth so parallax nearly disappears; add depth separation if layers should still relate.",
+ verify:"Compare a still at 35 mm and at 85 mm for the same framing and confirm the chosen feel serves the brief."},
+ {id:"editing-rhythm",title:"Editing rhythm",
+ meaning:"Editors weigh a cut by emotion first, then story, then rhythm, then where the eye is on screen. A launch film earns attention in the first two seconds, gives each idea just enough time to read, and lands cuts on the music's pulse.",
+ mechanism:"A composition orders segments on V1 with entering or overlap transitions (crossfade, dip, wipe, push, whip and others), overlays on V2/V3, markers for sections and music cues, captions and sound. velora audio beats finds tempo and beats; velora compose snap --to beats moves cuts onto them (dry run until --write). velora review reports hook, pacing per platform, reading time, end-card hold, eye-trace jumps, direction flips, loop seams and off-beat cuts as advice.",
+ choices:"Cut on movement or on the beat; use hard cuts for energy, a crossfade for time passing, a whip or push for momentum, a dip to separate sections. Keep the subject near the same screen position across a cut when continuity matters, or break it deliberately. Let the end card hold for at least two seconds.",
+ pitfalls:"Transitions on every cut, shots longer than the platform's attention span, text that disappears before it can be read, and a hook that arrives after three seconds. Advisories are questions, not rules.",
+ verify:"Run velora review --composition FILE --platform ID and look at a contact sheet of the cut points. Watch the draft at full speed with sound before the master render."},
+ {id:"brand-and-looks",title:"Brand and looks",
+ meaning:"Brand tokens (colors, fonts, logo, radius, motion personality) make motion graphics and kit components look like the product. A look grades the whole frame (contrast, color, grain, vignette, bloom) the way a colorist finishes a film.",
+ mechanism:"velora brand init writes velora.brand.json, optionally seeded from the app's CSS; kit components and motion-graphics templates read it through BrandProvider. Motion personalities (calm, crisp, playful, bold) choose easing and duration defaults. Looks are presets (clean, film, noir, teal-orange, neon, pastel, keynote) with a browser layer that matches export, plus export-only finishing previewed with velora shot --finish. velora check reports flash risk and banding.",
+ choices:"Seed the brand from the real CSS so titles match the product. Pick one personality for the whole film. Choose a look that supports the product's tone and keep it consistent across shots; subtle grades age better than strong ones.",
+ pitfalls:"Grading the live UI into colors the product does not have, mixing looks between shots, heavy grain on small text, and fast bright flashes (checked against WCAG 2.3.1).",
+ verify:"Run velora brand check, preview a graded still with velora shot --finish, and confirm velora check reports no flash failure."},
  {id:"delivery",title:"Inspect before exporting",
  meaning:"A scene is finished when its real rendered behavior communicates the intended reveal, not merely when its configuration validates.",
  mechanism:"Use ScenePreview from "+VELORA_PACKAGE.preview+" for the shared product interface. It owns paused playback, seek/replay, source validation/recovery, viewport fitting and the capture bridge, using the canonical Scene and motion clock. Supply stable Surface children and a definition containing scene metadata, optional motion, width and height. Pass hot={import.meta.hot} in Vite for update/error/reconnection feedback. For a deliberately custom low-level integration, Scene, motionDuration, SceneErrorBoundary and useSceneCapture remain available; do not register a second capture bridge inside ScenePreview. velora export samples the same live scene at exact frame times using FFmpeg; FPS controls cadence, not speed.",
@@ -99,12 +130,12 @@ const concepts: z.infer<typeof ConceptSchema>[] = [
 export function getAuthoringGuide(input?: { cliVersion?: string }): AuthoringGuide {
   const {items: _items,...cascadeDefaults}=CascadeSchema.parse({items:[{id:"subject"}]});
   return AuthoringGuideSchema.parse({
-    version:2,
+    version:3,
     cliVersion: input?.cliVersion ?? "development",
     commands: [...CLI_COMMANDS],
     stageBackdrop:SCENE_BACKGROUND,
     purpose:"Compose cinematic 3D motion from a requested application's existing live UI. Teach a spatial language, not a prescribed design.",
-    creativeFreedom:"Concepts explain effects and tradeoffs. The stage is always a black void; the host UI keeps its original theme. No fixed camera angle, path, layout, focus target, layer count or entrance pattern is mandatory. User direction overrides artistic defaults. Technical schema/identity constraints still apply. For multiple scenes choose different compositional ideas, not just different labels or durations.",
+    creativeFreedom:"Concepts explain effects and tradeoffs. The stage is always a black void; the host UI keeps its original theme. No fixed camera angle, path, layout, focus target, layer count or entrance pattern is mandatory. User direction overrides artistic defaults. Technical schema/identity constraints still apply. For multiple scenes choose different compositional ideas, not just different labels or durations. Templates are starting points; vary shot families across scenes; user direction overrides.",
     concepts,
     workflow:[
       "Start with the project-root VELORA.md handoff created by npx velora init. Read npx velora guide --json for this installed version, then inspect the requested page, original components, providers, styles and existing app entry. Do not start by copying a demo.",
@@ -149,6 +180,12 @@ export default function PageSurvey() {
       lenses:[24,35,50,85,135].map(mm=>({mm,perspectiveAt1080:perspectiveForFocalLength(mm,1080),perspectiveAt980:perspectiveForFocalLength(mm,980)})),
       exportFps:SUPPORTED_EXPORT_FPS,
       finishing:{quality:QUALITY_PRESETS,codecs:CODEC_CONTAINERS,alpha:ALPHA_CODECS,motionBlur:"--motion-blur DEG (180 cinematic, 90 crisp UI text, 270-360 dreamy) [--motion-samples 2-64]; averaged in linear light; static frames stay byte-identical",colorimetry:"BT.709 limited range, tagged",posters:"--poster MS writes <out>.poster.png",preview:"velora shot --quality master --motion-blur 180 previews finishing on one frame"},
+      prompts:{list:"velora prompts ls --json",show:"velora prompts show --id <id> --json",ids:PROMPT_LIBRARY.map(prompt=>prompt.id)},
+      editorial:{beats:"velora audio beats --composition FILE [--write-markers] --json",snap:"velora compose snap --composition FILE --to beats|downbeats [--write] --json",review:"velora review --composition FILE [--platform ID] --json",transitions:"velora transitions ls --json"},
+      brandAndLooks:{brand:"velora brand init [--from-css FILE] --json; velora brand check --json",finishPreview:"velora shot --scene ID --time MS --finish --out PNG --json"},
+      presets:"velora render --composition FILE --out VIDEO --preset <id>; the delivery list below names each preset.",
+      deliver:"velora deliver --composition FILE --targets youtube,x,linkedin,reels,tiktok,shorts,website-hero,readme-gif,og-image,product-hunt [--out DIR] --json: every platform file within its size budget, website-hero embed snippets, stills and deliverables.json.",
+      setup:{reactApp:"velora init",anySite:"velora studio --site <loopback dev URL> (non-React sites: route-level shots through a same-origin proxy; nothing installed into the project)",noApp:"velora create <dir> (starter launch studio)"},
       delivery:DELIVERY_PRESETS.map(preset=>({id:preset.id,title:preset.title,size:`${preset.width}x${preset.height}`,fps:preset.fps,codec:preset.codec,lastVerified:preset.lastVerified})),
       api:{
         hostIntegration:{

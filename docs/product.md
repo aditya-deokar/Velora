@@ -1,41 +1,59 @@
 # Product
 
-Velora turns a developer's existing application components into cinematic 3D motion through their own coding agent. Developers work in source, keep their existing providers/data/styles and refine a live preview. There is no screenshot upload, product login or visual builder requirement.
+Velora turns a product's real interface into cinematic launch video. A developer's own coding agent works in source with the Velora CLI and skills: it picks a shot or a whole film from certified templates, refines it with real components, previews it live, and renders every file a launch needs. Velora runs locally, owns no AI provider login or account, and offers no visual builder.
 
-## Browser experience
+## Who it serves
 
-The real product uses one minimal preview shell: black scene space, generous padding, plain rounded controls over a progressive bottom blur. Play/pause, replay, a timeline and export are the current controls. Empty/static scenes clearly disable unavailable actions. Source errors explain recovery; changes become visible through the host's development server.
+- **Teams with a React app** (Vite, Next.js, portable React DOM 18.2+/19, Electron renderers) film their real components and pages. `velora init` connects the existing app without changing its providers, data or styles.
+- **Teams with any other website** (Astro, SvelteKit, Rails, Django, static HTML) film their real routes through any-site mode: `velora studio --site <local dev URL>` runs a managed studio outside their repository and frames the site through a same-origin proxy. Shots are route-level; the site's own animations are frozen.
+- **Teams without a product UI yet** start from `velora create <dir>`: a blank React stage with a branded landing page, a brand file and a launch blueprint, ready for motion graphics and screen recordings.
 
-The repository's browser entry opens this real interface in an empty state until real application content is supplied. It does not claim a connection or populate a pretend dashboard. The user explicitly requested deleting all demo and practice applications; their source, galleries, videos and publishing scripts are retired. Automated tests remain separate and do not ship as product pages.
+## Three paths, easy to advanced
 
-An installed `ProjectPreview` gives an initial view of the unmodified host. Agents author dedicated scene routes using the shared `ScenePreview` and existing `Surface` primitives. The installed `velora guide` explains the current API and cinematic principles. The developer's existing Claude/GPT coding-agent subscription runs that agent; Velora does not own provider authentication or AI infrastructure.
+1. **Zero code.** Pick a quick shot of a real page in the studio's Templates tab (live, with typed params), copy the export command and render.
+2. **Templates.** Scaffold a camera template (`hero-push`, `scroll-through`, `dolly-zoom`, ...) or a launch blueprint (`launch-film-30s`, `social-teaser-9x16`, ...) into plain files the project owns, then refine.
+3. **Bespoke.** The agent authors recipes and bindings from the guide's spatial language: camera, lens, focus, depth and motion.
 
-## Visual language
+Templates are starting points, not straitjackets: scaffolded files are ordinary source, provenance is recorded, and user direction overrides every default.
 
-Default compositions use deliberate close oblique camera framing, surface-aligned camera travel, meaningful foreground/background depth and smooth, slow motion. Camera surveys, plating, floating detail and micro shots are concepts, not mandatory templates. Preserve the host design and let creators override artistic defaults.
+## Craft
 
-Focus follows camera-axis depth through distance and aperture. Equal-depth regions can remain sharp; near and far regions soften progressively. Performance is a release priority. Live DOM filtering approximates lens blur; Blender ray-traced bokeh is not claimed. Technical validation never certifies artistic quality.
+- **Cinematography:** shot size, angle and one motivated move per shot; lens language from 24 to 135 mm; depth of field that follows camera-axis depth; smooth rails, springs and seeded handheld noise; restraint (subtle intensity) by default.
+- **Motion design and brand:** a kit of device frames, backdrops, cursor, titles, counters and captions driven only by scene time; `velora.brand.json` tokens and motion personalities (calm, crisp, playful, bold).
+- **Editing:** true A/B transitions, overlay tracks, beat-snapped cuts, procedural sound on cuts, loudness normalization, styled captions, and an advisory editorial review (hook, pacing per platform, reading time, eye trace, loop seams).
+- **Finishing:** quality presets up to supersampled masters, motion blur, looks (grade, grain, LUTs), BT.709 tagging, alpha codecs for editors.
 
-## Output and next boundaries
+Technical checks (`velora check`, `velora review`) never certify artistic quality. A person reviews taste.
 
-Local MP4 export at 30/60/120 FPS is delivered through the canonical CLI and live capture clock. The preview supplies an export command; it does not present a nonexistent browser download service. FFmpeg and Chromium are local prerequisites.
+## Studio
 
-Interactive focus editing was mentioned as a future possibility, not authorized delivery in this slice. Recipe reopening is delivered in the current source catalog; the final agent workflow completes the local MVP; hosted/commercial capabilities stay deferred. No builder, account system or licensing infrastructure is added to the current preview.
+The studio opens at `?velora-preview=1` in the developer's running app (or at `/__velora/` in any-site mode). It has three tabs:
+- **Scenes:** the project's recipes as a tilted credits list with snapshots.
+- **Templates:** a gallery with one live quick shot at a time and a param panel that copies the scaffold command, the export command and an agent prompt.
+- **Compositions:** a player with J/K/L transport, frame stepping, safe-area guides and synced audio and captions.
 
-## Scene library and scene view
+The studio writes no files; agents and the CLI own the source.
 
-The home page lists the project's authored scene files automatically. It is a real clickable, scrollable list presented as a tilted plane in black space. Native scrolling moves that whole plane like movie credits while the camera and lens remain fixed. Rows fade at the top browser edge without disappearing early, and the scroll range lets both the first and last item enter the focused center. Selecting a row opens that scene; direct links, back navigation and reload resolve the same versioned source.
+## Launch delivery
 
-Scene playback fills the full viewport with proportional cover scaling and edge cropping, like a full-screen video. The credits list recedes at the top and approaches at the bottom, with a clear center and gentler blur above and below so about three center items remain readable. All controls and status sit at the bottom over a transparent progressive blur fading into the scene, with plain high-contrast rounded controls. The product contains no drag-and-drop builder. Existing coding agents create a JSON recipe and matching host component; validation gives repair instructions for missing or incompatible files.
+`velora deliver --composition FILE --targets youtube,reels,website-hero,...` renders every platform file into a fresh directory:
+- each video at its preset's size, codec, quality and loudness, stepped down in quality until it fits the preset's size budget;
+- a website hero as WebM plus MP4 fallback, a poster, and copy-ready `embed.html` and `HeroVideo.tsx` (muted, inline, looping, reduced-motion aware, no layout shift);
+- Open Graph and Product Hunt stills.
 
-The user explicitly authorized a new separate local project to review multiple scenes after retiring the old demos. `local-project/` is that installed-package host, not product data or a bundled gallery. The product entry remains empty for an unconnected project. Its local test scenes never ship inside the library.
+`deliverables.json` records every file, SHA, size, attempt and warning. Platform limits change, so each preset carries the date it was last checked.
 
-Scene tiles show small cached snapshots of their actual scenes. The coding agent creates or refreshes them using `velora snapshot`; unavailable snapshots fall back to scene numbers. Snapshot generation captures local rendered content, and the list displays ordinary images to keep scrolling inexpensive.
+## Agents and prompts
 
-## Local open-source MVP
+`VELORA.md`, `velora guide` (version 3), 22 skills with an intent router, and `velora prompts` give any repository-capable agent (Claude Code, Codex, Cursor, others) a consistent brief-to-delivery workflow. The developer's existing agent subscription runs the agent.
 
-Velora by [Aditya Deokar](https://github.com/aditya-deokar) is an MIT-licensed local package. The final slice combines safe installation, a discoverable VELORA.md coding-agent handoff, the version-matched conceptual guide and tested source example, one-project scene library, live revision, snapshots and MP4 export. Users bring their existing repository-capable coding agent; no product login, provider subscription connection, multi-project selector or hosted infrastructure is required.
+## Boundaries
 
-React DOM integration is framework-independent (18.2+ and 19). Next.js App/Pages Router and standard Vite have automatic connections; other wrappers, including Electron renderers, use the same explicit portable React connection. No framework migration is required. Non-DOM React Native is outside this renderer. Public npm distribution is now authorized: viewers must be able to install the library through a normal npm command and use the same agent guide and studio. Public source is at `aditya-deokar/Velora`. Viewers install with `npm install @adityadeokar/velora` (the unscoped registry name belongs to another publisher) and run `npx velora init` inside a supported existing project. The guide teaches cinematic relationships and shared APIs, leaving composition and artistic overrides to the creator. The executable example proves wiring rather than imposing a common design. Future plans remain deferred and are not part of this MVP.
+- Local only: no hosted rendering, accounts, licensing or telemetry. FFmpeg and Chromium are local prerequisites.
+- React DOM only for component-level shots; React Native without DOM is out of scope; non-React sites get route-level shots.
+- No text-to-speech or transcription; music is the creator's licensed file; sound effects are synthesized.
+- No universal quality or performance promises: evidence is device- and scene-specific.
 
-Maintainer verification runs locally. GitHub only builds and publishes a new package version pushed to `main`; unchanged versions skip, and routine code/documentation pushes do not run test jobs. A version bump is required to update the immutable npm release. GitHub stores no new diagnostic artifacts for this workflow.
+## Distribution
+
+Velora by [Aditya Deokar](https://github.com/aditya-deokar) is MIT-licensed and published as `@adityadeokar/velora` (the unscoped name belongs to another publisher). Source lives at `aditya-deokar/Velora`. Maintainer verification runs locally plus CI on Linux, Windows and macOS. A version pushed to `main` publishes through GitHub OIDC; unchanged versions skip. Compatibility follows the policy in the README: additive changes within a major version, versioned files with a migration path for breaking changes, and a one-minor deprecation window.

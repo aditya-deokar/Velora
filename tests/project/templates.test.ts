@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { executeProjectCommand, executeTemplateCommand } from "../../src/project/commands";
+import { executeBrandCommand, executeEditorialCommand, executeProjectCommand, executeTemplateCommand } from "../../src/project/commands";
 import { componentExport, sceneImportPath } from "../../src/project/templates";
 import { discoverRecipes } from "../../src/project/discovery";
 import { SceneRecipeSchema } from "../../src/core/recipes";
@@ -126,4 +126,106 @@ describe("generation helpers", () => {
     expect(sceneImportPath("src/App.tsx")).toBe("../../App");
     expect(sceneImportPath("app/page.tsx")).toBe("../../../app/page");
   });
+});
+
+describe("Wave 2 scaffolding and brand", () => {
+  it("writes a branded motion-graphics scene with kit imports and a default brand file", async () => {
+    const root = await host();
+    const result = await executeTemplateCommand("new-scene", { template: "title-reveal", id: "opener", set: { title: "Hello\\nworld", subtitle: "Launch day" } }, { root });
+    expect(result, JSON.stringify(result)).toMatchObject({ success: true, data: { files: ["src/velora/scenes/opener.scene.json", "src/velora/scenes/opener.tsx", "velora.brand.json"] } });
+    const binding = await readFile(path.join(root, "src/velora/scenes/opener.tsx"), "utf8");
+    expect(binding).toContain(`import { Backdrop, BrandProvider, Title } from '${VELORA_PACKAGE.name}/kit';`);
+    expect(binding).toContain("import brand from '../../../velora.brand.json';");
+    expect(binding).toContain("<BrandProvider brand={brand}>");
+    expect(binding).toContain('<Surface id="title"');
+    // A CLI "\n" becomes a real line break, written as an escaped JSX string.
+    expect(binding).toContain('text={"Hello\\nworld"}');
+    expect(binding).not.toContain("SlotPlaceholder");
+    const recipe = SceneRecipeSchema.parse(JSON.parse(await readFile(path.join(root, "src/velora/scenes/opener.scene.json"), "utf8")));
+    expect(recipe.definition.scene.nodes.map(node => node.id)).toEqual(["backdrop", "title"]);
+    expect(JSON.parse(await readFile(path.join(root, "velora.brand.json"), "utf8"))).toMatchObject({ version: 1, name: "Host", motion: "calm" });
+    expect((await discoverRecipes(root)).issues).toEqual([]);
+    // A second branded scene leaves the existing brand file alone.
+    const second = await executeTemplateCommand("new-scene", { template: "end-card", id: "closer" }, { root });
+    expect(second).toMatchObject({ success: true, data: { files: ["src/velora/scenes/closer.scene.json", "src/velora/scenes/closer.tsx"] } });
+  });
+  it("slots a route into a layered template and names every surface", async () => {
+    const root = await host();
+    expect((await executeTemplateCommand("new-scene", { template: "device-showcase", id: "showcase", route: "/", set: { device: "phone" } }, { root })).success).toBe(true);
+    const binding = await readFile(path.join(root, "src/velora/scenes/showcase.tsx"), "utf8");
+    expect(binding).toContain("<PhoneFrame");
+    expect(binding).toContain('<RouteFrame route="/" width={');
+    for (const id of ["backdrop", "shadow", "subject"]) expect(binding).toContain(`<Surface id="${id}"`);
+    expect((await executeTemplateCommand("new-scene", { template: "cursor-demo", id: "demo", component: "src/components/Dashboard.tsx#Dashboard" }, { root })).success).toBe(true);
+    expect(await readFile(path.join(root, "src/velora/scenes/demo.tsx"), "utf8")).toContain('<Cursor id="cursor" skin="pointer" />');
+    expect((await discoverRecipes(root)).issues).toEqual([]);
+  });
+  it("rejects over-long text params", async () => {
+    const root = await host();
+    expect(await executeTemplateCommand("new-scene", { template: "lower-third", id: "lt", set: { label: "x".repeat(80) } }, { root })).toMatchObject({ success: false, issues: [{ code: "ERR_TEMPLATE_PARAM" }] });
+  });
+  it("brand init seeds tokens from CSS, refuses to overwrite, and brand check validates", async () => {
+    const root = await host();
+    await put(root, "src/index.css", ":root { --primary: #ff6600; --font-sans: 'Geist', sans-serif; --radius: 0.5rem; }");
+    const init = await executeBrandCommand("brand-init", { fromCss: "src/index.css" }, { root });
+    expect(init, JSON.stringify(init)).toMatchObject({ success: true, data: { brand: { name: "Host", colors: { primary: "#ff6600" }, radius: 8 }, fromCss: { colors: ["primary"] } } });
+    expect(await executeBrandCommand("brand-init", {}, { root })).toMatchObject({ success: false, issues: [{ code: "output-exists" }] });
+    expect(await executeBrandCommand("brand-check", {}, { root })).toMatchObject({ success: true });
+    await writeFile(path.join(root, "velora.brand.json"), JSON.stringify({ version: 1, name: "X", motion: "frantic" }));
+    expect(await executeBrandCommand("brand-check", {}, { root })).toMatchObject({ success: false, issues: [{ code: "ERR_BRAND_INVALID", path: "velora.brand.json#motion" }] });
+    expect(await executeBrandCommand("brand-init", { fromCss: "src/missing.css" }, { root: await host() })).toMatchObject({ success: false, issues: [{ code: "invalid-input" }] });
+  });
+});
+
+describe("Wave 3 blueprints and editorial commands", () => {
+  it.each(["launch-film-30s", "feature-drop-15s", "social-teaser-9x16", "changelog-20s", "product-hunt-kit", "app-preview-25s"])("scaffolds %s into a valid composition", async blueprint => {
+    const root = await host();
+    const result = await executeTemplateCommand("new-video", { blueprint, id: "film", route: "/" }, { root });
+    expect(result, JSON.stringify(result)).toMatchObject({ success: true });
+    const composition = CompositionSchema.parse(JSON.parse(await readFile(path.join(root, "film.composition.json"), "utf8")));
+    const validated = await executeProjectCommand("validate-project", { composition: "film.composition.json" }, { root });
+    expect(validated.success, JSON.stringify(validated)).toBe(true);
+    expect(await readFile(path.join(root, "film.brief.md"), "utf8")).toContain("## Shot list");
+    expect(composition.markers.some(marker => marker.kind === "section")).toBe(true);
+    // Shipped defaults are review-clean on the platform each blueprint targets.
+    const platform = ({ "launch-film-30s": "youtube-1080p", "feature-drop-15s": "x-landscape", "social-teaser-9x16": "tiktok", "changelog-20s": "linkedin", "product-hunt-kit": "product-hunt-gallery", "app-preview-25s": undefined } as Record<string, string | undefined>)[blueprint];
+    const reviewed = await executeEditorialCommand("review", { composition: "film.composition.json", ...(platform ? { platform } : {}) }, { root });
+    expect(reviewed, JSON.stringify(reviewed)).toMatchObject({ success: true, data: { advisories: [] } });
+    if (blueprint === "launch-film-30s") {
+      expect(composition.scenes.map(scene => scene.transition?.type ?? "cut")).toEqual(["cut", "whip", "crossfade", "dip-to-black", "push", "crossfade"]);
+      expect(composition.overlays).toHaveLength(1);
+      expect(composition.captions).toEqual({ file: "film.captions.srt", burnIn: false, style: "karaoke" });
+      const overlay = await readFile(path.join(root, `src/velora/scenes/${composition.overlays[0].recipe}.tsx`), "utf8");
+      expect(overlay).not.toContain("<Backdrop");
+      const end = composition.scenes.at(-1)!;
+      expect(end.startMs + end.durationMs).toBeGreaterThan(29_000);
+    }
+  }, 60_000);
+  it("detects beats, writes markers, snaps cuts only with --write, and reviews", async () => {
+    const root = await host();
+    expect((await executeTemplateCommand("new-video", { blueprint: "product-reel-20s", id: "reel", route: "/" }, { root })).success).toBe(true);
+    // A 120 BPM click track (8 kHz mono WAV) as the music bed.
+    const rate = 8000, samples = new Int16Array(rate * 22);
+    for (let beat = 0; beat * 500 < 22_000; beat++) { const start = Math.round(beat * 0.5 * rate); for (let s = 0; s < 240 && start + s < samples.length; s++) samples[start + s] = Math.round(20000 * Math.sin((2 * Math.PI * 1500 * s) / rate) * Math.exp(-s / 50)); }
+    const header = Buffer.alloc(44);
+    header.write("RIFF", 0); header.writeUInt32LE(36 + samples.byteLength, 4); header.write("WAVEfmt ", 8); header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20); header.writeUInt16LE(1, 22);
+    header.writeUInt32LE(rate, 24); header.writeUInt32LE(rate * 2, 28); header.writeUInt16LE(2, 32); header.writeUInt16LE(16, 34); header.write("data", 36); header.writeUInt32LE(samples.byteLength, 40);
+    await put(root, "assets/bed.wav", "");
+    await writeFile(path.join(root, "assets/bed.wav"), Buffer.concat([header, Buffer.from(samples.buffer)]));
+    const beats = await executeEditorialCommand("audio-beats", { file: "assets/bed.wav", composition: "reel.composition.json", writeMarkers: true }, { root });
+    expect(beats, JSON.stringify(beats)).toMatchObject({ success: true, command: "audio" });
+    const data = (beats as { data: { bpm: number; markersWritten: number } }).data;
+    expect(Math.abs(data.bpm - 120)).toBeLessThanOrEqual(1);
+    expect(data.markersWritten).toBeGreaterThan(30);
+    const before = await readFile(path.join(root, "reel.composition.json"), "utf8");
+    const dry = await executeEditorialCommand("compose-snap", { composition: "reel.composition.json", to: "beats" }, { root });
+    expect(dry).toMatchObject({ success: true, data: { written: false } });
+    expect(await readFile(path.join(root, "reel.composition.json"), "utf8")).toBe(before);
+    const review = await executeEditorialCommand("review", { composition: "reel.composition.json", platform: "youtube-1080p" }, { root });
+    expect(review).toMatchObject({ success: true, command: "review", data: { requiresVisualReview: true } });
+    expect(await executeEditorialCommand("compose-snap", { composition: "missing.composition.json" }, { root })).toMatchObject({ success: false });
+    const bare = await host();
+    expect((await executeTemplateCommand("new-video", { blueprint: "product-reel-20s", id: "reel", route: "/" }, { root: bare })).success).toBe(true);
+    expect(await executeEditorialCommand("compose-snap", { composition: "reel.composition.json" }, { root: bare })).toMatchObject({ success: false, issues: [{ code: "ERR_MARKERS_MISSING" }] });
+  }, 60_000);
 });

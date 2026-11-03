@@ -85,7 +85,9 @@ describe("portable host connections",()=>{
   const read=(file:string)=>readFile(path.join(root,file),"utf8");
   const wrapper=await read("src/velora/ProjectPreview.jsx");const handoff=await read("VELORA.md");const record=await read(".velora/integration.json");
   const legacyWrapper=wrapper.replace(`from "${VELORA_PACKAGE.preview}"`,'from "velora/preview"');
-  const legacyHandoff=handoff.replace("`"+TOOLKIT+"` and `"+VELORA_PACKAGE.preview+"`","`velora` and `velora/preview`");
+  // Earlier installers wrote the guide-v2 handoff (no prompt library section).
+  const v2Handoff=handoff.slice(0,handoff.indexOf("\n## Starting prompts")).replace("Authoring guide format: 3.","Authoring guide format: 2.");
+  const legacyHandoff=v2Handoff.replace("`"+TOOLKIT+"` and `"+VELORA_PACKAGE.preview+"`","`velora` and `velora/preview`");
   expect(legacyWrapper).not.toBe(wrapper);expect(legacyHandoff).not.toBe(handoff);
   const managed=JSON.parse(record);managed.files["src/velora/ProjectPreview.jsx"]=legacyWrapper;managed.files["VELORA.md"]=legacyHandoff;
   await put(root,".velora/integration.json",JSON.stringify(managed,null,2)+"\n");
@@ -96,6 +98,18 @@ describe("portable host connections",()=>{
   expect(await read("VELORA.md")).toBe(handoff);
   expect(await read(".velora/integration.json")).toBe(record);
   expect(success(await run(root)).changed).toBe(false);success(await run(root,"validate-project"));
+ });
+ it("upgrades a guide-v2 handoff written under the published package name",async()=>{
+  const root=await host();success(await run(root));
+  const read=(file:string)=>readFile(path.join(root,file),"utf8");
+  const handoff=await read("VELORA.md");const record=await read(".velora/integration.json");
+  const v2Handoff=handoff.slice(0,handoff.indexOf("\n## Starting prompts")).replace("Authoring guide format: 3.","Authoring guide format: 2.");
+  const managed=JSON.parse(record);managed.files["VELORA.md"]=v2Handoff;
+  await put(root,".velora/integration.json",JSON.stringify(managed,null,2)+"\n");await put(root,"VELORA.md",v2Handoff);
+  expect(await run(root,"validate-project")).toMatchObject({success:false,issues:[{code:"incomplete-setup"}]});
+  expect(success(await run(root)).changed).toBe(true);
+  expect(await read("VELORA.md")).toBe(handoff);
+  expect(await read(".velora/integration.json")).toBe(record);
  });
  it("refuses an edited file in a legacy connection before writing",async()=>{
   const root=await host();success(await run(root));

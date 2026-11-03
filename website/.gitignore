@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.velora/cache/
+.velora/*.png
+src/generated/
+public/media/evidence/

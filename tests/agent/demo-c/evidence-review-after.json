@@ -1,0 +1,14 @@
+{
+ "success": true,
+ "command": "review",
+ "data": {
+  "composition": "launch.composition.json",
+  "advisories": [],
+  "requiresVisualReview": true,
+  "pacing": {
+   "minMs": 2000,
+   "maxMs": 10000
+  },
+  "advisoryCount": 0
+ }
+}

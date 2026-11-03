@@ -1,0 +1,52 @@
+{
+ "success": true,
+ "command": "check",
+ "data": {
+  "target": "launch-draft.mp4",
+  "checks": [
+   {
+    "id": "streams-present",
+    "pass": true,
+    "detail": "h264 1920x1080, 29900ms."
+   },
+   {
+    "id": "manifest-valid",
+    "pass": true,
+    "detail": "Manifest matches the probed video."
+   },
+   {
+    "id": "no-blank",
+    "pass": true,
+    "detail": "16 sampled frames are non-blank."
+   },
+   {
+    "id": "dimensions",
+    "pass": true,
+    "detail": "Sampled frames share one size."
+   },
+   {
+    "id": "caption-visible",
+    "pass": true,
+    "detail": "captions recorded without burn-in; All 4 cue windows are covered by sampled frames."
+   },
+   {
+    "id": "flash-safety",
+    "pass": true,
+    "detail": "At most 1 flash per second over a large area (limit 3; WCAG 2.3.1 approximation)."
+   },
+   {
+    "id": "banding",
+    "pass": true,
+    "detail": "ADV_BANDING: 75% of sample-12 is flat 8-bit gradient steps; add look grain or render --codec hevc.",
+    "frameRefs": [
+     "sample-12"
+    ]
+   },
+   {
+    "id": "av-drift",
+    "pass": true,
+    "detail": "Manifest records A/V drift 0ms against the 40ms budget."
+   }
+  ]
+ }
+}

@@ -100,8 +100,10 @@ try {
   const {cliVersion: _installedCliVersion, command: _installedCommand, ...installedCanonical}=installedGuide;
   const {cliVersion: _publicCliVersion, ...publicCanonical}=publicGuide;
   assert.deepEqual(installedCanonical,publicCanonical,'Installed CLI and browser-compatible package share the exact guide');
-  assert.equal(installedGuide.version,2);
+  assert.equal(installedGuide.version,3);
   assert.ok(installedGuide.concepts.some(c=>c.id==='focus'));
+  assert.ok(installedGuide.concepts.some(c=>c.id==='editing-rhythm'),'Guide v3 ships the director concepts');
+  assert.ok(installedGuide.capabilities.prompts.ids.includes('launch-film'),'Guide v3 points at the prompt library');
   assert.ok(Array.isArray(installedGuide.commands) && installedGuide.commands.some(c=>c.name==='doctor'));
   assert.equal(installedGuide.command,'guide');
   assert.equal(typeof installedGuide.cliVersion,'string');

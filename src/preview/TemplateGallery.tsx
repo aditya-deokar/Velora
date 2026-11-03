@@ -3,6 +3,7 @@ import { ASPECT_FRAMES, BLUEPRINT_CATALOG, SUBJECT_ID, TEMPLATE_CATALOG, project
 import { quickShotSearch } from "./QuickShot";
 import { Scene, SceneErrorBoundary, Surface } from "../react";
 import { SlotPlaceholder } from "../kit";
+import { TemplateLayout } from "./TemplateLayout";
 
 /** SOURCE OF TRUTH: TemplateGallery, templateStoryboard.
  * WHAT: browse the shipped templates and blueprints. Every card draws a schematic storyboard
@@ -48,7 +49,9 @@ function LivePreview({ manifest }: { manifest: TemplateManifest }) {
   return <div ref={box} data-live-preview={manifest.id} style={{ position: "absolute", inset: 0 }}>
     {width > 0 && <div style={{ width: definition.width, height: definition.height, transform: `scale(${width / definition.width})`, transformOrigin: "0 0" }}>
       <SceneErrorBoundary><Scene camera={definition.scene.camera} focus={definition.scene.focus} motion={definition.motion} timeMs={time} style={{ width: definition.width, height: definition.height }}>
-        <Surface id={SUBJECT_ID} style={{ width: subject.width, height: subject.height }}><SlotPlaceholder name="Your page" width={subject.width} height={subject.height}/></Surface>
+        {"layout" in definition
+          ? <TemplateLayout layout={definition.layout} slot={props => <SlotPlaceholder name="Your page" width={Number(props.width)} height={Number(props.height)}/>}/>
+          : <Surface id={SUBJECT_ID} style={{ width: subject.width, height: subject.height }}><SlotPlaceholder name="Your page" width={subject.width} height={subject.height}/></Surface>}
       </Scene></SceneErrorBoundary>
     </div>}
   </div>;

@@ -81,6 +81,7 @@ Preset choice: `word-cascade` staggers depth plus opacity across words; `fade-sl
 ## Related Skills
 
 - `velora-scenes`: Surface ownership and camera framing.
+- `velora-motion-design`: kit `Title` (masked word, line or grapheme reveals with an accent word), `Counter`, `Typewriter`, `CaptionTrack` and the motion-graphics templates. Prefer them for new work; `KineticText` stays supported.
 - `velora-render`: frame extraction.
 - `velora-verify`: caption coverage gates.
 

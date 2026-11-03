@@ -1,16 +1,14 @@
 import { useState } from "react";
-import { quickShotCommands, type QuickShotState, type TemplateIssue, type TemplateManifest } from "../core";
+import { quickShotCommands, scaffoldPrompt, type QuickShotState, type TemplateIssue, type TemplateManifest } from "../core";
 
 /** SOURCE OF TRUTH: ParamPanel, quickShotPrompt.
  * WHAT: schema-driven controls for one template's typed params plus aspect and route, and copy
- * actions for the exact scaffold command, export command and an agent prompt.
+ * actions for the exact scaffold command, export command and an agent prompt (core prompt library).
  * WHY: the studio produces commands, never files: the CLI and agents own the source.
  * WHERE: QuickShot renders it in ScenePreview's aside; chrome-marked so capture never sees it.
  */
 export function quickShotPrompt(manifest: TemplateManifest, scaffold: string): string {
-  return `Read VELORA.md and run npx velora guide. Create a Velora scene from the "${manifest.id}" template (${manifest.title}): run ${scaffold}. ` +
-    "Use this app's real component (replace <path#Export>) or keep the route, wrap any providers the component needs where the binding's TODO(velora) comment says, " +
-    "then prove it with velora shot at the start, middle and end. Refine the recipe JSON by hand; keep the single motivated move.";
+  return scaffoldPrompt(manifest, scaffold);
 }
 type Copy = "scaffold" | "export" | "prompt";
 export function ParamPanel({ manifest, state, issues, href, onChange, routeRequired }: {
@@ -59,6 +57,10 @@ export function ParamPanel({ manifest, state, issues, href, onChange, routeRequi
             onChange={event => { const next = Number(event.target.value); set(param.name, next === param.default ? undefined : next); }}/>
           <small>{param.description}</small></label>;
       }
+      if (param.type === "text") return <label key={param.name} className="velora-field"><span>{param.name}</span>
+        <input type="text" aria-label={param.name} maxLength={param.maxLength} value={current === undefined ? param.default : String(current)} spellCheck={false}
+          onChange={event => set(param.name, event.target.value === param.default ? undefined : event.target.value)}/>
+        <small>{param.description}</small></label>;
       return <label key={param.name} className="velora-field"><span>{param.name}</span>
         <input type="text" aria-label={param.name} placeholder="x,y,width,height" value={current === undefined ? "" : String(current)} spellCheck={false}
           onChange={event => set(param.name, event.target.value.trim() || undefined)}/>

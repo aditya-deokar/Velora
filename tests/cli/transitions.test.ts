@@ -16,9 +16,13 @@ describe("transitions command", () => {
     const body = envelope(result.stdout);
     expect(body).toMatchObject({ success: true, command: "transitions" });
     expect(body.data.transitions.map((t: { type: string }) => t.type)).toEqual(
-      ["cut", "dissolve", "slide-push", "wipe-mask", "iris-mask", "depth-dolly", "focus-pull", "cascade-handoff"]);
+      ["cut", "dissolve", "slide-push", "wipe-mask", "iris-mask", "depth-dolly", "focus-pull", "cascade-handoff",
+        "crossfade", "dip-to-black", "dip-to-white", "wipe", "iris", "push", "zoom", "whip", "light-leak"]);
+    expect(body.data.transitions.find((t: { type: string }) => t.type === "whip").mode).toBe("overlap");
+    expect(body.data.transitions.find((t: { type: string }) => t.type === "dissolve").mode).toBe("entering");
     const human = await runCli(["transitions", "ls"], context, vi.fn());
-    expect(human.stdout).toContain("dissolve");
+    expect(human.stdout).toContain("dissolve	entering");
+    expect(human.stdout).toContain("crossfade	overlap");
   });
   it("describes one transition with real example tracks", async () => {
     const result = await runCli(["transitions", "describe", "--type", "dissolve", "--json"], context, vi.fn());

@@ -1,14 +1,18 @@
 import { z } from "zod";
 import { ExportFrameRateSchema } from "./export";
 import type { Composition } from "./composition";
+import { SegmentTransitionSchema, isOverlapTransition, type SegmentTransition } from "./transitions";
+import { EasingSchema, applyEasing } from "./easing";
 
-/** SOURCE OF TRUTH: TimelineSchema, frame clock, segment resolution.
+/** SOURCE OF TRUTH: TimelineSchema, frame clock, segment resolution, layersAt.
  * WHAT: multi-scene timelines built from compositions plus the integer-exact frame clock.
  * WHY: preview scrubbing, frame capture and video encoding must agree on what frame N means.
  * WHERE: export frame/video rendering and the preview session resolve segments through these helpers.
  * Frame math is integer-exact and documented once here: frame = round(timeMs * fps / 1000),
  * timeMs = frame * 1000 / fps. Gaps between segments render black void (explicit, not an
- * error); overlaps are rejected. No wall-clock, no unseeded randomness, no layout reads.
+ * error); overlaps are rejected except the exact window of a declared overlap transition, where both
+ * segments render at their own local times and layersAt reports the blend progress.
+ * No wall-clock, no unseeded randomness, no layout reads.
  */
 export const TimelineSegmentSchema = z.strictObject({
   id: z.string().min(1).max(128),
@@ -17,6 +21,8 @@ export const TimelineSegmentSchema = z.strictObject({
   durationMs: z.number().finite().positive(),
   // Optional trim into the scene's own authored timeline (presentation ms).
   inMs: z.number().finite().nonnegative().optional(),
+  // The transition into this segment; overlap types begin durationMs before the previous segment ends.
+  transition: SegmentTransitionSchema.optional(),
 });
 export type TimelineSegment = z.output<typeof TimelineSegmentSchema>;
 export const TimelineSchema = z.strictObject({
@@ -71,10 +77,23 @@ export function validateTimeline(timeline: unknown): { valid: boolean; issues: T
   const issues: TimelineIssue[] = [];
   const ordered = [...parsed.data.segments].sort((a, b) => a.startMs - b.startMs);
   for (let i = 1; i < ordered.length; i++) {
-    const prev = ordered[i - 1];
+    const prev = ordered[i - 1], segment = ordered[i];
     const prevEnd = prev.startMs + prev.durationMs;
-    if (ordered[i].startMs < prevEnd)
-      issues.push({ code: "ERR_TIMELINE_OVERLAP", path: `timeline.segments.${parsed.data.segments.indexOf(ordered[i])}`, message: `Segment "${ordered[i].id}" starts at ${ordered[i].startMs}ms but "${prev.id}" runs until ${prevEnd}ms. Butt-join segments or trim them; overlaps are rejected.` });
+    const path = `timeline.segments.${parsed.data.segments.indexOf(segment)}`;
+    if (segment.startMs >= prevEnd) continue;
+    const transition = segment.transition;
+    // The only legal overlap: an overlap transition whose window is exactly the overlap, shorter than both shots.
+    if (transition && isOverlapTransition(transition.type)) {
+      const overlap = prevEnd - segment.startMs;
+      if (Math.abs(overlap - transition.durationMs) > 0.5)
+        issues.push({ code: "ERR_TIMELINE_OVERLAP", path, message: `Segment "${segment.id}" overlaps "${prev.id}" by ${round(overlap)}ms but its ${transition.type} lasts ${transition.durationMs}ms. Start it at ${round(prevEnd - transition.durationMs)}ms.` });
+      else if (transition.durationMs >= Math.min(prev.durationMs, segment.durationMs))
+        issues.push({ code: "ERR_TIMELINE_OVERLAP", path, message: `The ${transition.type} (${transition.durationMs}ms) must be shorter than both "${prev.id}" and "${segment.id}".` });
+      else if (i >= 2 && ordered[i - 2].startMs + ordered[i - 2].durationMs > segment.startMs)
+        issues.push({ code: "ERR_TIMELINE_OVERLAP", path, message: `Segment "${segment.id}" would overlap three segments at once; leave room between transitions.` });
+      continue;
+    }
+    issues.push({ code: "ERR_TIMELINE_OVERLAP", path, message: `Segment "${segment.id}" starts at ${segment.startMs}ms but "${prev.id}" runs until ${prevEnd}ms. Butt-join segments, trim them, or declare an overlap transition (${"crossfade, dip-to-black, wipe, whip, …"}) lasting exactly the overlap.` });
   }
   const span = timelineDuration(parsed.data.segments);
   if (span > parsed.data.durationMs)
@@ -85,6 +104,27 @@ export function validateTimeline(timeline: unknown): { valid: boolean; issues: T
 // global duration derived from the span. Transition metadata (Phase 05) rides
 // on segments without changing timing here.
 export function timelineFromComposition(composition: Pick<Composition, "fps" | "scenes">): Timeline {
-  const segments = composition.scenes.map((scene) => ({ id: scene.id, recipe: scene.recipe, startMs: scene.startMs, durationMs: scene.durationMs }));
+  const segments = composition.scenes.map((scene) => ({ id: scene.id, recipe: scene.recipe, startMs: scene.startMs, durationMs: scene.durationMs, ...(scene.transition ? { transition: scene.transition } : {}) }));
   return TimelineSchema.parse({ version: 1 as const, fps: composition.fps, durationMs: timelineDuration(segments), segments });
+}
+
+const round = (value: number) => Math.round(value * 100) / 100;
+export type FrameLayers = {
+  /** V1 segments visible at this time (one, two inside an overlap window, none in a gap), in timeline order. */
+  segments: { segment: TimelineSegment; localMs: number }[];
+  /** Present inside an overlap window: blend from segments[0] (A) to segments[1] (B) at eased progress. */
+  blend?: { transition: SegmentTransition; progress: number };
+};
+/** Which V1 segments make up global time t, and how they blend. */
+export function layersAt(timeline: Pick<Timeline, "segments" | "durationMs">, timeMs: number): FrameLayers {
+  const ordered = [...timeline.segments].sort((a, b) => a.startMs - b.startMs);
+  const active = ordered.filter(segment => timeMs >= segment.startMs && timeMs < segment.startMs + segment.durationMs);
+  const segments = active.map(segment => ({ segment, localMs: localTime(segment, timeMs) }));
+  if (active.length === 2 && active[1].transition && isOverlapTransition(active[1].transition.type)) {
+    const transition = active[1].transition;
+    const raw = Math.max(0, Math.min(1, (timeMs - active[1].startMs) / transition.durationMs));
+    const progress = transition.ease ? applyEasing(EasingSchema.parse(transition.ease), raw) : raw;
+    return { segments, blend: { transition, progress } };
+  }
+  return { segments: segments.slice(-1) };
 }

@@ -1,0 +1,305 @@
+{
+  "demo": "demo-c",
+  "agent": "Claude Code",
+  "composition": "gap.composition.json",
+  "canvas": {
+    "width": 320,
+    "height": 180,
+    "fps": 30,
+    "seed": 11,
+    "durationMs": 2500
+  },
+  "setup": [
+    "copy host/ to a temp dir",
+    "npm install",
+    "install packed velora tarball"
+  ],
+  "steps": [
+    {
+      "skill": "velora-init",
+      "cmd": [
+        "init",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-launch",
+      "cmd": [
+        "prompts",
+        "show",
+        "--id",
+        "launch-film",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-launch",
+      "cmd": [
+        "templates",
+        "ls",
+        "--category",
+        "blueprint",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-templates",
+      "cmd": [
+        "new",
+        "video",
+        "--blueprint",
+        "launch-film-30s",
+        "--id",
+        "launch",
+        "--route",
+        "/",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-composition",
+      "cmd": [
+        "inspect",
+        "--composition",
+        "launch.composition.json",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-debug",
+      "cmd": [
+        "validate",
+        "--composition",
+        "launch-draft.composition.json",
+        "--json"
+      ],
+      "expect": {
+        "code": 1,
+        "issue": "ERR_TIMELINE_OVERLAP"
+      },
+      "replayable": true,
+      "draft": {
+        "base": "launch.composition.json",
+        "patch": {
+          "scenes.1.startMs": 3000
+        }
+      },
+      "note": "first draft pulled the whip 100 ms early; validate now gates the overlap window (issue-fix-log.md #1)"
+    },
+    {
+      "skill": "velora-debug",
+      "cmd": [
+        "validate",
+        "--composition",
+        "launch.composition.json",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-editing",
+      "cmd": [
+        "transitions",
+        "ls",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-editing",
+      "cmd": [
+        "review",
+        "--composition",
+        "launch.composition.json",
+        "--platform",
+        "youtube-1080p",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-audio",
+      "cmd": [
+        "captions",
+        "check",
+        "--composition",
+        "launch.composition.json",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-editing",
+      "cmd": [
+        "audio",
+        "beats",
+        "--composition",
+        "launch.composition.json",
+        "--write-markers",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "licensed music in assets/",
+        "ffmpeg"
+      ],
+      "note": "recorded evidence: 120 BPM, confidence 0.988, 62 markers (evidence-beats.json)"
+    },
+    {
+      "skill": "velora-editing",
+      "cmd": [
+        "compose",
+        "snap",
+        "--composition",
+        "launch.composition.json",
+        "--to",
+        "beats",
+        "--tolerance",
+        "260",
+        "--write",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "beat markers"
+      ],
+      "note": "recorded evidence: dry run first, then --write; review clean afterwards"
+    },
+    {
+      "skill": "velora-render",
+      "cmd": [
+        "frames",
+        "--composition",
+        "launch.composition.json",
+        "--out",
+        "board",
+        "--every",
+        "90",
+        "--contact-sheet",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "dev-server",
+        "chromium",
+        "ffmpeg"
+      ],
+      "note": "recorded evidence: storyboard (evidence-contact-sheet.png)"
+    },
+    {
+      "skill": "velora-launch",
+      "cmd": [
+        "render",
+        "--composition",
+        "launch.composition.json",
+        "--out",
+        "launch-draft.mp4",
+        "--quality",
+        "draft",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "dev-server",
+        "chromium",
+        "ffmpeg"
+      ],
+      "note": "recorded evidence: draft render manifest (evidence-video-manifest.json)"
+    },
+    {
+      "skill": "velora-verify",
+      "cmd": [
+        "check",
+        "--video",
+        "launch-draft.mp4",
+        "--manifest",
+        "launch-draft.manifest.json",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "launch-draft.mp4"
+      ]
+    },
+    {
+      "skill": "velora-render",
+      "cmd": [
+        "frames",
+        "--composition",
+        "gap.composition.json",
+        "--out",
+        "stills",
+        "--at",
+        "1100,1300",
+        "--url",
+        "http://127.0.0.1:1",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true,
+      "note": "offline gap stills: black void between the two determinism segments"
+    },
+    {
+      "skill": "velora-verify",
+      "cmd": [
+        "check",
+        "--frames",
+        "stills",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+ "success": true,
+ "command": "compose",
+ "data": {
+  "composition": "launch.composition.json",
+  "to": "beats",
+  "toleranceMs": 120,
+  "changes": [
+   {
+    "id": "shot-1",
+    "field": "durationMs",
+    "from": 3500,
+    "to": 3530,
+    "beatMs": 3530
+   },
+   {
+    "id": "shot-2",
+    "field": "startMs",
+    "from": 3100,
+    "to": 3130,
+    "beatMs": 3530
+   },
+   {
+    "id": "shot-2",
+    "field": "durationMs",
+    "from": 5500,
+    "to": 5400,
+    "beatMs": 8530
+   },
+   {
+    "id": "shot-3",
+    "field": "startMs",
+    "from": 8000,
+    "to": 7930,
+    "beatMs": 8530
+   },
+   {
+    "id": "shot-3",
+    "field": "durationMs",
+    "from": 5500,
+    "to": 5600,
+    "beatMs": 13530
+   },
+   {
+    "id": "shot-4",
+    "field": "startMs",
+    "from": 12700,
+    "to": 12730,
+    "beatMs": 13530
+   },
+   {
+    "id": "shot-5",
+    "field": "startMs",
+    "from": 18700,
+    "to": 18730,
+    "beatMs": 19230
+   },
+   {
+    "id": "shot-6",
+    "field": "startMs",
+    "from": 23100,
+    "to": 23130,
+    "beatMs": 23730
+   }
+  ],
+  "unsnapped": [
+   "shot-5",
+   "shot-6"
+  ],
+  "written": false
+ },
+ "next": [
+  "velora compose snap --composition launch.composition.json --to beats --write --json"
+ ]
+}

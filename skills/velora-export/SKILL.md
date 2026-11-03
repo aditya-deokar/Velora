@@ -8,6 +8,7 @@ prerequisites:
 - velora validate --composition <file> --json green
 - FFmpeg and Playwright Chromium available
 commands:
+- deliver
 - render
 - frames
 - export
@@ -53,6 +54,8 @@ Flags: `--fps 24|25|30|50|60|120`, `--width` and `--height` even numbers 64 to 3
 | Several aspects in one run | `--aspects 9:16,1:1` writes `<out>-<w>x<h>.<ext>` beside the main render |
 
 Motion blur: `--motion-blur 180` is the cinematic default, 90 keeps UI text crisp, 270 to 360 feels dreamy, and whip pans benefit most. Add `--motion-samples N` (2 to 64, default 8). Frames that do not move are byte-identical to no blur. Preview one frame first with `velora shot --scene <id> --time MS --out blur.png --quality master --json`. All video output is BT.709: converted to limited range and tagged, so browsers show the preview's colors.
+
+For a whole launch, `velora deliver --composition launch.composition.json --targets youtube,reels,website-hero --json` runs these presets in one pass, meets each size budget with a deterministic quality ladder, and writes `deliverables.json` (`velora-launch`).
 
 ## Prerequisites
 

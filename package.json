@@ -45,7 +45,9 @@
     "build:schemas": "node scripts/build-schemas.mjs",
     "test:portable:app": "node scripts/check-portable.mjs app",
     "test:portable:pages": "node scripts/check-portable.mjs pages",
-    "test:portable:react": "node scripts/check-portable.mjs react"
+    "test:portable:react": "node scripts/check-portable.mjs react",
+    "test:site": "node scripts/check-site-mode.mjs",
+    "test:starter": "node scripts/check-starter.mjs"
   },
   "dependencies": {
     "react-error-boundary": "6.1.5",

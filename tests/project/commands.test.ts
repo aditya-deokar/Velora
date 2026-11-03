@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PROMPT_LIBRARY } from "../../src/core/prompts";
 import { mkdtemp, mkdir, readFile, writeFile, rm, symlink, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -587,7 +588,9 @@ it("upgrades the pre-studio adapter to the DEV-only composition and asset globs"
 describe("package identity upgrades", () => {
   const adapterPath = "src/velora/ProjectPreview.tsx";
   const legacyPreview = (text: string) => text.replace(`from "${VELORA_PACKAGE.preview}"`, 'from "velora/preview"');
-  const legacyHandoff = (text: string) => text.replace(`\`${TOOLKIT}\` and \`${VELORA_PACKAGE.preview}\``, "`velora` and `velora/preview`");
+  // The guide-v2 handoff: no prompt library section, format 2.
+  const v2Handoff = (text: string) => text.slice(0, text.indexOf("\n## Starting prompts")).replace("Authoring guide format: 3.", "Authoring guide format: 2.");
+  const legacyHandoff = (text: string) => v2Handoff(text).replace(`\`${TOOLKIT}\` and \`${VELORA_PACKAGE.preview}\``, "`velora` and `velora/preview`");
   it("generates the published package in the adapter and handoff", async () => {
     const root = await fixture();
     success(await run(root));
@@ -622,6 +625,17 @@ describe("package identity upgrades", () => {
     expect(await readFile(path.join(root, "src/main.tsx"), "utf8")).toBe(entry);
     expect(success(await run(root)).changed).toBe(false);
     success(await run(root, "load-project"));
+  });
+  it("lists the featured prompts in the handoff and upgrades a guide-v2 handoff in place", async () => {
+    const root = await fixture();
+    success(await run(root));
+    const handoff = await readFile(path.join(root, "VELORA.md"), "utf8");
+    expect(handoff).toContain("Authoring guide format: 3.");
+    for (const prompt of PROMPT_LIBRARY.filter(item => item.featured)) expect(handoff).toContain(`(\`${prompt.id}\`)`);
+    expect(v2Handoff(handoff)).not.toContain("velora prompts");
+    await put(root, "VELORA.md", v2Handoff(handoff));
+    expect(success(await run(root)).changed).toBe(true);
+    expect(await readFile(path.join(root, "VELORA.md"), "utf8")).toBe(handoff);
   });
   it("upgrades the previous TSX-only glob under the legacy package name", async () => {
     const root = await fixture();

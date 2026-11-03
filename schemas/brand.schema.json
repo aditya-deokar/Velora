@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "maxLength": 512
+    },
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "logo": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "colors": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "background": {
+          "default": "#0b0b0f",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color)\\([^;{}]*\\)|[a-zA-Z]+)$"
+        },
+        "surface": {
+          "default": "#17171c",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color)\\([^;{}]*\\)|[a-zA-Z]+)$"
+        },
+        "primary": {
+          "default": "#f5f5f7",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color)\\([^;{}]*\\)|[a-zA-Z]+)$"
+        },
+        "accent": {
+          "default": "#7c5cff",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color)\\([^;{}]*\\)|[a-zA-Z]+)$"
+        },
+        "text": {
+          "default": "#f5f5f7",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color)\\([^;{}]*\\)|[a-zA-Z]+)$"
+        },
+        "muted": {
+          "default": "#9a9aa3",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color)\\([^;{}]*\\)|[a-zA-Z]+)$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "gradients": {
+      "default": [],
+      "maxItems": 8,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "stops": {
+            "minItems": 2,
+            "maxItems": 6,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla|oklch|oklab|color)\\([^;{}]*\\)|[a-zA-Z]+)$"
+            }
+          },
+          "angle": {
+            "default": 135,
+            "type": "number",
+            "minimum": 0,
+            "maximum": 360
+          }
+        },
+        "required": [
+          "name",
+          "stops"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "fonts": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "display": {
+          "default": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "body": {
+          "default": "Inter, ui-sans-serif, system-ui, sans-serif",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "mono": {
+          "default": "ui-monospace, SFMono-Regular, Menlo, monospace",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "additionalProperties": false
+    },
+    "radius": {
+      "default": 16,
+      "type": "number",
+      "minimum": 0,
+      "maximum": 64
+    },
+    "voice": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "tagline": {
+          "type": "string",
+          "maxLength": 140
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "cta": {
+          "type": "string",
+          "maxLength": 60
+        }
+      },
+      "additionalProperties": false
+    },
+    "motion": {
+      "default": "calm",
+      "type": "string",
+      "enum": [
+        "calm",
+        "crisp",
+        "playful",
+        "bold"
+      ]
+    }
+  },
+  "required": [
+    "version",
+    "name"
+  ],
+  "additionalProperties": false,
+  "$id": "https://unpkg.com/@adityadeokar/velora/schemas/brand.schema.json",
+  "title": "Velora brand tokens (velora.brand.json)"
+}

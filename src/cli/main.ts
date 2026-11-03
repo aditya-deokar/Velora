@@ -10,6 +10,12 @@ const result = await runCli(process.argv.slice(2), {
   terminal: {interactive, colorDepth, columns:process.stdout.columns, unicode:process.env.TERM !== "dumb", version:__VELORA_VERSION__},
   ...(interactive ? {progress:(text: string) => process.stdout.write(text)} : {}),
   port: process.env.APP_PORT ?? process.env.PORT,
+  emit: (text: string) => { process.stdout.write(text); },
+  onShutdown: (stop: () => Promise<void>) => {
+    const shutdown = () => { void stop(); };
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
+  },
 });
 process.stdout.write(result.stdout);
 process.stderr.write(result.stderr);

@@ -1,0 +1,37 @@
+{
+ "success": true,
+ "command": "compose",
+ "data": {
+  "composition": "teaser.composition.json",
+  "to": "beats",
+  "toleranceMs": 260,
+  "changes": [
+   {
+    "id": "shot-2",
+    "field": "durationMs",
+    "from": 3000,
+    "to": 2800,
+    "beatMs": 5030
+   },
+   {
+    "id": "shot-3",
+    "field": "startMs",
+    "from": 4830,
+    "to": 4630,
+    "beatMs": 5030
+   },
+   {
+    "id": "shot-4",
+    "field": "startMs",
+    "from": 6830,
+    "to": 6630,
+    "beatMs": 7030
+   }
+  ],
+  "unsnapped": [],
+  "written": true
+ },
+ "next": [
+  "velora validate --composition teaser.composition.json --json"
+ ]
+}

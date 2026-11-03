@@ -40,3 +40,31 @@ export function syncMedia(media: MediaLike, state: AudioState, playing: boolean,
 export function activeCue(cues: readonly CaptionCue[], timeMs: number): CaptionCue | undefined {
   return cues.find(cue => timeMs >= cue.startMs && timeMs < cue.endMs);
 }
+/**
+ * CSS approximation of an overlap transition for one side (A outgoing, B incoming) at eased progress.
+ * The export compositor blends in linear light; the player approximates in sRGB, so mid-transition frames
+ * differ slightly (documented tolerance), while both endpoints match exactly.
+ */
+export function blendStyle(type: string, progress: number, side: "a" | "b", direction: "left" | "right" | "up" | "down" = "right"): Record<string, string | number> {
+  const p = Math.max(0, Math.min(1, progress));
+  const horizontal = direction === "left" || direction === "right", sign = direction === "right" || direction === "down" ? 1 : -1;
+  const axis = (fraction: number) => horizontal ? `translateX(${(fraction * 100).toFixed(2)}%)` : `translateY(${(fraction * 100).toFixed(2)}%)`;
+  switch (type) {
+    case "dip-to-black": case "dip-to-white":
+      return side === "a" ? { opacity: p < 0.5 ? 1 - p * 2 : 0 } : { opacity: p < 0.5 ? 0 : (p - 0.5) * 2 };
+    case "wipe": {
+      const edge = (p * 100).toFixed(2);
+      const inset = horizontal ? (sign > 0 ? `inset(0 ${(100 - p * 100).toFixed(2)}% 0 0)` : `inset(0 0 0 ${(100 - p * 100).toFixed(2)}%)`) : (sign > 0 ? `inset(0 0 ${(100 - p * 100).toFixed(2)}% 0)` : `inset(${(100 - p * 100).toFixed(2)}% 0 0 0)`);
+      return side === "b" ? { clipPath: inset, "--velora-wipe": edge } : {};
+    }
+    case "iris": return side === "b" ? { clipPath: `circle(${(p * 75).toFixed(2)}% at 50% 50%)` } : {};
+    case "push": return side === "a" ? { transform: axis(sign * p) } : { transform: axis(sign * (p - 1)) };
+    case "zoom": return side === "a" ? { transform: `scale(${(1 + 0.6 * p).toFixed(3)})`, opacity: 1 - p } : { opacity: p };
+    case "whip": {
+      const blur = Math.sin(Math.PI * p) * 24, travel = 1 / 3;
+      return side === "a" ? { opacity: p < 0.5 ? 1 : 0, transform: axis(sign * p * 2 * travel), filter: `blur(${blur.toFixed(1)}px)` }
+        : { opacity: p < 0.5 ? 0 : 1, transform: axis(-sign * (1 - p) * 2 * travel), filter: `blur(${blur.toFixed(1)}px)` };
+    }
+    default: return side === "a" ? {} : { opacity: p };
+  }
+}

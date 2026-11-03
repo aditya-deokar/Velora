@@ -3,8 +3,10 @@ import { VELORA_PACKAGE } from "../core/branding";
 import { SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 import { SCROLL_CHANNEL, SUBJECT_ID, type ShotDefinition, type Aspect } from "../core/shots";
 import type { ParamValue, TemplateManifest } from "../core/templates";
+import { compositePreview, type CompositeDefinition, type JsonValue, type LayoutElement } from "../core/composites";
+import { BRAND_FILE } from "../core/brand";
 
-/** SOURCE OF TRUTH: scaffoldScene, componentExport, sceneImportPath.
+/** SOURCE OF TRUTH: scaffoldScene, componentExport, sceneImportPath, layoutJsx.
  * WHAT: pure generation of the files `velora new scene` writes: an editable recipe (template
  * provenance + compiled definition) and a binding that slots the user's real component or route.
  * WHY: templates are starting points the creator owns; output is ordinary source with no
@@ -59,8 +61,25 @@ const identifier = (name: string, avoid: string[]) => {
 
 export type ScaffoldInput = {
   id: string; title: string; manifest: TemplateManifest; params: Record<string, ParamValue>;
-  aspect: Aspect; definition: ShotDefinition; subject: { width: number; height: number }; slot: Slot;
+  aspect: Aspect; definition: ShotDefinition | CompositeDefinition; subject: { width: number; height: number }; slot: Slot;
 };
+const PLAIN_ELEMENTS = new Set(["div", "span", "strong", "p"]);
+const attribute = (name: string, value: JsonValue) =>
+  typeof value === "string" && /^[^"\\\n{}<>&]*$/.test(value) ? `${name}="${value}"` : `${name}={${JSON.stringify(value)}}`;
+/** Serialize one layout element as JSX (the slot renders through `slot`). */
+export function layoutJsx(element: LayoutElement | string, slot: (props: Record<string, JsonValue>) => string, indent: string): string {
+  if (typeof element === "string") return `${indent}{${JSON.stringify(element)}}`;
+  if (element.type === "Slot") return slot(element.props ?? {}).split("\n").map(line => indent + line).join("\n");
+  const props = Object.entries(element.props ?? {}).map(([name, value]) => " " + attribute(name, value)).join("");
+  if (!element.children?.length) return `${indent}<${element.type}${props} />`;
+  return `${indent}<${element.type}${props}>\n${element.children.map(child => layoutJsx(child, slot, indent + "  ")).join("\n")}\n${indent}</${element.type}>`;
+}
+function kitTypes(element: LayoutElement | string, found: Set<string>): Set<string> {
+  if (typeof element === "string") return found;
+  if (element.type !== "Slot" && !PLAIN_ELEMENTS.has(element.type)) found.add(element.type);
+  for (const child of element.children ?? []) kitTypes(child, found);
+  return found;
+}
 /** The recipe JSON and binding TSX for one templated scene. */
 export function scaffoldScene(input: ScaffoldInput): { recipe: string; binding: string } {
   const { id, title, manifest, params, aspect, definition, subject, slot } = input;
@@ -71,9 +90,10 @@ export function scaffoldScene(input: ScaffoldInput): { recipe: string; binding: 
     title,
     description: manifest.summary,
     template: { id: manifest.id, version: manifest.version, aspect, params },
-    definition,
+    definition: compositePreview(definition),
   };
   const component = pascal(id);
+  if ("layout" in definition) return { recipe: JSON.stringify(recipe, null, 2) + "\n", binding: compositeBinding(id, component, manifest, definition, slot) };
   const scroll = manifest.shot === "scroll-through";
   const left = Math.round((definition.width - subject.width) / 2), top = Math.round((definition.height - subject.height) / 2);
   const imports = [`import { Surface } from '${VELORA_PACKAGE.name}';`];
@@ -109,4 +129,46 @@ ${guidance}export default function ${component}() {
 }
 `;
   return { recipe: JSON.stringify(recipe, null, 2) + "\n", binding };
+}
+
+// The layered / motion-graphics binding: one Surface per layout node, kit components by name, the brand
+// file wrapped around everything, and the template slot filled with the user's component or route.
+function compositeBinding(id: string, component: string, manifest: TemplateManifest, definition: CompositeDefinition, slot: Slot): string {
+  const kit = new Set<string>();
+  for (const node of definition.layout) kitTypes(node.element, kit);
+  if (definition.brand) kit.add("BrandProvider");
+  const imports = [`import { Surface } from '${VELORA_PACKAGE.name}';`];
+  let local = "";
+  if (slot.kind === "component") {
+    local = identifier(slot.exportName, [component, "Surface", ...kit]);
+    imports.push(slot.isDefault ? `import ${local} from '${slot.importPath}';` : slot.exportName === local
+      ? `import { ${local} } from '${slot.importPath}';` : `import { ${slot.exportName} as ${local} } from '${slot.importPath}';`);
+  } else if (slot.kind === "route") kit.add("RouteFrame");
+  else if (manifest.slots.length) kit.add("SlotPlaceholder");
+  if (kit.size) imports.push(`import { ${[...kit].sort().join(", ")} } from '${VELORA_PACKAGE.name}/kit';`);
+  if (definition.brand) imports.push(`import brand from '../../../${BRAND_FILE}';`);
+  const fill = (props: Record<string, JsonValue>) => {
+    const width = Number(props.width), height = Number(props.height);
+    const inner = slot.kind === "component" ? `<${local} />`
+      : slot.kind === "route" ? `<RouteFrame route=${JSON.stringify(slot.route)} width={${width}} height={${height}} />`
+      : `<SlotPlaceholder name="subject" width={${width}} height={${height}} />`;
+    return `<div style={{ width: ${width}, height: ${height}, overflow: 'hidden', background: '#fff' }}>\n  ${inner}\n</div>`;
+  };
+  const indent = definition.brand ? "        " : "      ";
+  const surfaces = definition.layout.map(node =>
+    `${indent.slice(2)}<Surface id="${node.id}" style={{ position: 'absolute', left: ${node.left}, top: ${node.top}, width: ${node.width}, height: ${node.height} }}>\n${layoutJsx(node.element, fill, indent)}\n${indent.slice(2)}</Surface>`).join("\n");
+  const body = definition.brand ? `    <BrandProvider brand={brand}>\n${surfaces}\n    </BrandProvider>` : surfaces;
+  const guidance = slot.kind === "component" ? "// TODO(velora): wrap the subject with the providers it needs (theme, data, router), as in your app root.\n"
+    : slot.kind === "placeholder" && manifest.slots.length ? "// TODO(velora): replace SlotPlaceholder with your real component (and its providers) or a RouteFrame.\n" : "";
+  return `// Generated by velora new scene from template "${manifest.id}". This file is yours: edit it freely.
+// Camera and motion live in ${id}.scene.json; Surface ids must match its nodes. Colors, fonts and motion
+// personality come from ${BRAND_FILE} at render time: edit that file to re-skin every scene.
+${imports.join("\n")}
+
+${guidance}export default function ${component}() {
+  return (
+${body}
+  );
+}
+`;
 }

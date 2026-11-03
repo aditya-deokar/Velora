@@ -1,6 +1,6 @@
 ---
 name: velora-init
-description: Initialize Velora projects, wire framework adapters, and keep the agent handoff healthy. Use when setting up a project, opening previews, or syncing the scene registry.
+description: Initialize Velora projects, wire framework adapters, and keep the agent handoff healthy; start a launch studio without a React app (velora create) or film any non-React site through the managed studio (velora studio --site). Use when setting up a project, opening previews, or syncing the scene registry.
 license: MIT
 version: 0.1.2
 when-to-use: Initializing a project, opening the preview URL, refreshing the registry after adding scene files, or diagnosing setup with doctor.
@@ -12,6 +12,8 @@ commands:
 - open
 - sync
 - doctor
+- create
+- studio
 related-skills:
 - velora
 - velora-composition
@@ -33,6 +35,17 @@ Use this skill when the project is new, the preview URL is unknown, files were a
 - `velora open --no-open --json`: verify the running dev server and print the preview URL without launching a browser.
 - `velora sync --json`: refresh the scene registry after adding or removing recipe or component files.
 - `velora doctor --json`: check Node, package, React, toolkit, scene catalog, FFmpeg, and Chromium.
+- `velora create my-launch --name Fieldnote --json`: no React app yet? Write a starter launch studio (Vite React stage, brand file, blueprint scripts) into a new directory.
+- `velora studio init --site http://127.0.0.1:4321 --json`: a non-React site (Astro, SvelteKit, Rails, static HTML)? Record it as this project's site; nothing is installed into the project.
+- `velora studio --site http://127.0.0.1:4321 --json`: run the managed studio (user cache, pinned React and Vite) at `<origin>/__velora/`, proxying every other path to the site. `--check` verifies studio, proxy and framing, then stops.
+
+### Which setup
+
+| The project is | Run | Shots |
+|---|---|---|
+| A React DOM app (Vite, Next.js, portable, Electron renderer) | `velora init` | component and route |
+| Any other website with a local dev server | `velora studio --site <url>` | route-level; site animations frozen |
+| Nothing yet | `velora create <dir>` | motion graphics, screen recordings, the starter page |
 
 All commands accept `--project <dir>` to target another checkout and `--json` for machine output.
 
@@ -85,6 +98,12 @@ Expected: `velora init --json` reports `changed` plus the `VELORA.md` handoff pr
 - `missing-installation`: run `npm install` in the project root, then retry.
 - `missing-dev-server` or `wrong-dev-server`: run `npm run dev` and point `--url` at its loopback origin.
 - `ERR_TOOLKIT_MISSING`: install the local Velora tarball, then run `velora init --json`.
+
+- `ERR_SITE_NOT_LOOPBACK`: any-site mode proxies only local dev servers; pass `--site http://127.0.0.1:<port>`.
+- `ERR_SITE_UNREACHABLE`: start the site's dev server first.
+- `ERR_SITE_REDIRECT_EXTERNAL`: the site's root redirects off this machine; point `--site` at the dev server or disable the redirect in development.
+- `ERR_STUDIO_FAILED`: the port is busy (`--port`), or the one-time workspace install needs the npm registry.
+- A route shows `ERR_ROUTE_FRAME_BLOCKED`: open it through the studio origin (`/__velora/`), not the site's own port.
 
 ## Validation
 

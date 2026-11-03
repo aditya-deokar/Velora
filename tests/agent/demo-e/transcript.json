@@ -1,0 +1,281 @@
+{
+  "demo": "demo-e",
+  "agent": "any skill-compatible agent",
+  "composition": "gap.composition.json",
+  "canvas": {
+    "width": 180,
+    "height": 320,
+    "fps": 30,
+    "seed": 11,
+    "durationMs": 2500
+  },
+  "setup": [
+    "copy host/ to a temp dir",
+    "npm install",
+    "install packed velora tarball"
+  ],
+  "steps": [
+    {
+      "skill": "velora-init",
+      "cmd": [
+        "init",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-launch",
+      "cmd": [
+        "prompts",
+        "show",
+        "--id",
+        "vertical-teaser",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-templates",
+      "cmd": [
+        "new",
+        "video",
+        "--blueprint",
+        "social-teaser-9x16",
+        "--id",
+        "teaser",
+        "--route",
+        "/",
+        "--aspect",
+        "9:16",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-debug",
+      "cmd": [
+        "validate",
+        "--composition",
+        "teaser.composition.json",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-audio",
+      "cmd": [
+        "captions",
+        "validate",
+        "--file",
+        "teaser.captions.srt",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-audio",
+      "cmd": [
+        "captions",
+        "check",
+        "--composition",
+        "teaser.composition.json",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-editing",
+      "cmd": [
+        "review",
+        "--composition",
+        "teaser.composition.json",
+        "--platform",
+        "tiktok",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true,
+      "note": "clean with the fixed blueprint; the first run flagged ADV_READING_TIME on the end card (issue-fix-log.md #1)"
+    },
+    {
+      "skill": "velora-editing",
+      "cmd": [
+        "compose",
+        "snap",
+        "--composition",
+        "teaser.composition.json",
+        "--to",
+        "beats",
+        "--json"
+      ],
+      "expect": {
+        "code": 1,
+        "issue": "ERR_MARKERS_MISSING"
+      },
+      "replayable": true,
+      "note": "snapping before beat detection fails with the next command to run"
+    },
+    {
+      "skill": "velora-editing",
+      "cmd": [
+        "audio",
+        "beats",
+        "--composition",
+        "teaser.composition.json",
+        "--write-markers",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "licensed music in assets/",
+        "ffmpeg"
+      ],
+      "note": "recorded evidence: 120 BPM, confidence 0.981, 22 markers"
+    },
+    {
+      "skill": "velora-editing",
+      "cmd": [
+        "compose",
+        "snap",
+        "--composition",
+        "teaser.composition.json",
+        "--to",
+        "beats",
+        "--tolerance",
+        "260",
+        "--write",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "beat markers"
+      ]
+    },
+    {
+      "skill": "velora-render",
+      "cmd": [
+        "frames",
+        "--composition",
+        "teaser.composition.json",
+        "--out",
+        "board",
+        "--every",
+        "30",
+        "--contact-sheet",
+        "--columns",
+        "5",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "dev-server",
+        "chromium",
+        "ffmpeg"
+      ]
+    },
+    {
+      "skill": "velora-launch",
+      "cmd": [
+        "render",
+        "--composition",
+        "teaser.composition.json",
+        "--out",
+        "teaser-draft.mp4",
+        "--preset",
+        "tiktok",
+        "--quality",
+        "draft",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "dev-server",
+        "chromium",
+        "ffmpeg"
+      ]
+    },
+    {
+      "skill": "velora-verify",
+      "cmd": [
+        "check",
+        "--video",
+        "teaser-draft.mp4",
+        "--manifest",
+        "teaser-draft.manifest.json",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "teaser-draft.mp4"
+      ]
+    },
+    {
+      "skill": "velora-render",
+      "cmd": [
+        "frames",
+        "--composition",
+        "gap.composition.json",
+        "--out",
+        "stills",
+        "--at",
+        "1100,1300",
+        "--url",
+        "http://127.0.0.1:1",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true,
+      "note": "offline gap stills: black void between the two determinism segments"
+    },
+    {
+      "skill": "velora-verify",
+      "cmd": [
+        "check",
+        "--frames",
+        "stills",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    }
+  ]
+}

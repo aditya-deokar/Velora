@@ -18,6 +18,9 @@ related-skills:
 - velora-scenes
 - velora-composition
 - velora-render
+- velora-launch
+- velora-motion-design
+- velora-editing
 not-for: A bespoke shot that no template describes, layered multi-surface choreography, titles or motion graphics; use velora-scenes and author the recipe directly.
 ---
 
@@ -123,6 +126,10 @@ The generated binding imports `Revenue` and wraps it in `Surface id="subject"`. 
 - `velora shot` frames at the start, middle and end show the subject framed and the focus region sharp at the end.
 - A human reviews taste: one motivated move, readable at output size, an intentional settle.
 
+## Craft Notes
+
+Template IDs name techniques, not people. Each one packages a camera convention described in `velora-cinematography` (push-in, survey, orbit, crane, rack focus, dolly zoom, whip) or a motion-graphics convention described in `velora-motion-design`, with restrained defaults. They are starting points: the brief and the person's direction override them.
+
 ## Related Skills
 
 - `velora-cinematography`: why each move works, and how to refine camera, lens and focus by hand.
@@ -130,6 +137,9 @@ The generated binding imports `Revenue` and wraps it in `Surface id="subject"`. 
 - `velora-composition`: editing the composition a blueprint wrote.
 - `velora-render`: frames, shots and contact evidence.
 - `velora`: root router.
+- `velora-launch`: which blueprint fits a launch intent.
+- `velora-motion-design`: Wave 2 graphics and layered templates.
+- `velora-editing`: blueprints after scaffolding (transitions, rhythm, sound).
 
 ## When NOT to Use This Skill
 

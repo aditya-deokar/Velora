@@ -1719,6 +1719,253 @@
           ],
           "additionalProperties": false
         },
+        "look": {
+          "type": "object",
+          "properties": {
+            "preset": {
+              "type": "string",
+              "enum": [
+                "clean",
+                "keynote",
+                "film",
+                "teal-orange",
+                "noir",
+                "neon",
+                "pastel"
+              ]
+            },
+            "grade": {
+              "type": "object",
+              "properties": {
+                "contrast": {
+                  "type": "number",
+                  "minimum": -1,
+                  "maximum": 1
+                },
+                "saturation": {
+                  "type": "number",
+                  "minimum": -1,
+                  "maximum": 1
+                },
+                "temperature": {
+                  "type": "number",
+                  "minimum": -1,
+                  "maximum": 1
+                },
+                "tint": {
+                  "type": "number",
+                  "minimum": -1,
+                  "maximum": 1
+                },
+                "lift": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": -0.5,
+                      "maximum": 0.5
+                    },
+                    {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "number",
+                          "minimum": -0.5,
+                          "maximum": 0.5
+                        },
+                        {
+                          "type": "number",
+                          "minimum": -0.5,
+                          "maximum": 0.5
+                        },
+                        {
+                          "type": "number",
+                          "minimum": -0.5,
+                          "maximum": 0.5
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "gamma": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0.2,
+                      "maximum": 5
+                    },
+                    {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "number",
+                          "minimum": 0.2,
+                          "maximum": 5
+                        },
+                        {
+                          "type": "number",
+                          "minimum": 0.2,
+                          "maximum": 5
+                        },
+                        {
+                          "type": "number",
+                          "minimum": 0.2,
+                          "maximum": 5
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "gain": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 2
+                    },
+                    {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 2
+                        },
+                        {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 2
+                        },
+                        {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 2
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "grain": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "size": {
+                  "default": 1,
+                  "type": "number",
+                  "minimum": 0.5,
+                  "maximum": 4
+                }
+              },
+              "required": [
+                "amount"
+              ],
+              "additionalProperties": false
+            },
+            "vignette": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "softness": {
+                  "default": 0.5,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "required": [
+                "amount"
+              ],
+              "additionalProperties": false
+            },
+            "letterbox": {
+              "type": "object",
+              "properties": {
+                "aspect": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 4
+                }
+              },
+              "required": [
+                "aspect"
+              ],
+              "additionalProperties": false
+            },
+            "bloom": {
+              "type": "object",
+              "properties": {
+                "threshold": {
+                  "default": 0.8,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "intensity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 2
+                },
+                "radius": {
+                  "default": 16,
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 64
+                }
+              },
+              "required": [
+                "intensity"
+              ],
+              "additionalProperties": false
+            },
+            "halation": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "radius": {
+                  "default": 12,
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 64
+                }
+              },
+              "required": [
+                "amount"
+              ],
+              "additionalProperties": false
+            },
+            "chromaticAberration": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 12
+            },
+            "sharpen": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "lut": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "\\.cube$"
+            }
+          },
+          "additionalProperties": false
+        },
         "width": {
           "default": 1400,
           "type": "number",

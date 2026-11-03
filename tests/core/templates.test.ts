@@ -2,16 +2,23 @@ import { describe, expect, it } from "vitest";
 import { TEMPLATE_CATALOG, BLUEPRINT_CATALOG, TemplateManifestSchema, certifyTemplate, findTemplate, resolveTemplateParams, templateDefinition } from "../../src/core/templates";
 import { ASPECT_FRAMES, buildShot, framingReport } from "../../src/core/shots";
 import { presentPreview } from "../../src/core/preview";
+import { compositePreview } from "../../src/core/composites";
 import { evaluateMotion, loopSeam } from "../../src/core/motion";
 
 // Craft certification: every template x every declared aspect x every intensity yields a valid,
 // deterministic scene that keeps its subject framed, clear of the camera plane, and in focus at the end.
 const intensities = ["subtle", "standard", "dramatic"];
-const configurations = TEMPLATE_CATALOG.flatMap(manifest => manifest.aspects.flatMap(aspect => intensities.map(intensity => ({ manifest, aspect, intensity }))));
+// Templates without an intensity param (motion graphics) certify once per aspect.
+const configurations = TEMPLATE_CATALOG.flatMap(manifest => manifest.aspects.flatMap(aspect =>
+  (manifest.params.some(param => param.name === "intensity") ? intensities : [undefined]).map(intensity => ({ manifest, aspect, intensity }))));
 
 describe("template catalog", () => {
-  it("ships the Wave 1 camera templates with unique IDs, valid manifests and real pairings", () => {
-    expect(TEMPLATE_CATALOG.map(t => t.id)).toEqual(["hero-push", "monumental-survey", "orbit-reveal", "crane-down", "tilt-up-reveal", "dolly-zoom", "rack-focus", "scroll-through", "macro-detail", "float-loop", "handheld-push", "whip-pan"]);
+  it("ships Wave 1 camera and Wave 2 layered / motion-graphics templates with unique IDs, valid manifests and real pairings", () => {
+    expect(TEMPLATE_CATALOG.map(t => t.id)).toEqual(["hero-push", "monumental-survey", "orbit-reveal", "crane-down", "tilt-up-reveal", "dolly-zoom", "rack-focus", "scroll-through", "macro-detail", "float-loop", "handheld-push", "whip-pan",
+      "exploded-stack", "parallax-planes", "cascade-build", "floating-focus", "device-showcase", "cursor-demo", "split-compare", "screen-wall",
+      "title-reveal", "logo-sting", "kinetic-statement", "stat-counter", "feature-trio", "lower-third", "quote-card", "end-card", "countdown", "changelog-card"]);
+    expect(TEMPLATE_CATALOG.filter(t => t.category === "layered")).toHaveLength(8);
+    expect(TEMPLATE_CATALOG.filter(t => t.category === "motion-graphics")).toHaveLength(10);
     const ids = new Set(TEMPLATE_CATALOG.map(t => t.id));
     for (const manifest of TEMPLATE_CATALOG) {
       expect(TemplateManifestSchema.safeParse(manifest).success).toBe(true);
@@ -20,10 +27,10 @@ describe("template catalog", () => {
     }
   });
   it.each(configurations.map(c => [`${c.manifest.id} ${c.aspect} ${c.intensity}`, c] as const))("%s certifies", (_label, { manifest, aspect, intensity }) => {
-    const resolved = resolveTemplateParams(manifest, { intensity });
+    const resolved = resolveTemplateParams(manifest, intensity ? { intensity } : {});
     expect(resolved.issues).toEqual([]);
     const definition = templateDefinition(manifest, resolved.params, aspect);
-    const preview = presentPreview(definition);
+    const preview = presentPreview(compositePreview(definition));
     expect(preview.valid, JSON.stringify(!preview.valid && preview.issues)).toBe(true);
     expect(certifyTemplate(manifest, resolved.params, aspect)).toEqual([]);
     expect(JSON.stringify(templateDefinition(manifest, resolved.params, aspect))).toBe(JSON.stringify(definition));

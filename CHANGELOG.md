@@ -37,6 +37,97 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
 - `velora skills install --agent claude|generic` installs into `.claude/skills` / `.agents/skills` without `--dir`.
 - New skills: `velora-templates`, `velora-cinematography`.
 
+### Added — Launch kit: deliver, starter, docs site
+- **`velora deliver --composition FILE --targets LIST`** renders every launch file into a fresh directory:
+  - platform videos at each preset's size, codec, quality and loudness, stepped down with a deterministic quality ladder until they fit the size budget;
+  - a website hero (`hero.webm`, `hero.mp4`, `hero.poster.jpg`, `embed.html`, `HeroVideo.tsx`: muted, inline, looping, reduced-motion aware, fixed dimensions);
+  - Open Graph and Product Hunt stills;
+  - `deliverables.json` with every file's SHA-256, size, attempts, loudness and warnings.
+  - Targets: `youtube`, `x`, `x-square`, `linkedin`, `reels`, `instagram-feed`, `tiktok`, `shorts`, `website-hero`, `readme-gif`, `og-image`, `product-hunt`.
+- **`velora create <dir>`** writes a starter launch studio (Vite React stage, branded page, `velora.brand.json`, `npm run velora:setup` for init, skills and a blueprint) for teams without a React app.
+- **Docs website** (`website/`, never packed): getting started, template gallery with real storyboards, cookbook from the recorded agent demos, craft guides, a CLI reference and a schema reference generated from the shipped sources. Its hero video is rendered by `velora deliver` from the `website-hero-loop-8s` blueprint of the site itself. A Pages workflow deploys it.
+
+### Added — Any-site mode
+- **`velora studio --site <loopback URL>`** films non-React sites (Astro, SvelteKit, Rails, Django, static HTML).
+  - A managed studio workspace in the user cache (pinned React and Vite; the Velora package aliased to the running CLI) serves `/__velora/` and proxies every other path, WebSockets included, to the site.
+  - Routes therefore frame same-origin. Frame-blocking headers are stripped in this development proxy only.
+  - The project gains only `.velora/project.json`, `VELORA.md`, scenes, compositions and assets.
+- `velora studio init --site`, and `--check` (verifies studio, proxy and framing, then stops).
+- New codes: `ERR_SITE_NOT_LOOPBACK`, `ERR_SITE_UNREACHABLE`, `ERR_SITE_REDIRECT_EXTERNAL`, `ERR_STUDIO_FAILED`, `WARN_SITE_FRAME_HEADERS`.
+
+### Changed — 1.0 hardening
+- Compatibility policy and a 0.x to 1.0 migration guide in the README.
+- CI runs the browser, export and installed-app tier on Linux, Windows and macOS.
+- The release check enforces a package size budget: 6 MB unpacked, 2 MB per file.
+- Capture screenshots wait up to 30 s, so heavy pages render under parallel workers.
+
+### Security
+- On Windows, only `npm.cmd` runs through a shell, and arguments with cmd metacharacters are refused. Before, `--package` paths and browser URLs passed through `cmd`.
+- FFmpeg subtitle and font paths containing quotes or line breaks are refused instead of escaped; a quote could previously end the filter string.
+
+### Added — Director skills, prompt library and guide v3
+- **Prompt library:** `velora prompts ls` and `velora prompts show --id ID` print ready-to-paste agent prompts:
+  `launch-film`, `feature-announcement`, `website-hero-loop`, `vertical-teaser`, `dashboard-cinematic`,
+  `changelog-video`, `product-hunt-assets` and `first-scene`. The same prompts appear in `VELORA.md` and the
+  studio's Getting started goal picker.
+- **Guide v3:** new concepts for templates, shot vocabulary, lens language, editing rhythm, and brand and looks;
+  capability pointers for prompts, editorial commands, brand and delivery presets. Re-running `velora init`
+  upgrades a `VELORA.md` written for guide v2.
+- **Skills:**
+  - new `velora-launch`: brief, story structures, platform pacing, deliverables and website hero practice;
+  - the root `velora` skill routes by intent, to at most four skills per intent, with the director's workflow;
+  - Craft Notes and cross-links in the cinematography, editing, motion-design, brand, looks and templates skills;
+  - the reference flag matrix now lists every command.
+- **Agent demos C, D and E** (launch film, website hero loop, vertical teaser) replay in `test:agent-demos`.
+
+### Fixed
+- `velora validate --composition` now reports `ERR_TIMELINE_OVERLAP` (an overlap that differs from its transition,
+  or a three-way overlap). Before, only render caught it.
+- `social-teaser-9x16` end card holds 3.2 s, long enough to read its copy (review flagged `ADV_READING_TIME`).
+- Review pacing: landscape and square feed placements (`x-landscape`, `x-square`, `linkedin`, `instagram-feed-4x5`)
+  use a 1-7 s feed window; the 0.8-4 s window is kept for vertical short-form.
+
+### Added — Editorial: transitions, overlays, rhythm, sound and launch blueprints
+- **True A/B transitions:** `crossfade`, `dip-to-black`, `dip-to-white`, `wipe`, `iris`, `push`, `zoom`, `whip` and `light-leak`.
+  - The incoming shot starts `durationMs` before the outgoing one ends; both render at their own times and are blended in linear light.
+  - `velora transitions ls` shows each transition's mode.
+- **Overlay tracks:** `overlays[]` places titles, lower thirds and logos over the picture, captured transparently and composited in order with opacity and blend modes.
+- **Styled captions:** `captions.style` takes `karaoke`, `bold-pop`, `minimal`, `lower` or `burn`, with optional per-word timing (`wordsFile`). Captions stay clear of vertical platform UI.
+- **Rhythm:**
+  - `velora audio beats` gives tempo, beats and downbeats, and with `--write-markers` stores them on the composition.
+  - `velora compose snap --to beats|downbeats` puts cuts on the beat. It is a dry run by default; `--write` applies it.
+- **Sound:**
+  - deterministic procedural SFX (`whoosh`, `swish`, `click`, `pop`, `tick`, `riser`, `impact`, `shimmer`) through `sfx[]` and `transition.sfx`;
+  - loudness normalization to -14 LUFS / -1 dBTP by default (`loudness`), recorded in the manifest.
+- **Review:** `velora review --composition FILE [--platform ID]` gives advisory editorial review (hook, pacing, reading time, end card, eye trace, match cuts, direction, loop seams, off-beat cuts).
+- **Launch blueprints:** `launch-film-30s`, `feature-drop-15s`, `social-teaser-9x16`, `changelog-20s`, `product-hunt-kit`, `app-preview-25s`. Each comes with transitions, sound, overlays, section and music-cue markers, a caption skeleton and a `brief.md` story.
+- Audio tracks take `kind` (`music`, `voice` or `sfx`). Title, statement and stat graphics take `backdrop=off` for use as overlays.
+- New skill: `velora-editing`.
+
+### Added — Visual kit, brand, looks and Wave 2 templates
+- **Kit components** in `@adityadeokar/velora/kit`, all driven by the scene clock:
+  - framing: `BrowserFrame`, `WindowFrame`, `PhoneFrame`, `TabletFrame`, `LaptopFrame`;
+  - atmosphere: `Backdrop`, `Glow`, `ContactShadow`, `LightSweep`, `Dust`;
+  - interaction: `Cursor`, `Typewriter`, `Spotlight`, `Callout`;
+  - type: `Title`, `Counter`, `Countdown`, `Panel`, `Marquee`, `GradientText`, `CaptionTrack`;
+  - media: `VideoClip`, `ImageLayer`;
+  - brand: `BrandProvider`, `BrandMark`, `useBrand`, `useReveal`;
+  - looks: `LookLayer`.
+- **Brand:** `velora.brand.json` with colors, gradients, fonts, radius, voice and a motion personality (calm, crisp, playful, bold).
+  - `velora brand init [--from-css FILE]` seeds it from CSS custom properties; `velora brand check` validates it and warns on low contrast.
+  - Its JSON Schema ships in `schemas/brand.schema.json`.
+- **Looks** on recipes and compositions:
+  - presets `clean`, `keynote`, `film`, `teal-orange`, `noir`, `neon`, `pastel`;
+  - browser layer (grade, grain, vignette, letterbox): previewed live and captured;
+  - export finishing (bloom, halation, chromatic aberration, sharpen, `.cube` LUT): applied per frame; preview it with `velora shot --finish`.
+- **`velora check`** adds `flash-safety` (WCAG 2.3.1 approximation, `ERR_FLASH_RISK`) and an advisory `banding` check.
+- **18 Wave 2 templates:**
+  - layered: `exploded-stack`, `parallax-planes`, `cascade-build`, `floating-focus`, `device-showcase`, `cursor-demo`, `split-compare`, `screen-wall`;
+  - motion graphics: `title-reveal`, `logo-sting`, `kinetic-statement`, `stat-counter`, `feature-trio`, `lower-third`, `quote-card`, `end-card`, `countdown`, `changelog-card`.
+  - They scaffold to plain TSX, show in the studio gallery and quick shots, and are certified in every aspect (framing, title-safe placement, reading time).
+- New skills: `velora-brand`, `velora-looks`, `velora-motion-design`.
+- Export failures now name their cause and the segment and scene they came from.
+
 ### Added — Master-quality render and delivery formats
 - `--quality draft|standard|master` on `export` and `render`:
   - **draft:** half-size capture, fast encode.
@@ -74,7 +165,8 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
 ### Changed
 - **Video colorimetry.** Video output now converts to limited-range BT.709 and is tagged as such. FFmpeg's untagged BT.601 default shifted colors in browsers.
 - **Default encode.** H.264 now encodes at x264 `slow` with CRF 18 (previously `medium` with CRF 23). Files are sharper and encoding is slower; use `--quality draft` while iterating.
-- **Render workers.** The render worker default is now cores minus one, capped at 8, and `--parallel` accepts up to 8.
+- **Render workers.** The default worker count now leaves one core free, budgets about 700 MB of free memory per worker, and is capped at 4. Each worker is a full Chromium running the live app. `--parallel` accepts up to 8.
+- **Capture waits.** Capture waits up to 30 s for a loading Velora page's bridge and for network idle (previously 5 s and 10 s), so parallel renders no longer fail while the dev server is busy.
 - `mapGsapEasing` is lossless for every pure GSAP ease: `power1.out` now maps to `quad.out` and `expo.out`
   to `expo.out` (previously approximated as `cinematic`). `back`, `elastic`, `bounce` and `steps(n)` now convert.
   Only parameterized and plugin eases are rejected.

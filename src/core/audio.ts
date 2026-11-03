@@ -12,6 +12,8 @@ export const SUPPORTED_AUDIO_CODECS = Object.freeze(["aac", "mp3", "opus", "vorb
 export const AudioTrackSchema = z.strictObject({
   id: z.string().min(1).max(128),
   assetId: z.string().min(1).max(128),
+  // music beds drive beat analysis; voice and sfx are labels for mixing and review.
+  kind: z.enum(["music", "voice", "sfx"]).optional(),
   startMs: z.number().finite().nonnegative().max(120_000),
   offsetMs: z.number().finite().nonnegative().max(120_000).default(0),
   gain: z.number().finite().min(0).max(2).default(1),

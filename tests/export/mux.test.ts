@@ -42,6 +42,8 @@ describe("mux filter builder", () => {
     expect(captioned.audioFilter).toBeNull();
     expect(captioned.videoFilter).toContain("subtitles=");
     expect(escapeSubtitlesPath("C:\\proj\\my subs/file.srt")).toBe("'C\\:/proj/my subs/file.srt'");
+    expect(() => escapeSubtitlesPath("C:\\it's\\subs.srt")).toThrow(/quotes/);
+    expect(() => escapeSubtitlesPath("/tmp/a';movie=x/subs.srt")).toThrow(/quotes/);
   });
   it("probes real audio files", async () => {
     const probe = await probeAudioFile(path.join(root, "tone.wav"));

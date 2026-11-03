@@ -1,0 +1,261 @@
+{
+  "demo": "demo-d",
+  "agent": "Codex-style generic agent",
+  "composition": "gap.composition.json",
+  "canvas": {
+    "width": 320,
+    "height": 180,
+    "fps": 30,
+    "seed": 11,
+    "durationMs": 2500
+  },
+  "setup": [
+    "copy host/ to a temp dir",
+    "npm install",
+    "install packed velora tarball"
+  ],
+  "steps": [
+    {
+      "skill": "velora-init",
+      "cmd": [
+        "init",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-launch",
+      "cmd": [
+        "prompts",
+        "show",
+        "--id",
+        "website-hero-loop",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-templates",
+      "cmd": [
+        "templates",
+        "show",
+        "--id",
+        "float-loop",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-templates",
+      "cmd": [
+        "new",
+        "scene",
+        "--template",
+        "float-loop",
+        "--id",
+        "hero",
+        "--route",
+        "/",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-templates",
+      "cmd": [
+        "new",
+        "scene",
+        "--template",
+        "scroll-through",
+        "--id",
+        "tour",
+        "--route",
+        "/",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-templates",
+      "cmd": [
+        "templates",
+        "check",
+        "--id",
+        "float-loop",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-debug",
+      "cmd": [
+        "validate",
+        "--composition",
+        "hero.composition.json",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    },
+    {
+      "skill": "velora-launch",
+      "cmd": [
+        "review",
+        "--composition",
+        "hero.composition.json",
+        "--platform",
+        "website-hero",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true,
+      "note": "loop seam and pacing: no advisories"
+    },
+    {
+      "skill": "velora-render",
+      "cmd": [
+        "shot",
+        "--scene",
+        "hero",
+        "--time",
+        "4000",
+        "--out",
+        "hero-4000.png",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "dev-server",
+        "chromium",
+        "ffmpeg"
+      ],
+      "note": "recorded evidence: mid-loop still (evidence-anchor.png)"
+    },
+    {
+      "skill": "velora-launch",
+      "cmd": [
+        "render",
+        "--composition",
+        "hero.composition.json",
+        "--out",
+        "hero.webm",
+        "--preset",
+        "website-hero",
+        "--poster",
+        "0",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "dev-server",
+        "chromium",
+        "ffmpeg"
+      ],
+      "note": "recorded evidence: VP9 WebM within the 4 MB budget plus poster"
+    },
+    {
+      "skill": "velora-launch",
+      "cmd": [
+        "render",
+        "--composition",
+        "hero.composition.json",
+        "--out",
+        "hero.mp4",
+        "--preset",
+        "website-hero",
+        "--codec",
+        "h264",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "dev-server",
+        "chromium",
+        "ffmpeg"
+      ],
+      "note": "recorded evidence: H.264 fallback"
+    },
+    {
+      "skill": "velora-verify",
+      "cmd": [
+        "check",
+        "--video",
+        "hero.webm",
+        "--manifest",
+        "hero.webm.manifest.json",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": false,
+      "requires": [
+        "hero.webm"
+      ]
+    },
+    {
+      "skill": "velora-render",
+      "cmd": [
+        "frames",
+        "--composition",
+        "gap.composition.json",
+        "--out",
+        "stills",
+        "--at",
+        "1100,1300",
+        "--url",
+        "http://127.0.0.1:1",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true,
+      "note": "offline gap stills: black void between the two determinism segments"
+    },
+    {
+      "skill": "velora-verify",
+      "cmd": [
+        "check",
+        "--frames",
+        "stills",
+        "--json"
+      ],
+      "expect": {
+        "code": 0
+      },
+      "replayable": true
+    }
+  ]
+}

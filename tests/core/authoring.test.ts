@@ -4,6 +4,7 @@ import { CameraSchema, FocusSchema, SCENE_BACKGROUND } from '../../src/core/scen
 import { MotionSchema } from '../../src/core/motion';
 import { RESOURCES } from '../../src/core/resources';
 import {runCli} from '../../src/cli';
+import { PROMPT_LIBRARY } from '../../src/core/prompts';
 const scene={nodes:[{id:'subject'}]};
 const motion={durationMs:2000,tracks:[{target:{kind:'surface',id:'subject'},property:'z',keyframes:[{timeMs:0,value:80},{timeMs:2000,value:0}]}]};
 describe('canonical authoring system',()=>{
@@ -14,6 +15,17 @@ describe('canonical authoring system',()=>{
   expect(RESOURCES['authoring-guide']).toBe(getAuthoringGuide);expect(RESOURCES['review-authoring']).toBe(reviewAuthoring);
   const tracks=guide.capabilities.tracks as {properties:string[]}[];tracks[0].properties.push('invented');expect(JSON.stringify(getAuthoringGuide().capabilities.tracks)).not.toContain('invented');
   guide.concepts[0].meaning='modified';expect(getAuthoringGuide().concepts[0].meaning).not.toBe('modified');
+ });
+ it('is guide version 3 with director concepts and pointer capabilities',()=>{
+  const guide=getAuthoringGuide();expect(guide.version).toBe(3);
+  const ids=guide.concepts.map(c=>c.id);
+  for(const id of ['templates','shot-vocabulary','lens','editing-rhythm','brand-and-looks'])expect(ids).toContain(id);
+  expect(new Set(ids).size).toBe(ids.length);
+  expect(guide.creativeFreedom).toContain('Templates are starting points; vary shot families across scenes; user direction overrides.');
+  expect(guide.creativeFreedom).toContain('User direction overrides artistic defaults.');
+  expect((guide.capabilities.prompts as {ids:string[]}).ids).toEqual(PROMPT_LIBRARY.map(p=>p.id));
+  expect(guide.capabilities.editorial).toMatchObject({review:expect.stringContaining('velora review')});
+  expect(AuthoringGuideSchema.safeParse({...guide,version:2}).success).toBe(false);
  });
  it('CLI and package return the same guide without project or export effects',async()=>{
    const executor=vi.fn(),exporter=vi.fn();const result=await runCli(['guide','--json'],{root:'/does-not-exist'},executor,exporter);

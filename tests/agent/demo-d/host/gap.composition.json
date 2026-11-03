@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "id": "gap",
+  "title": "demo-d determinism proof",
+  "width": 320,
+  "height": 180,
+  "fps": 30,
+  "seed": 11,
+  "scenes": [
+    {
+      "id": "a",
+      "recipe": "proc-stage",
+      "startMs": 0,
+      "durationMs": 1000
+    },
+    {
+      "id": "b",
+      "recipe": "proc-stage",
+      "startMs": 1500,
+      "durationMs": 1000
+    }
+  ],
+  "assets": []
+}

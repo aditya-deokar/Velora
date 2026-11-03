@@ -38,7 +38,7 @@ The default Vite build ships only the product entry. Demo applications, gallerie
 
 ## Current scope
 
-The final local MVP joins installation, agent handoff, scene authoring, studio, snapshots and MP4 export. A focus-position editor, visual builder, hosted connection, product accounts and licensing are not implemented. Future adapters must call the existing operation boundaries rather than copy their policy. Previous demo/trial evidence remains in Morphite history; its old routes and application directories are retired.
+Velora 1.0 joins installation (React hosts, the starter and any-site mode), agent handoff, templates, kit, brand and looks, editorial tools, studio, master rendering and launch delivery. A focus-position editor, visual builder, hosted connection, product accounts and licensing are not implemented. Future adapters must call the existing operation boundaries rather than copy their policy. Previous demo/trial evidence remains in Morphite history; its old routes and application directories are retired.
 
 ## Source recipe catalog and library
 
@@ -125,6 +125,141 @@ Transparent capture is capture-only: export services inject a transparent-backgr
 `src/core/delivery.ts` holds the platform presets (`DELIVERY_PRESETS`, each with `lastVerified`). `deliveryWarnings` reports budget and fit warnings and never fails a render.
 
 Render publication refuses an existing video, manifest or poster before capturing anything. Non-MP4 manifests keep their container extension. `velora doctor` lists the available encoders, and a missing one fails fast with `ERR_CODEC_UNAVAILABLE`.
+
+## Visual kit, brand, looks and Wave 2 templates
+
+**Kit (`src/kit/`).** Every component is a pure function of scene time, channels, seeds and brand tokens: no rAF, timers or wall clock.
+
+| Group | Components |
+|---|---|
+| Framing | `BrowserFrame`, `WindowFrame`, `PhoneFrame`, `TabletFrame`, `LaptopFrame` (CSS-only) |
+| Atmosphere | `Backdrop` (gradient, mesh, aurora, grid-floor, spotlight, solid), `Glow`, `ContactShadow`, `LightSweep`, `Dust` (seeded) |
+| Interaction | `Cursor` (channels `<id>-x`/`-y`/`-press`), `Typewriter`, `Spotlight`, `Callout` |
+| Type | `Title` (masked `Intl.Segmenter` reveals, accent word), `Counter`, `Countdown`, `Panel`, `Marquee`, `GradientText`, `CaptionTrack` |
+| Media | `VideoClip` (seeked per frame, settled before capture), `ImageLayer` |
+
+**Brand (`src/core/brand.ts`).** `velora.brand.json` (`BrandSchema`, JSON Schema shipped) holds colors, gradients, fonts, radius, voice and a motion personality. `MOTION_PERSONALITIES` maps calm, crisp, playful and bold to easing, duration scale and stagger.
+
+- `BrandProvider` exposes the tokens through context and CSS variables on a `display: contents` wrapper, so it adds no box to the 3D tree.
+- `useReveal`/`useRevealer` turn scene time into eased progress.
+- `velora brand init` seeds tokens from CSS custom properties with a tokenizer, completes the palette for light or dark backgrounds, and never overwrites. `velora brand check` validates and warns on text contrast below 4.5:1.
+
+**Looks (`src/core/looks.ts`).** `look` sits on a recipe definition or a composition; a scene's own look wins. There are two layers:
+
+- **Browser layer** (`LookLayer`, captured with the frame): an SVG grade, vignette, letterbox and grain seeded per 24 fps grain frame.
+- **Export finishing** (`finishLook` in `export/compositor.ts`, applied by `finishFrame` after compositing): bloom, halation, chromatic aberration, sharpen and trilinear `.cube` LUTs. Because it's applied in one place, `velora shot --finish`, frame renders and video frames match.
+
+An inherited composition look reaches its scenes through a `velora-look` URL parameter and keys the frame cache.
+
+**Safety (`src/core/safety.ts`).** `velora check` runs two analyses:
+
+- `flash-safety`, a WCAG 2.3.1 approximation over an 8×8 grid: general and red flashes, more than 3 per second over at least 10% of the frame fails. It runs on consecutive frames, or on every decoded video frame.
+- `banding`, which is advisory only.
+
+**Wave 2 templates (`src/core/composites.ts`).** Eight layered real-UI and ten motion-graphics templates compile to scene nodes, motion and a layout of kit elements as data. One description serves three consumers:
+
+- the scaffolder (`project/templates.ts:layoutJsx` writes plain TSX with a `Surface` per node, inside `BrandProvider`);
+- the studio (`preview/TemplateLayout.tsx` renders the same layout live);
+- certification: primary-node framing, title-safe placement for motion graphics, and reading time of at least 0.3 s per word plus 1 s.
+
+Text params (`--set key=value`) carry copy.
+
+## Editorial: layers, A/B transitions, rhythm, sound and review
+
+**Transitions.** `SegmentTransitionSchema` has two modes:
+- **Entering** (inside the incoming scene's tracks).
+- **Overlap** (true A/B): crossfade, dip-to-black/white, wipe, iris, push, zoom, whip and light-leak, with `direction`, `ease`, `seed` and `sfx`.
+
+`validateTimeline` allows exactly one kind of V1 overlap: the declared window of an overlap transition, shorter than both shots, never three-way. `layersAt` resolves the segments at a time and the eased blend progress.
+
+**Rendering in layers.** `renderTimelineFrames` renders capture units, each with explicit local times:
+- V1 segments;
+- `overlays[]`, captured transparently;
+- the styled-captions layer, a captions scene that `ProjectPreview` opens from `velora-captions` URL parameters and that draws kit `CaptionTrack` with word timing.
+
+A frame with a single segment and no overlays keeps its capture bytes, so plain timelines are unchanged. Layered frames are blended (`blendTransition`) and composited (`compositeOverlay`, normal, screen or multiply) in linear light. Video mode spills layer frames to disk. Manifests record layer SHAs.
+
+**Composition player.** It mirrors this with CSS approximations (`blendStyle`); both endpoints match exactly.
+
+**Rhythm (`src/core/rhythm.ts`).**
+- STFT spectral flux, onsets refined in the time domain, autocorrelation tempo (60-180 BPM) with an octave check, a least-squares beat grid, and 4/4 downbeats by accent.
+- `snapToBeats` plans cut moves that keep segments joined.
+- `velora audio beats` writes markers and `velora compose snap` applies the plan only with `--write`.
+
+**Sound (`src/core/sound.ts`).**
+- Seeded lavfi graphs for eight SFX presets, rendered to WAVs (bit-exact).
+- `transition.sfx` lands at the cut (mid-window for overlap transitions).
+- Two-pass `loudnorm` to `loudness` (default -14 LUFS / -1 dBTP). It is skipped when the mix is too short to gate, and recorded in the manifest.
+
+**Review (`src/core/editorial.ts`).** `reviewComposition` reports advisories only: hook, pacing per platform, reading time, end card, eye-trace jump, match-cut drift, direction flip, loop seam and off-beat cut.
+
+**Blueprints.** Wave 3 blueprints scaffold shots, overlap transitions with sound, overlay scenes (`backdrop=off`), section and music-cue markers, a karaoke caption skeleton and a story brief.
+
+## Director skills, guide v3 and the prompt library
+
+**Prompt library (`src/core/prompts.ts`).** `PROMPT_LIBRARY` holds the agent prompts for each launch intent: id, title, intent, text with `<placeholders>`, the templates it starts from, and at most four skills. One library feeds three places:
+- `velora prompts ls|show`;
+- the featured list in the generated `VELORA.md`;
+- the studio's copy buttons (`GettingStarted` goal picker, and `ParamPanel` through `scaffoldPrompt`).
+
+Tests check every named template, skill, command, flag and preset against the catalogs.
+
+**Guide v3.** `AuthoringGuideSchema.version` is 3. It adds concepts for templates, shot vocabulary, lens, editing rhythm, and brand and looks. Capabilities point at commands (prompts, editorial, brand, presets) rather than embedding catalogs. The `VELORA.md` handoff records format 3. `init` still recognizes the format-2 handoff bytes (any package name, Vite and portable hosts) and upgrades them in place; edited files are refused.
+
+**Skills.** The root skill is an intent router: each intent names at most four skills, and tests resolve every row against the registry. `velora-launch` covers the brief, story structures, platform pacing, deliverables and website hero practice. Craft skills carry descriptive Craft Notes and cross-link one another.
+
+**Validation.** `velora validate --composition` runs the same timeline gate as render (overlap windows, three-way overlaps), so a bad cut fails before any capture.
+
+## Launch delivery
+
+`src/core/deliverables.ts` owns the delivery plan. It is pure and depends only on core:
+- the target vocabulary (`DELIVER_TARGETS`: short names to `DELIVERY_PRESETS` and a kind: video, website-hero, still, product-hunt);
+- `sizeLadder`: per-codec CRF or GIF frame-rate steps, deterministic and monotonic;
+- `heroTimeMs`: the middle of the longest shot; `galleryTimesMs`: 25/50/75%;
+- the website-hero snippets (`heroEmbedHtml`, `heroVideoTsx`);
+- `DeliverablesManifestSchema`.
+
+`executeDeliver` lives in `src/export/commands.ts` because it orchestrates `executeVideoRender` and `executeFrameRender`.
+- **Per target:** it renders at the preset's size, codec and quality. The composition's loudness wins; otherwise the preset's target applies.
+- **Size budget:** it climbs the ladder until the file fits the preset's byte budget. The internal `crf` render option overrides rate control and has no CLI flag. Captured frames come from the content-hash cache, so retries only re-encode.
+- **Publishing:** attempts render into `<out>/.velora-attempts/` and the chosen one is published with a no-overwrite hard link (`promoteFile`).
+- **Stills:** cover-cropped by FFmpeg (`encodeStill`).
+- **Output:** the directory must be new. `deliverables.json` records files, SHA-256, sizes, attempts, measured loudness, warnings and each preset's `lastVerified` date.
+
+## Starter
+
+`src/project/starter.ts` (pure) plans the `velora create <dir>` file set:
+- a Vite React host with a branded landing page;
+- `velora.brand.json`, a README and `.gitignore`;
+- npm scripts: `velora:setup` runs init, installs the skills and scaffolds the blueprint.
+
+`executeCreateCommand` writes them create-only into a new or empty directory. Product names are stripped of markup before they reach HTML, CSS or TSX.
+
+## Any-site mode
+
+`src/project/studio.ts` (pure) plans a managed studio for non-React sites; `executeStudioCommand` (project commands) runs it through services.
+
+- **Workspace.** It lives at `<user cache>/velora/studio-<version>/` (`VELORA_CACHE_DIR` overrides) and installs pinned `react`, `react-dom`, `vite` and `@vitejs/plugin-react` once. `@adityadeokar/velora`, `/preview` and `/kit` are aliased to the running CLI's own `dist/library`. `resolve.dedupe` gives the studio, the library and the project's bindings one React. The user's project gains only `.velora/project.json` (adapter `site`, the site origin), `VELORA.md`, its scenes, compositions and assets. React, Vite and `package.json` never enter it, and the frame cache defaults to `.velora/cache/frames` there.
+- **Proxy.** The studio is served under `base: "/__velora/"`. Every other path, including WebSockets, is proxied to the loopback site (`STUDIO_PROXY_PATTERN` excludes the studio base and Vite internals), so `RouteFrame` routes are same-origin. In this development proxy only, `X-Frame-Options` and CSP `frame-ancestors` are removed.
+- **Project loading.** Project files reach the studio through Vite's `/@fs/` server. The studio entry sets `__VELORA_PROJECT_FILES__`, so `projectFileUrl` (captions, brand) never fetches from the proxied site root. `previewBase` gives capture and the captions layer `<origin>/__velora/`.
+- **Diagnostics:**
+  - `ERR_SITE_NOT_LOOPBACK`, `ERR_SITE_UNREACHABLE`, `ERR_SITE_REDIRECT_EXTERNAL`, `ERR_STUDIO_FAILED`;
+  - `WARN_SITE_FRAME_HEADERS` when headers were stripped;
+  - `velora studio --check` verifies the studio identity, the proxy and framing, then stops.
+- **Limits.** Shots are route-level, the site's animations are frozen, and states must be reachable by route or query.
+
+## 1.0 hardening and compatibility
+
+- **Compatibility.** Schemas evolve additively within a major version (old CLIs reject unknown fields, so minor versions are forward-only). A breaking change bumps the file's `version` (recipe, composition, brand, guide) and ships an upgrade path, as `velora init` does for older adapters and guide-v2 handoffs. Deprecations warn for one minor version before removal.
+- **Security review (pinned by `tests/project/security.test.ts`):**
+  - capture and export URLs are HTTP loopback without credentials, and the site proxy targets loopback only;
+  - `RouteFrame` refuses cross-origin documents;
+  - every write is project-scoped and no-overwrite;
+  - child processes take argument arrays. The Windows shell is used only for `npm.cmd`, and refuses cmd metacharacters;
+  - FFmpeg filter graphs interpolate no user text: subtitle and font paths with quotes or line breaks are refused, and SFX and looks come from schemas.
+- **Package budget.** `scripts/release.mjs` (`PACKAGE_BUDGET`): 6 MB unpacked, 2 MB per file. `website/`, tests and demo media can never be packed.
+- **CI.** Fast gates and the browser, export and installed-app tier run on Linux, Windows and macOS. Agent-demo replay, any-site mode (`test:site`) and hardware timing need registry access or real hardware, and stay local release gates.
+- **Performance evidence** is recorded per release in the exit reports (device-specific, never promised).
 
 ## Framework-independent host integration
 

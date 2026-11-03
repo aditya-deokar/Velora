@@ -22,7 +22,7 @@ Do not let the CLI overwrite `AGENTS.md`, `CLAUDE.md`, or provider config. `velo
 Prompt snippet for `--json`-first agents:
 
 ```
-Load velora/SKILL.md from the installed skills directory first. Prefer --json for every Velora command and follow the routing table to load only the next skill. Verify with velora skills check --dir <path> --json.
+Load velora/SKILL.md from the installed skills directory first. Prefer --json for every Velora command and follow its intent router to load at most four skills. For a ready-made task prompt run velora prompts ls --json. Verify with velora skills check --dir <path> --json.
 ```
 
 ## Version pinning
