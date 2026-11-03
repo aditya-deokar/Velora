@@ -176,5 +176,6 @@ try {
   await browser?.close();
   if(unrelated)await new Promise(r=>unrelated.close(r));
   await Promise.all(processes.map(p=>new Promise(r=>{if(p.exitCode!==null)return r();p.once('exit',r);p.kill('SIGTERM')})));
-  await rm(scratch,{recursive:true,force:true});
+  // Windows releases a killed process's directory handles late (EBUSY); retry instead of failing a passed run.
+  await rm(scratch,{recursive:true,force:true,maxRetries:20,retryDelay:250});
 }
