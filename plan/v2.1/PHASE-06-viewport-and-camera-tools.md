@@ -30,6 +30,8 @@ computed by the single projection owner and lands as `EditOp`s.
   `intersectPlane(ray, world: Matrix) → {u, v, t} | null` (local surface coordinates).
 - `surfaceQuad(node: EvaluatedNode, camera, frame)` → projected corners for picking/outlines.
 - All pure; property tests: `intersectPlane(screenRay(projectWorld(p)))` recovers `p` (< 1e-6).
+- `camera.zoom` (14.2) is part of the projection whenever it is present, as a post-projection scale about frame center. If 14 lands first, these functions are born with it. If 06 lands first, 14 extends them under the same round-trip tests.
+- Picking ignores depth-layer proxies (13.3) but can hit depth layers and anchors (13, 15). The layer's world matrix comes from `evaluateDepthLayers`, never from transformed DOM rects.
 
 ### 06.2 Picking and selection — `src/editor/viewport/`
 - An editor overlay (chrome-marked) above the frame takes pointer input only in Edit mode;
@@ -99,6 +101,21 @@ computed by the single projection owner and lands as `EditOp`s.
 ### 06.8 Lock and solo in the viewport
 - Locked layers are not pickable; solo dims other layers in the overlay (editor-only), never in
   capture.
+
+### 06.9 Cinematic track hooks (land with Phases 12–16, whichever finishes later)
+The tools above are the hosts for the cinematic editor tasks. Each one is specified in its own phase:
+
+| Tool | Addition | Spec |
+|---|---|---|
+| Scene header | Stage chip with preset menu and "Use my laptop" (`stage.set`) | 12.6 |
+| Viewport and director view | Depth view (tiers tinted) and the explode slider in director view; both editor-only | 13.6 |
+| Camera tool (C), lens row | Lens preset chips (24 drone · 50 · 85 · 200) with framing hold; rig chips with a parameter popover | 14.7, 16.6 |
+| Focus tool (F) | Pick depth layers and anchors; the rack helper uses `buildRackFocus` (breathing on for presets) | 14.7, 15.5 |
+| Constraint picker | Click-to-target on real elements (anchor or unique selector) with a reticle | 15.5 |
+| Motion paths (06.4) | Baked rig paths with speed ticks, bank indicators and clearance warnings; dragging a waypoint re-applies the rig | 16.6 |
+
+The director view also draws the app-stage box (12) and the focal plane against depth layers.
+The capture refusal (06.6) already covers every editor-only view listed here.
 
 ## Contracts
 - `projectWorld`, `screenRay`, `intersectPlane`, `surfaceQuad` (spatial owner).

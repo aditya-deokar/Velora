@@ -1,7 +1,8 @@
 # Editor UX specification (v2.1)
 
 This document owns the editor's layout, interaction rules, keyboard map and accessibility
-requirements. Phases 04–10 implement it. When a phase and this file disagree, fix this file
+requirements. Phases 04–10 implement it, plus the editor tasks of the cinematic track (12.6,
+13.6, 14.7, 15.5, 16.6; hosted by the tools in 06.9). When a phase and this file disagree, fix this file
 first, in the same change.
 
 ## 1. Entry and modes
@@ -124,7 +125,11 @@ N roll, Y slip, C razor, M marker. Tool keys apply only to the active mode.
 | Kind | Control | Source |
 |---|---|---|
 | Number | Drag-scrub field (Shift ×10, Alt ×0.1), unit suffix, min/max from schema | Transform, visual and grade properties; camera; focus; numeric animatables |
-| Lens | Millimetre field ↔ perspective via `lens.ts`, presets 24/35/50/85/135 | Camera perspective |
+| Lens | Millimetre field ↔ perspective via `lens.ts`, presets 24/35/50/85/135; after 14, the chips 24 drone · 50 · 85 · 200 with a hold-framing toggle | Camera perspective, `camera.zoom` |
+| Stage | Preset menu (`laptop-14`, `laptop-13`, `laptop-16`, `desktop-1080`, custom), "Use my laptop" | `definition.stage` (12) |
+| Depth | Mode, intensity, light azimuth and elevation dials, sheen, `elevation` stopwatch | `definition.depth` (13) |
+| Target | Click a real element (anchor or unique selector) and see its live rect and blur | Element targets (15) |
+| Rig | Kind, mass, arc or waypoints; re-apply on change | Rig clips with provenance (16) |
 | Color | Native picker plus OKLCH sliders; interpolation is shown in OKLab | Color style vars, color animatables |
 | Boolean / enum | Toggle / select; animated as hold steps | Animatables |
 | Easing | Curve thumbnail; opens the library or graph editor | The keyframe at the playhead |
@@ -172,4 +177,6 @@ Smooth-interpolation tracks draw a continuous rail, and their keyframes appear a
 - Bundle or drive GSAP, or add a ticker, `requestAnimationFrame` clock or wall clock to scene evaluation.
 - Rewrite host TSX without a diff preview and explicit confirmation (Phase 08).
 - Store editor-only state (panel sizes, solo/hide) in project files.
+- Write host-DOM styles except through the depth ledger (13.2), or leave any of them behind after leaving Edit mode.
+- Re-detect the user's viewport at render time. "Use my laptop" writes concrete numbers once (12.6).
 - Change how any existing recipe renders.
