@@ -75,6 +75,10 @@ frame-exact alongside DOM surfaces, optionally sharing one camera.
   their registered world positions.
 - Documented limits: DOM and WebGL do not occlude each other (layer order only); DOF applies to
   the canvas leaf as one plane unless the 3D scene renders its own depth effect.
+- Cinematic track alignment:
+  - `camera.zoom` (14.2) narrows the field of view: `fov = 2·atan(frameHeight / 2 / (perspective · zoom))`;
+  - the canvas `dpr` follows the page device scale, which equals the stage DPR at export (12.4), capped by `pixelRatioCap`;
+  - registered 3D anchors are valid element targets for `lookAt`, `focusFollow`, `frame` and rigs (15, 16).
 
 ### 09.6 Editor integration
 - Layers: the ThreeSurface layer expands into a 3D outliner (named objects with animatables);

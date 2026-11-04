@@ -68,6 +68,10 @@ it compiles to plain clips and tracks with provenance — no runtime behavior en
 - After applying, run `framingReport` with the subject's measurement and show the certification
   verdict inline (in-frame %, depth margin, focus blur); failing moves show "Adjust" suggestions
   (lens, intensity) rather than silently applying.
+- Once Phase 16 lands, the library also lists the rigs `drone-flyover`, `telephoto-parallax-orbit`
+  and `whip-pan-macro`. Their subject is an element target (15) rather than a layer box, and their
+  verdict adds `rigSmoothness`, `rigClearance` and peak parallax. Lens presets (14) appear as an
+  "Adjust" suggestion, for example "switch to 200 mm with framing hold".
 
 ### 07.6 Project presets — `src/core/presets.ts` (owner `PresetSchema`)
 - File `src/velora/presets/<id>.preset.json`: `{ $schema?, version: 1, id, title, kind:

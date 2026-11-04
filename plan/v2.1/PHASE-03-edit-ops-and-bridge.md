@@ -39,6 +39,7 @@ these operations.
   | Scene base | `camera.set {property, value}`, `focus.set {property, value}`, `node.ensure {id}`, `node.remove {id}` (refused while tracks target it), `motion.set {durationMs?, speed?, loop?}`, `look.set {look?}` |
   | Structure (02) | `clip.create {id, from: refs[] \| tracks}`, `clip.update {id, startMs?, speed?, inMs?, durationMs?, loop?, ease?, mode?, label?}`, `clip.dissolve {id, bake?: {samplesPerSecond}}`, `stagger.set {clipId, members, eachMs, order, ease?}`, `link.set`, `link.remove`, `constraint.set`, `constraint.remove`, `path.fromAxes {target}` (x/y/z tracks to a position path), `path.tangent {track, atMs, inTangent?, outTangent?}` |
   | Metadata | `editor.set {labels?, colors?, locked?, markers?}` |
+  | Cinematic (12–16) | `stage.set` (12), `depth.set`, `depth.rule.add`, `depth.rule.remove`, `depth.resolve` (13), `lens.apply`, `rack.add` (14), element targets in `constraint.set` plus the `frame` kind (15), `rig.apply`, `rig.update` (16). Each lands with its phase and returns `ERR_EDIT_UNSUPPORTED` until then. All compile to recipe data with exact inverses. |
 
 - `applyEdits(recipe, ops)` returns either `{ ok: true, recipe, inverse: EditOp[], touched: string[] }` or `{ ok: false, issues }`:
   - **Atomic:** the whole batch applies, or nothing does.
@@ -68,8 +69,9 @@ Every subcommand except the bridge is **dry-run by default**: it prints the resu
 | `velora edit key --scene <id> --track camera.z --at 1200 --value 400 [--ease cubic.out] [--write]` | Ergonomic upsert |
 | `velora edit ease --scene <id> --track headline.x --at 0 --ease '{"cubicBezier":[0.33,0,0.67,1]}' [--write]` | Set segment easing |
 | `velora edit [--scene <id>] [--port <n>] [--read-only] [--no-open]` | Start the bridge and open the editor (03.4) |
+| `velora edit stage\|depth\|lens\|rack\|lock\|rig …` | Ergonomic cinematic subcommands, added by Phases 12–16 (same dry-run and `--write` rules) |
 
-- Track shorthand `camera.z`, `focus.distance`, `<surface>.<prop>`, `style:<surface>.--accent`, `channel:<id>` parses to a `TrackRef` with clear errors.
+- Track shorthand `camera.z`, `focus.distance`, `<surface>.<prop>`, `style:<surface>.--accent`, `channel:<id>` parses to a `TrackRef` with clear errors. Phases 13 and 14 add `<surface>.elevation` and `camera.zoom`. Phase 15 adds the target shorthand `<surface>:<anchor>` and `<surface>:css(<selector>)`.
 - **Writes:** `atomicWrite(root, target, content, expected)` (`src/project/services.ts`) with the read SHA as the compare-and-swap guard. `--expect-sha` lets agents fail fast when the editor saved in between.
 - **Errors** (added to the catalog in `src/core/cli-schema.ts`, each with a hint and next commands):
   - `ERR_EDIT_INVALID` (op validation);

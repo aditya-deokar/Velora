@@ -85,10 +85,12 @@ Constraints need world geometry, so `evaluateScene`, the single spatial owner, r
     - `focus.distance` becomes the camera-space depth of the target anchor plus the offset, blended by weight with any `focus.distance` track.
 - `projectPoints` in `src/core/shots.ts` honors point targets; surface targets need measurements, so `framingReport` passes the subject measurement it already has. Refactor `projectPoints` to call the spatial owner rather than duplicating camera math (golden-checked).
 - Advisory: a lookAt target outside the frame at any sampled time (an occluded or behind-camera anchor).
+- Forward compatibility: keep `target` a discriminated union. Phase 15 adds element targets `{ surface, anchor | selector, at?, plane? }`, measured from live layout, and a `frame` constraint kind. Phase 13 supplies layer elevation for them. Nothing here may assume a target is always a Surface box.
 
 ### 02.6 Rigs (sugar that compiles to data) — `src/core/shots.ts`
 - `buildOrbitRig({ target, radius, fromDeg, toDeg, height, durationMs, ease })` returns a camera `position` path (02.3) plus a `lookAt` constraint (02.5).
 - Existing shot kinds keep their current output (template certification goldens). New shot variants may use rigs; any change in output must be explicit and re-certified.
+- Phase 16 builds physically simulated rigs (drone flyover, telephoto parallax orbit, whip pan) on the same data: position paths with explicit tangents, add clips for banking, and `lookAt`/`focusFollow`/`frame` constraints. Path tracks must therefore accept explicit tangents on every keyframe (02.3), and add clips must work on camera `rotateZ`.
 
 ### 02.7 Schemas, guide and skills
 - Regenerate the JSON Schemas. Guide capabilities: clips, staggers, paths, links, constraints, rigs.

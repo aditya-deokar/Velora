@@ -9,6 +9,17 @@ next level as a cinematic animation builder:
 
 Where an existing open-source editor helps without compromising that aim, it should be used.
 
+Second brief, the **cinematic track** (2026-11-04). It asks for scenes that read like an
+Apple-grade product film of a real modern laptop screen, shot with a drone and a 200 mm cinema lens:
+1. A laptop-true app viewport (16:10, Retina 2×, or the user's own laptop), decoupled from the output frame.
+2. Automatic 3D DOM depth with edges, shadows and camera-reactive light.
+3. Real lens presets with telephoto compression, per-layer depth of field and rack focus with breathing.
+4. Physical drone and cinema rigs (mass, banking, inertia).
+5. Camera and focus locked to live DOM targets.
+
+It must preserve every CLI contract, deterministic frame sampling and back-compat. Phases 12–16
+cover it (§7).
+
 Repo audited: 2026-11-04 at `@adityadeokar/velora@0.1.2` (branch `feat/v2-phase5-7-director-skills`,
 commit `746cdd9`). v2 roadmap: `plan/v2/README.md` (phases 00–09, all done; 1.0 tag pending).
 
@@ -41,6 +52,13 @@ The defining principle extends again. The CLI provides the capabilities, the ski
 intelligence, the templates provide the taste, and **the editor provides the hand. All four
 write the same source.**
 
+**The cinematic track makes the camera physical** (Phases 12–16):
+- The app renders on a laptop-true stage (`laptop-14`: 1512×982 @2×, or the user's own laptop) that is independent of the export frame, so UI keeps its natural density and stays sharp under a 200 mm close-up.
+- The UI hierarchy rises into real depth tiers, with edges, contact shadows and a sheen that moves with the camera.
+- Lenses come from one physical model. Every depth layer blurs by its signed distance from the focal plane, and focus pulls breathe like glass.
+- Drone, telephoto-orbit and whip-pan rigs carry mass and bank into turns. They are simulated offline and baked into plain data.
+- Aim, focus and framing lock onto real DOM elements (`data-velora-anchor`), never guessed pixels.
+
 ## 2. Audit summary (what blocks the goal)
 
 | # | Gap | Evidence |
@@ -57,6 +75,17 @@ write the same source.**
 | Gap | No formatting-preserving JSON writer exists: `json.ts` only parses, and scaffolders write whole files. Editor writes would reformat author files and produce noisy diffs. | `src/core/json.ts`, `src/project/templates.ts` |
 | Gap | The browser studio has no network client by design (no server, websocket or polling loop). A bridge client is a new browser boundary. | `src/preview/connection.ts`, `docs/architecture.md` (Installed application) |
 
+Cinematic track gaps (second brief):
+
+| # | Gap | Evidence |
+|---|---|---|
+| P0 | The app stage is coupled to the aspect table and written into TSX as literals (16:9 → 1440×900). The app renders at 1× DPR at standard quality, so canvases and images soften under any camera magnification. | `src/core/shots.ts` (`ASPECT_FRAMES`), `src/project/templates.ts`, `src/core/export.ts` (`QUALITY_PRESETS`) |
+| P0 | The focus `filter` on a Surface's content leaf flattens all nested 3D. RouteFrame content is an iframe, which CSS 3D can't cross. There is no notion of depth below the Surface. | `src/react/index.tsx` (`leafFilter`), `src/kit/RouteFrame.tsx` |
+| P0 | 200 mm is invalid at 4:5 and 9:16 (perspective > 10,000 throws). The focus focal length is `min(300, mm)` in pixels, far shorter than the camera distances, so depth of field is too deep and shots hand-tune it. | `src/core/lens.ts`, `src/core/scene.ts` (`CameraSchema`, `FocusSchema`), `src/core/shots.ts` (`focalLength: 220`) |
+| Gap | There is no zoom at a fixed viewpoint, so no lens breathing or compensating zoom. Rack focus is between two points of one plane. | `src/core/scene.ts`, `src/core/shots.ts` (`rack-focus`) |
+| Gap | Camera moves are few-key eased tracks: no mass, momentum or banking. The whip is one `expo.out` key. Preview has no motion blur. | `src/core/shots.ts`, `src/core/export.ts` (`shutterSamples`) |
+| Gap | Aim and focus targets are guessed fractions or pixel regions. Nothing measures elements inside a Surface or a RouteFrame. | Phase 02 §02.5 (`anchor: [u, v]`), `ShotInputSchema.focusRegion`, `src/react/registry.ts` |
+
 Strengths to build on:
 - one presentation cursor (`usePreviewSession`);
 - one evaluator (`evaluateMotion`) and one validator (`presentPreview`);
@@ -65,7 +94,10 @@ Strengths to build on:
 - compare-and-swap atomic writes (`atomicWrite(root, target, content, expected)` in `src/project/services.ts`);
 - TypeScript-AST text surgery precedent (`src/project/vite.ts`);
 - chrome-marked overlays (`StudioOverlays`) and keyboard transport (`useTransportKeys`);
-- a certified shot vocabulary (`buildShot`), kinetic presets, beats, transitions, and a composition player.
+- a certified shot vocabulary (`buildShot`), kinetic presets, beats, transitions, and a composition player;
+- one physical lens model (`lensFor`: perspective = frame height × mm / 24) and a signed thin-lens circle of confusion per plane (`sampleFocus`), with tilted-plane focus kernels (`FocusFilter`);
+- transform-free layout measurement through the offset chain (`origin()` in `registry.ts`) and RouteFrame's capture-settle hooks;
+- true shutter motion blur and linear-light supersampling at export (`shutterSamples`, `src/export/compositor.ts`).
 
 ## 3. Decisions
 
@@ -75,6 +107,11 @@ From the request (2026-11-04):
   - groups;
   - full control of React components and Three.js.
 - Prefer existing open-source editors where they fit without compromising Velora's aim.
+
+From the cinematic-track request (2026-11-04):
+- Laptop-true stage, automatic DOM depth and light, real optics and rack focus, physical rigs, live DOM targets.
+- Skills must make coding agents default to a laptop stage at 2× and to telephoto, depth, rack-focus and rig vocabulary.
+- Preserve CLI contracts, deterministic frame sampling and back-compat.
 
 **Proposed. Confirm with the maintainer before the phase noted:**
 
@@ -88,6 +125,12 @@ From the request (2026-11-04):
 | D6 | Timeline UI | Build the dope sheet, graph editor and composition lanes in-house unless spike S1 (Phase 00) shows that a library meets every gate. | 00 |
 | D7 | Version | Ship as **1.1.0**: every schema change is additive within recipe version 1 and scene version 3. | 11 |
 | D8 | GSAP | GSAP never enters editor or runtime code (license, see `OPEN-SOURCE-EVALUATION.md`). Velora keeps its own easing math and name mapping only. | 00 |
+| D9 | App stage vs output frame | An optional `definition.stage` holds `{width, height, dpr}` as concrete numbers. When it is **absent, today's behavior is kept exactly**. New scaffolds, quick shots and skills write `laptop-14` explicitly, so the new default lives in authoring, not in a schema default. `user-native` is detected once in the studio and stored as numbers, never re-detected at render. | 12 |
+| D10 | Stage DPR at export | Capture device scale = `max(quality scale, stage.dpr)`, within the existing 3840 px capture cap, downscaled in linear light to the requested output. Draft stays 0.5. When capped, the manifest records `dprCapped`. No CLI default or output size changes. | 12 |
+| D11 | Host DOM policy for depth | Style-only and reversible, through one ledger: `transform`, `transform-style` and `backface-visibility`; in iframes also prepended `box-shadow` and `background-image`; on front-of-focus layers a prepended focus `blur()` (14.4). Velora never inserts, wraps or moves host nodes, never adds classes or attributes, and never overrides host `overflow`/`opacity`/`filter` to force 3D: it diagnoses instead. Light proxies are Velora-owned elements outside host trees. | 13 |
+| D12 | Optics truth | Lens mm drives perspective with the existing model, and a **physically scaled** focus focal length (`mm × stage px/mm`). `perspective` (≤ 40,000) and `focus.focalLength` (≤ 4,000) widen additively, and `lensFor` output is unchanged. The brief's "4,000–6,000 px for 200 mm" equals about 90–130 mm at 1080 px; 200 mm is about 9,000 px there. Physics wins, and authors may override. | 14 |
+| D13 | Rig physics | Simulated offline at a fixed 240 Hz step and baked into paths, clips and constraints with provenance. No runtime integrator. Banking is an additive roll clip. | 16 |
+| D14 | DOM targets | Named anchors (`data-velora-anchor`) first. CSS selectors are allowed only when they match exactly one element. Targets are measured transform-free, inside RouteFrames after scroll. A missing or ambiguous target **refuses capture** (`ERR_TARGET_MISSING`), never a guess. | 15 |
 
 ## 4. Open-source verdict (summary)
 
@@ -105,6 +148,7 @@ Full matrix and sources: `OPEN-SOURCE-EVALUATION.md`.
 | `three`, `@react-three/fiber`, `@react-three/drei` | **Adopt (optional `/three` entry)** | MIT and actively released (three 0.187.0, 2026-10-30; fiber 9.8.2, 2026-10-14). `frameloop="never"` with `advance()` gives deterministic frames. `TransformControls` provides the 3D gizmo. |
 | `code-inspector-plugin` | **Optional integration, no dependency** | MIT; 2.0.9 (2026-09-12). It injects source-location attributes at build time for Vite, webpack and Next/Turbopack, which React 19 no longer provides at runtime (`_debugSource` was removed). When present, a viewport click resolves to source. |
 | TypeScript compiler API | **Adopt (already a dependency)** | Used for the JSX outline and codemods. No recast, ts-morph or magicast. |
+| 3D tilt/parallax card libraries, spring and spline packages | **Reject (cinematic track)** | Tilt libraries are pointer-driven runtime effects with their own animation loops (a second clock). Velora already owns springs (`easing.ts`), Bézier paths with arc length (02.3) and lens math (`lens.ts`). The rig, depth and optics math stays in zod-only core. |
 
 ## 5. v2.1 principles (in addition to v1 §4 and v2 §4)
 
@@ -125,6 +169,11 @@ Full matrix and sources: `OPEN-SOURCE-EVALUATION.md`.
    - three and R3F live only in the optional `/three` layer. New external dependencies need a layer decision and a fixture in `scripts/check-architecture.mjs`.
 9. **Keyboard-first and accessible.** Every action is in the command registry. The timeline is an ARIA grid, and every keyframe has a spoken label.
 10. **Skills move with features.** Each phase updates the skills it affects. No skill documents unbuilt behavior.
+11. **The stage is not the frame.** The app lays out and rasterizes at one fixed stage (CSS size and DPR), identical in preview and export. The output frame decides only pixels.
+12. **Detect once, store numbers.** Anything read from the user's machine or the live DOM (the native viewport, auto depth classification) is resolved in the studio or CLI and written as concrete values. Rendering never re-detects. Live measurement is allowed only for layout that preview and export share (anchors on the same stage).
+13. **Optics from physics.** One lens owner turns mm into perspective, framing distance and circle of confusion. Presets are data. There are no per-shot fudge factors.
+14. **Host pages are borrowed, not modified.** Every style Velora puts on host DOM goes through one reversible ledger. It is gone after preview, Edit mode or capture ends, and DOM structure is never changed.
+15. **Contracts hold.** No CLI flag, default, envelope or output size changes. The frame clock and shutter sampling are untouched. New behavior arrives only through new optional fields, flags and commands.
 
 ## 6. Craft → feature map
 
@@ -142,12 +191,17 @@ Full matrix and sources: `OPEN-SOURCE-EVALUATION.md`.
 | Premiere and Resolve | Ripple, roll, slip, razor; markers; J/K/L | Composition lanes and trim tools (10); transport stays `useTransportKeys` |
 | React DevTools, code-inspector | Element to source | JSX outline, click-to-source, promote to layer (08) |
 | React Three Fiber | Declarative 3D in React | `ThreeSurface`, 3D animatables, unified camera, `TransformControls` gizmo (09) |
+| Apple product films | The real UI at native laptop density, never a scaled-down desktop | `laptop-14`/`laptop-13`/`user-native` stages, a DPR capture floor and a resolution-budget advisory (12) |
+| Layered UI materials and physical product shots | Hierarchy as height, contact shadows, edges catching light | Depth tiers, extrusion, contact shadows and Blinn–Phong sheen from the evaluated camera (13) |
+| Cinema lens kits and the focus puller | 24/50/85/200 mm, telephoto compression, a rack focus that breathes | `LENS_PRESETS`, framing hold, `camera.zoom`, per-layer depth of field, `buildRackFocus` (14) |
+| Drone operators, telephoto parallax shots, whip pans | Momentum, banking into turns, a locked subject with the world sliding past, a blur-and-settle | `drone-flyover`, `telephoto-parallax-orbit` and `whip-pan-macro` rigs; velocity blur (16) |
+| Camera operators framing a subject | Aim and focus on the actual subject | `data-velora-anchor` targets, a `frame` constraint, `velora anchors` (15) |
 
 ## 7. Phase map
 
 | Phase | File | Theme | Headline outcome | Depends on |
 |---|---|---|---|---|
-| 00 | `PHASE-00-foundations-and-spikes.md` | Foundations | Decisions confirmed, goldens and performance baselines, five spikes, new architecture layers | — |
+| 00 | `PHASE-00-foundations-and-spikes.md` | Foundations | Decisions confirmed, goldens and performance baselines, eight spikes (S6–S8 for the cinematic track), new architecture layers | — |
 | 01 | `PHASE-01-motion-model-v3.md` | Motion model v3 | Auto-bezier keyframes, pivot/skew/non-uniform scale, grade, CSS-variable and color tracks, typed animatables, compiled evaluator | 00 |
 | 02 | `PHASE-02-clips-paths-constraints.md` | Structure and cinematic constraints | Clips (groups in time), staggers, spatial motion paths, links, look-at, follow focus | 01 |
 | 03 | `PHASE-03-edit-ops-and-bridge.md` | Edit operations and bridge | `EditOp` vocabulary, formatting-preserving writer, `velora edit` CLI, secure loopback bridge | 01 (clip/path ops land with 02) |
@@ -159,6 +213,14 @@ Full matrix and sources: `OPEN-SOURCE-EVALUATION.md`.
 | 09 | `PHASE-09-threejs-full-control.md` | Three.js | `/three` entry: deterministic R3F, 3D animatables, GLTF clips, unified camera, 3D gizmos | 04, 06 |
 | 10 | `PHASE-10-composition-editing.md` | The cut | Composition lanes, trim tools, transitions, waveforms, beat snapping | 05 |
 | 11 | `PHASE-11-agent-parity-quality-release.md` | Parity, quality, release | Parity audit, skills, guide v4, performance/a11y/security gates, 1.1.0 | all |
+| 12 | `PHASE-12-laptop-stage-and-hidpi.md` | Cinematic: app stage | `definition.stage` presets (`laptop-14` 1512×982 @2×), user-native detection, DPR capture floor, resolution budget | 00 |
+| 13 | `PHASE-13-depth-layers-and-light.md` | Cinematic: depth | Automatic depth tiers, style ledger, volumetric and projected rendering, edges, contact shadows, camera-reactive sheen | 12, 01 |
+| 14 | `PHASE-14-cinema-optics-and-rack-focus.md` | Cinematic: optics | Lens presets, physical depth of field, `camera.zoom`, framing hold, per-layer focus, rack focus with breathing | 12, 13 |
+| 15 | `PHASE-15-live-dom-target-locking.md` | Cinematic: targets | `data-velora-anchor` targets, transform-free measurement, `frame` constraint, `velora anchors`, capture refusal | 02, 12, 13 |
+| 16 | `PHASE-16-physical-camera-rigs.md` | Cinematic: rigs | Fixed-step follower, banking, drone flyover, telephoto parallax orbit, whip-pan macro, velocity blur | 02, 14, 15 |
+
+Phase numbers are stable identifiers, not execution order. The cinematic track (12–16) was added
+after 00–11 had been numbered, and it lands **before** 11. Phase 11 releases both tracks.
 
 ```
 00 ──► 01 ──► 02 ───────────────┬──► 05 ──► 07 ──┐
@@ -170,6 +232,20 @@ Full matrix and sources: `OPEN-SOURCE-EVALUATION.md`.
 ```
 
 03 can start once 01 lands. It adds clip, path and constraint ops when 02 lands.
+
+Cinematic track (engine work runs in parallel with the editor track 03–10):
+
+```
+00 ──► 12 ──► 13 ──┬──► 14 ──┐
+                   │         ├──► 16 ──► 11
+01 ──► 02 ─────────┴──► 15 ──┘
+```
+
+These edges aren't drawn: 12 → 14, 12 → 15, 01 → 13, 02 → 16.
+
+- Each cinematic phase ships its engine, CLI ops and skills on its own.
+- Its "Editor surface" task (12.6 chip apart) waits for 04 or 06 and lands in whichever of the two phases finishes later.
+- 07's camera-move library lists the rigs once 16 lands.
 
 ## 8. Success metrics
 
@@ -183,6 +259,12 @@ Full matrix and sources: `OPEN-SOURCE-EVALUATION.md`.
 | Interactivity | Scrub ≥ 55 fps median with 60 surfaces and 300 tracks; gizmo drag to repaint ≤ 16 ms p95; commit to HMR-visible ≤ 300 ms local | `playwright.performance.config.ts` (device-specific evidence) |
 | Safety | The bridge rejects 100% of the security fixture suite (token, origin, host, path, size, symlink) | `tests/project/security.test.ts` |
 | Honesty | `velora skills check` clean; no skill or doc describes unbuilt behavior | Every phase |
+| Stage parity | A scene with `stage: laptop-14` lays out identically in preview and export (anchor rects equal ±0.5 px); the app reports `innerWidth 1512` and `devicePixelRatio 2` at export | Phase 12 browser tests |
+| Close-up sharpness | 4× camera magnification on a chart button at `--quality standard` raises no `stage-undersampled` advisory and matches a DPR-2 reference crop | Phase 12/14 browser tests |
+| Host cleanliness | After preview, Edit mode and capture, the host subtree (structure plus every `style` attribute, in-tree and in RouteFrames) is byte-identical to before mount | Phase 13 browser tests |
+| Optics | 200 mm with framing hold keeps the subject within ±1% of its 24 mm size, with corner keystone < 0.3°; a rack lands < 0.5 px with breathing equal to the request ±0.1 pt | Phase 14 tests |
+| Target lock | An orbit locked on an anchor keeps it at frame center ±0.5 px and sharp (< 0.5 px blur) in every exported frame, including mid-shot scroll | Phase 15 browser tests |
+| Rig quality | Rigs bake byte-identically across runs; no velocity discontinuity at waypoints; whip overshoot ≤ 2%; two renders give the same SHAs | Phase 16 tests |
 
 ## 9. How to execute
 
@@ -195,11 +277,14 @@ Full matrix and sources: `OPEN-SOURCE-EVALUATION.md`.
   4. Write `plan/v2.1/artifacts/phase-NN-exit.md` (commands, results, evidence, deviations).
 - Keep v1 and v2 gates green throughout. v2.1 extends; it never forks owners or adds a second clock, renderer, evaluator or validator.
 - New canonical owners are registered in `scripts/check-architecture.mjs` in the phase that implements them, because the checker requires exactly one implementation per owner.
+- Two tracks run side by side after 00: the editor track (01 → 03–10) and the cinematic track (12–16, which needs 01 and 02 for 13, 15 and 16). One person per track avoids conflicts in `src/core/spatial.ts`, the shared owner. Land cinematic changes to it in small, golden-checked commits.
+- Cinematic phases also run the cleanliness check (13) and stage parity (12) as part of "re-run the goldens" from 13 onward.
 
 ## 10. Final status
 
-Planned 2026-11-04. No phase started. Phase 00 begins after decisions D1–D8 are confirmed.
+Planned 2026-11-04; cinematic track (12–16) added the same day. No phase started. Phase 00
+begins after decisions D1–D14 are confirmed.
 
 | Phase | Status | Headline evidence |
 |---|---|---|
-| 00–11 | not started | — |
+| 00–16 | not started | — |

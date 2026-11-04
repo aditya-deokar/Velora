@@ -75,6 +75,21 @@ license, state model and maintenance. v2.1 therefore:
 - **integrates** `code-inspector-plugin` opportunistically, without depending on it;
 - **spikes** two timeline libraries before committing to in-house lanes (S1, Phase 00).
 
+## 6. Cinematic track (Phases 12–16)
+
+The cinematic track adds **no runtime dependencies**. Packages and versions were not re-queried for
+this addendum, so the verdicts below rest on category properties, not on any one release.
+
+| Category | Verdict | Why |
+|---|---|---|
+| 3D tilt/parallax card libraries (pointer-driven) | **Reject** | Their pose comes from the pointer and their own animation loop: a second clock and non-deterministic frames. Velora's depth model (13) derives every pose from the evaluated camera. |
+| Spring and physics animation libraries | **Reject** | Velora already owns a damped spring (`easing.ts`). Rigs need offline, fixed-step simulation baked into data (D13), not a runtime spring driver. |
+| Spline and Bézier utility packages | **Reject** | Phase 02.3 already defines Bézier paths with fixed arc-length lookup tables. A second curve implementation would break the single-owner rule. |
+| Camera and optics math | **Build** | One physical lens owner (`lens.ts`) and one projection owner (`spatial.ts`) already exist. Phase 14 extends them. |
+
+If a later phase proposes a dependency here, it follows the same gates as §1 (license, maintenance,
+one clock, one evaluator, layer fixture in `scripts/check-architecture.mjs`).
+
 ## Sources
 
 - Theatre.js README (license split, private-repo notice): https://github.com/theatre-js/theatre
