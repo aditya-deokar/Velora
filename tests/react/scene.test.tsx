@@ -14,7 +14,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { evaluateScene, transformToCss } from "../../src/core";
+import { evaluateScene, transformToCss, type MotionInput } from "../../src/core";
 import { Motion, Scene, SceneErrorBoundary, Surface } from "../../src/react";
 
 function createObserver(callback: ResizeObserverCallback) {
@@ -555,4 +555,50 @@ it("diagnoses scene content outside any focus owner", async()=>{
  view.rerender(app(true));
  await act(async()=>{});
  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+describe("v2.1 leaf grade, style variables and pivot", () => {
+  const linear = (property: string, from: number, to: number, id = "card") => ({ target: { kind: "surface", id }, property, keyframes: [{ timeMs: 0, value: from, easing: "linear" }, { timeMs: 1000, value: to }] }) as MotionInput["tracks"][number];
+  const leaf = (id: string) => node(id).querySelector<HTMLElement>("[data-velora-content]")!;
+  it("composes artistic blur then grade functions in a fixed order on the content leaf only", () => {
+    render(<Scene focus={{ maxBlur: 0 }} timeMs={500} motion={{ durationMs: 1000, speed: 1, tracks: [linear("grayscale", 0, 1), linear("brightness", 1, 2), linear("blur", 0, 4), linear("hueRotate", 0, 90)] }}>
+      <Surface id="card" style={{ width: 200, height: 100 }}><div>Card</div></Surface>
+    </Scene>);
+    expect(leaf("card").style.filter).toBe("blur(2px) brightness(1.5) hue-rotate(45deg) grayscale(0.5)");
+    expect(node("card").style.filter).toBe("none");
+  });
+  it("writes CSS variables on the outer element so nested Surfaces inherit them", () => {
+    render(<Scene focus={{ maxBlur: 0 }} timeMs={1000} motion={{ durationMs: 1000, speed: 1, tracks: [
+      { target: { kind: "style", id: "group" }, property: "--accent", keyframes: [{ timeMs: 0, value: "#000000" }, { timeMs: 1000, value: "#ff0000" }] },
+      { target: { kind: "style", id: "group" }, property: "--gap", unit: "px", keyframes: [{ timeMs: 0, value: 0 }, { timeMs: 1000, value: 12 }] },
+    ] }}>
+      <Surface id="group" style={{ width: 400, height: 200 }}>
+        <Surface id="child" style={{ width: 200, height: 100 }} content={<div style={{ background: "var(--accent)" }}>Child</div>} />
+      </Surface>
+    </Scene>);
+    expect(node("group").style.getPropertyValue("--accent")).toBe("rgb(255 0 0 / 1)");
+    expect(node("group").style.getPropertyValue("--gap")).toBe("12px");
+    expect(node("child").style.getPropertyValue("--accent")).toBe("");
+    expect(node("group").contains(node("child"))).toBe(true);
+  });
+  it("leaves filter, transform origin and style untouched when the new fields are absent", () => {
+    render(<Scene focus={{ maxBlur: 0 }} timeMs={500} motion={{ durationMs: 1000, speed: 1, tracks: [linear("opacity", 0, 1)] }}>
+      <Surface id="card" style={{ width: 200, height: 100 }}><div>Card</div></Surface>
+    </Scene>);
+    expect(leaf("card").style.filter).toBe("none");
+    expect(node("card").style.transformOrigin).toBe("50% 50%");
+    expect(node("card").getAttribute("style")).not.toContain("--");
+  });
+  it("sets transform-origin from originX/originY and appends skew/scale3d", () => {
+    render(<Scene focus={{ maxBlur: 0 }}><Surface id="card" transform={{ rotateZ: 10, originX: 0, originY: 100, skewX: 5, scaleX: 2 }} style={{ width: 200, height: 100 }}><div>Card</div></Surface></Scene>);
+    expect(node("card").style.transformOrigin).toBe("0% 100%");
+    expect(node("card").style.transform).toContain("scale3d(2, 1, 1) skew(5deg, 0deg)");
+  });
+  it("diagnoses a style target that is not registered", () => {
+    const reports: unknown[][] = [];
+    render(<Scene onDiagnostics={issues => reports.push(issues)} motion={{ durationMs: 1000, speed: 1, tracks: [{ target: { kind: "style", id: "ghost" }, property: "--a", keyframes: [{ timeMs: 0, value: 1 }] }] }}>
+      <Surface id="card" style={{ width: 200, height: 100 }}><div>Card</div></Surface>
+    </Scene>);
+    expect(JSON.stringify(reports.at(-1))).toContain("Style target is not registered: ghost");
+  });
 });

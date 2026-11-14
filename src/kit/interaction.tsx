@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
-import { useChannel, useSceneTime } from "../react";
-import { useBrand, useReveal } from "./brand";
+import { useAnimatableState, useSceneTime } from "../react";
+import { animatableIdFor, useBrand, useReveal, useRevealOverride, useRevealScale } from "./brand";
+const CURSOR_SPEC = { x: { type: "number", default: 0, unit: "px", label: "Cursor x" }, y: { type: "number", default: 0, unit: "px", label: "Cursor y" }, press: { type: "number", default: 0, label: "Press" } } as const;
 import { segmentText } from "./type";
 
 /** SOURCE OF TRUTH: Cursor, Typewriter, Spotlight, Callout.
@@ -18,8 +19,10 @@ const paths: Record<CursorSkin, string> = {
 };
 /** A cursor at (x, y) in its Surface's pixels: from props, or channels `<id>-x`/`<id>-y`; `<id>-press` (0..1) draws a ripple. */
 export function Cursor({ id = "cursor", x, y, skin = "arrow", size = 30, color = "#ffffff", style }: { id?: string; x?: number; y?: number; skin?: CursorSkin; size?: number; color?: string; style?: CSSProperties }) {
-  const cx = useChannel(`${id}-x`, x ?? 0), cy = useChannel(`${id}-y`, y ?? 0);
-  const press = Math.max(0, Math.min(1, useChannel(`${id}-press`, 0)));
+  // Declared as an animatable; channels keep their v2 names <id>-x, <id>-y and <id>-press.
+  const cursor = useAnimatableState(animatableIdFor(id), CURSOR_SPEC, { channels: { x: `${id}-x`, y: `${id}-y`, press: `${id}-press` } });
+  const cx = cursor.animated.has("x") ? cursor.values.x : x ?? 0, cy = cursor.animated.has("y") ? cursor.values.y : y ?? 0;
+  const press = Math.max(0, Math.min(1, cursor.values.press));
   const brand = useBrand();
   const px = x ?? cx, py = y ?? cy;
   return <div data-velora-cursor={skin} style={{ position: "absolute", left: 0, top: 0, transform: `translate(${px}px, ${py}px)`, pointerEvents: "none", zIndex: 10, ...style }}>
@@ -31,11 +34,13 @@ export function Cursor({ id = "cursor", x, y, skin = "arrow", size = 30, color =
   </div>;
 }
 /** Text typed at a steady rate (characters per second) from startMs, with a blinking caret on the scene clock. */
-export function Typewriter({ text, startMs = 0, cps = 18, caret = true, style }: { text: string; startMs?: number; cps?: number; caret?: boolean; style?: CSSProperties }) {
+export function Typewriter({ id, text, startMs = 0, cps = 18, caret = true, style }: { id?: string; text: string; startMs?: number; cps?: number; caret?: boolean; style?: CSSProperties }) {
   const time = useSceneTime();
   // Graphemes keep emoji and combining marks whole; newlines stay.
   const graphemes = segmentText(text, "grapheme").flatMap((line, index) => index ? ["\n", ...line] : line);
-  const shown = Math.max(0, Math.min(graphemes.length, Math.floor(((time - startMs) / 1000) * cps)));
+  // An <id>.reveal track (0..1) scrubs the typing span instead of the prop timing.
+  const typed = useRevealOverride(id, startMs, (graphemes.length / Math.max(1e-6, cps)) * 1000) ?? time;
+  const shown = Math.max(0, Math.min(graphemes.length, Math.floor(((typed - startMs) / 1000) * cps)));
   const blinkOn = Math.floor(time / 530) % 2 === 0 || shown < graphemes.length;
   return <span data-velora-typewriter="" style={{ whiteSpace: "pre-wrap", ...style }}>
     {graphemes.slice(0, shown).join("")}
@@ -52,10 +57,12 @@ export function Spotlight({ width, height, region, amount = 0.6, feather = 40, s
   </div>;
 }
 /** A label at (x, y) with a leader line to (toX, toY); the line draws, then the label rises in. */
-export function Callout({ label, x, y, toX, toY, startMs = 0, durationMs = 800, style }: { label: string; x: number; y: number; toX: number; toY: number; startMs?: number; durationMs?: number; style?: CSSProperties }) {
+export function Callout({ id, label, x, y, toX, toY, startMs = 0, durationMs = 800, style }: { id?: string; label: string; x: number; y: number; toX: number; toY: number; startMs?: number; durationMs?: number; style?: CSSProperties }) {
   const brand = useBrand();
-  const line = useReveal({ startMs, durationMs: durationMs * 0.6 });
-  const text = useReveal({ startMs: startMs + durationMs * 0.35, durationMs: durationMs * 0.65 });
+  const scale = useRevealScale();
+  const override = useRevealOverride(id, startMs, Math.max(durationMs * 0.6 * scale, durationMs * 0.35 + durationMs * 0.65 * scale));
+  const line = useReveal({ startMs, durationMs: durationMs * 0.6 }, 0, override);
+  const text = useReveal({ startMs: startMs + durationMs * 0.35, durationMs: durationMs * 0.65 }, 0, override);
   const left = Math.min(x, toX) - 8, top = Math.min(y, toY) - 8;
   const w = Math.abs(toX - x) + 16, h = Math.abs(toY - y) + 16;
   const length = Math.hypot(toX - x, toY - y);

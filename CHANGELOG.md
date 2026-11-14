@@ -6,6 +6,26 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
 
 ## [Unreleased]
 
+### Added — Motion Model v3 (v2.1 Phase 01, additive; recipes using it need Velora ≥ 1.1)
+- **Auto-bezier keyframes:** keyframe `easing: "auto"` evaluates the outgoing segment as a monotone cubic
+  Hermite through its neighbors (continuous velocity, no overshoot). Smooth tracks and auto segments share
+  one tangent rule (`monotoneTangents`).
+- **Transform additions:** optional `scaleX/Y/Z`, `skewX/Y` and pivot `originX/Y` on Surfaces and surface
+  tracks. Absent fields keep today's CSS strings and matrices exactly.
+- **Leaf grade:** surface `brightness`, `contrast`, `saturate`, `hueRotate` and `grayscale` tracks on content leaves.
+- **Style and color tracks:** `{ kind: "style", id }` tracks animate CSS custom properties (numeric with a unit,
+  or colors); channel tracks accept color keyframes. Colors blend in OKLab with premultiplied alpha and print
+  canonical `rgb(R G B / A)` (`parseCssColor`, `mixColors`).
+- **Animatables:** `useAnimatable(id, spec)` gives any component typed, keyframeable props (number, color,
+  boolean, enum) from channels `<id>.<prop>`. Kit `Cursor`, `ScrollFrame`, `RouteFrame` and `LightSweep`
+  declare theirs with their existing channel names. `Title`, `Counter`, `Typewriter` and `Callout` accept `id`
+  for an `<id>.reveal` override.
+- **Recipe `editor` block:** optional labels, colors, locks and markers that the renderer ignores.
+
+### Changed
+- `evaluateMotion` compiles once per immutable motion object (WeakMap cache). At 300 tracks a cached call
+  is about 1,700x faster than before, and cold parsing is about 40x faster. Outputs are byte-identical.
+
 ### Added — Motion Engine v2
 - **Easing library:** sine, quad, cubic, quart, quint, expo, circ, back, elastic and bounce families
   (`.in`, `.out`, `.inOut`), CSS-parity `{ cubicBezier: [x1, y1, x2, y2] }`, damped `{ spring: { stiffness, damping, mass } }`,

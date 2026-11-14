@@ -78,11 +78,25 @@ export function matrixFor(t: Transform): Matrix {
     0,
     1,
   ];
-  return [rx, ry, rz, scale].reduce(multiply, translate);
+  const steps = [rx, ry, rz, scale];
+  // Mirrors the CSS order exactly: ... scale() scale3d() skew(), appended only when present.
+  if (hasAxisScale(t)) steps.push([t.scaleX ?? 1, 0, 0, 0, 0, t.scaleY ?? 1, 0, 0, 0, 0, t.scaleZ ?? 1, 0, 0, 0, 0, 1]);
+  if (hasSkew(t)) steps.push([1, Math.tan((t.skewX ?? 0) * rad), 0, 0, Math.tan((t.skewY ?? 0) * rad), 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  return steps.reduce(multiply, translate);
+}
+const hasAxisScale = (t: Transform) => t.scaleX !== undefined || t.scaleY !== undefined || t.scaleZ !== undefined;
+const hasSkew = (t: Transform) => t.skewX !== undefined || t.skewY !== undefined;
+/** CSS transform-origin for a transform: the default 50% 50% unless originX/originY is set. */
+export function transformOriginCss(input: TransformInput = {}): string {
+  const t = TransformSchema.parse(input);
+  return `${t.originX ?? 50}% ${t.originY ?? 50}%`;
 }
 export function transformToCss(input: TransformInput = {}): string {
   const t = TransformSchema.parse(input);
-  return `translate3d(${t.x}px, ${t.y}px, ${t.z}px) rotateX(${t.rotateX}deg) rotateY(${t.rotateY}deg) rotateZ(${t.rotateZ}deg) scale(${t.scale})`;
+  let css = `translate3d(${t.x}px, ${t.y}px, ${t.z}px) rotateX(${t.rotateX}deg) rotateY(${t.rotateY}deg) rotateZ(${t.rotateZ}deg) scale(${t.scale})`;
+  if (hasAxisScale(t)) css += ` scale3d(${t.scaleX ?? 1}, ${t.scaleY ?? 1}, ${t.scaleZ ?? 1})`;
+  if (hasSkew(t)) css += ` skew(${t.skewX ?? 0}deg, ${t.skewY ?? 0}deg)`;
+  return css;
 }
 export function evaluateScene(
   input: unknown,
@@ -122,11 +136,16 @@ export function evaluateScene(
         path: id,
         message: "Invalid layout measurement for " + id,
       });
-    const local = matrixFor({
+    // A pivot applies T(o) · M · T(-o), with o the origin's offset from the element center.
+    const pivot = node.transform.originX !== undefined || node.transform.originY !== undefined;
+    const ox = pivot ? (((node.transform.originX ?? 50) - 50) / 100) * (size?.width ?? 0) : 0;
+    const oy = pivot ? (((node.transform.originY ?? 50) - 50) / 100) * (size?.height ?? 0) : 0;
+    const placed = matrixFor({
       ...node.transform,
-      x: node.transform.x + (validOffset ? offsetX : 0),
-      y: node.transform.y + (validOffset ? offsetY : 0),
+      x: node.transform.x + (validOffset ? offsetX : 0) + ox,
+      y: node.transform.y + (validOffset ? offsetY : 0) + oy,
     });
+    const local = pivot && Number.isFinite(ox) && Number.isFinite(oy) ? multiply(placed, [1, 0, 0, -ox, 0, 1, 0, -oy, 0, 0, 1, 0, 0, 0, 0, 1]) : placed;
     const world = multiply(
       node.parentId ? getWorld(node.parentId) : camera,
       local,

@@ -132,6 +132,26 @@ From the cinematic-track request (2026-11-04):
 | D13 | Rig physics | Simulated offline at a fixed 240 Hz step and baked into paths, clips and constraints with provenance. No runtime integrator. Banking is an additive roll clip. | 16 |
 | D14 | DOM targets | Named anchors (`data-velora-anchor`) first. CSS selectors are allowed only when they match exactly one element. Targets are measured transform-free, inside RouteFrames after scroll. A missing or ambiguous target **refuses capture** (`ERR_TARGET_MISSING`), never a guess. | 15 |
 
+**Decision record (Phase 00.1, 2026-11-14).** The maintainer asked to implement Phases 00 and 01, so D1–D14
+are recorded as **accepted at their recommendations** for this work. Explicit per-decision confirmation is
+still pending. It must come before the phase each row names, and D1 and D9 must come before any work past
+Phase 01 (both are stop conditions in Phase 00.1).
+
+| # | Status | Notes |
+|---|---|---|
+| D1 | Accepted (recommendation), confirm before 03 | Bridge design unbuilt; the checker already reserves `src/project/services/**` (bridgeServices) and `src/project/edit.ts` (commands). |
+| D2 | Accepted and implemented (01) | The recipe `editor` block is optional editor-owned metadata; the renderer and `presentPreview` ignore it. |
+| D3 | Accepted (recommendation), confirm before 08 | The `sourceAdapter` layer (`src/project/source.ts`) is reserved. |
+| D4 | Accepted (recommendation), confirm before 09 | The `three` layer allows only `three` and `@react-three/fiber`; nothing is installed yet. |
+| D5 | Accepted (recommendation), confirm before 11 | Guide stays version 3 through 01. |
+| D6 | Open: S1 not run | In-house stays the default until spike S1 reports. |
+| D7 | Accepted (recommendation) | Phase 01 changes are additive within recipe version 1 and scene version 3. |
+| D8 | Accepted and enforced (00) | The architecture rule `gsap-ban` rejects `gsap` and `@gsap/*` in every layer. |
+| D9 | Accepted (recommendation), confirm before 12 | Stop condition if declined. |
+| D10 | Open: S7 not run | Numbers pending. |
+| D11 | Accepted (recommendation), confirm before 13; S6 not run | |
+| D12–D14 | Accepted (recommendation), confirm before 14–16 | |
+
 ## 4. Open-source verdict (summary)
 
 No existing open-source editor can be adopted wholesale without breaking a Velora invariant.
@@ -282,9 +302,11 @@ These edges aren't drawn: 12 → 14, 12 → 15, 01 → 13, 02 → 16.
 
 ## 10. Final status
 
-Planned 2026-11-04; cinematic track (12–16) added the same day. No phase started. Phase 00
-begins after decisions D1–D14 are confirmed.
+Planned 2026-11-04; cinematic track (12–16) added the same day. Phases 00 and 01 were implemented
+on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 
 | Phase | Status | Headline evidence |
 |---|---|---|
-| 00–16 | not started | — |
+| 00 | done except spikes | Goldens (motion, spatial, optics/shot, format corpus, capture) and `scripts/golden.mjs`; baselines; v2.1 checker layers. Spikes: S5 partly run, S1–S4 and S6–S8 not run (`artifacts/phase-00-spikes.md`, `artifacts/phase-00-exit.md`). |
+| 01 | done | Motion model v3 with goldens unchanged; compiled evaluator about 1,700x faster than the Phase 00 baseline at 300 tracks (`artifacts/phase-01-exit.md`). |
+| 02–16 | not started | — |

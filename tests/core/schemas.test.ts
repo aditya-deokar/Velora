@@ -20,6 +20,11 @@ describe("editor JSON Schemas", () => {
     for (const term of ["cubicBezier", "spring", "steps", "elastic.out", "channel", "clipRadius", "perspective", "interpolation", "noise", "loop", "$schema"])
       expect(recipe, term).toContain(term);
   });
+  it("describes the v2.1 motion model v3 vocabulary", () => {
+    const recipe = JSON.stringify(jsonSchemas()["scene-recipe.schema.json"]);
+    for (const term of ["\"auto\"", "\"style\"", "scaleX", "skewY", "originX", "brightness", "hueRotate", "grayscale", "markers", "locked", "\"teal\"", "rem"])
+      expect(recipe, term).toContain(term);
+  });
   it("lets recipes and compositions carry a $schema pointer", () => {
     const $schema = "../../../node_modules/@adityadeokar/velora/schemas/scene-recipe.schema.json";
     expect(SceneRecipeSchema.safeParse({ $schema, version: 1, id: "a", title: "A", definition: { scene: { nodes: [] } } }).success).toBe(true);

@@ -65,3 +65,21 @@ describe("canonical local recipes", () => {
     expect(catalog([source()], "demo").issues).toEqual([]);
   });
 });
+
+describe("v2.1 recipe editor block", () => {
+  const base = { version: 1, id: "a", title: "A", definition: { scene: { nodes: [] } } };
+  it("accepts editor-owned metadata and rejects unknown fields", async () => {
+    const { SceneRecipeSchema } = await import("../../src/core/recipes");
+    const editor = { labels: { hero: "Hero card" }, colors: { hero: "teal" }, locked: ["hero"], markers: [{ atMs: 1200, label: "Beat" }] };
+    expect(SceneRecipeSchema.parse({ ...base, editor }).editor).toEqual(editor);
+    for (const bad of [{ colors: { hero: "pink" } }, { labels: { hero: "x".repeat(81) } }, { markers: [{ atMs: -1, label: "x" }] }, { other: 1 },
+      { markers: Array.from({ length: 513 }, () => ({ atMs: 0, label: "m" })) }])
+      expect(SceneRecipeSchema.safeParse({ ...base, editor: bad }).success).toBe(false);
+  });
+  it("is ignored by presentPreview (the definition is unchanged)", async () => {
+    const { presentPreview } = await import("../../src/core/preview");
+    const { SceneRecipeSchema } = await import("../../src/core/recipes");
+    const recipe = SceneRecipeSchema.parse({ ...base, editor: { locked: ["x"] } });
+    expect(presentPreview(recipe.definition)).toEqual(presentPreview(SceneRecipeSchema.parse(base).definition));
+  });
+});

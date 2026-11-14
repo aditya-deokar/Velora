@@ -1,6 +1,8 @@
 import { useMemo, type CSSProperties } from "react";
 import { createRng } from "../core";
-import { useChannel, useSceneTime } from "../react";
+import { useAnimatableState, useSceneTime } from "../react";
+import { animatableIdFor } from "./brand";
+const SWEEP_SPEC = { progress: { type: "number", default: -1, label: "Sweep progress" } } as const;
 import { tint } from "./color";
 import { useBrand } from "./brand";
 
@@ -51,7 +53,7 @@ export function ContactShadow({ width, height = Math.round(width * 0.08), opacit
  */
 export function LightSweep({ channel, startMs = 0, durationMs = 1600, angle = 105, width = 0.22, intensity = 0.35 }: { channel?: string; startMs?: number; durationMs?: number; angle?: number; width?: number; intensity?: number }) {
   const time = useSceneTime();
-  const channelValue = useChannel(channel ?? "", -1);
+  const channelValue = useAnimatableState(animatableIdFor(channel), SWEEP_SPEC, channel ? { channels: { progress: channel } } : {}).values.progress;
   const progress = channel ? channelValue : Math.max(0, Math.min(1, (time - startMs) / Math.max(1, durationMs)));
   if (progress <= 0 || progress >= 1) return null;
   const center = -width * 100 + progress * (100 + width * 200);

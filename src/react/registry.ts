@@ -1,4 +1,4 @@
-import type { Measurement, TransformInput, SceneIssue } from "../core";
+import type { Measurement, TransformInput, SceneIssue, AnimatableSpec } from "../core";
 
 /** SOURCE OF TRUTH: React registration and untransformed layout measurements.
  * WHAT: one ephemeral registry per Scene; entries use mount identity, not public IDs.
@@ -13,6 +13,9 @@ export type Binding = {
   element: HTMLDivElement;
   transform?: TransformInput;
 };
+/** A declared animatable as consumers (the inspector) see it: specs only, never component instances. */
+export type AnimatableEntry = { readonly id: string; readonly spec: AnimatableSpec; readonly owner?: string };
+type AnimatableDeclaration = { id: string; spec: AnimatableSpec; key: string; owner?: symbol };
 function sameObject(a: object | undefined, b: object | undefined) {
   if (a === b) return true;
   if (!a || !b) return false;
@@ -65,6 +68,26 @@ function uncoveredContent(root:Element):boolean {
 
 export function createRegistry() {
   const entries = new Map<symbol, Binding>();
+  const declarations = new Map<symbol, AnimatableDeclaration>();
+  let animatableView: ReadonlyMap<string, AnimatableEntry> = new Map();
+  let animatableIssues: SceneIssue[] = [];
+  // First declaration of an id wins; a later declaration with a different spec is a Scene issue.
+  const rebuildAnimatables = () => {
+    const view = new Map<string, AnimatableEntry>(), keys = new Map<string, string>(), issues: SceneIssue[] = [];
+    for (const declaration of declarations.values()) {
+      const known = keys.get(declaration.id);
+      if (known === undefined) {
+        keys.set(declaration.id, declaration.key);
+        const owner = declaration.owner ? entries.get(declaration.owner)?.id : undefined;
+        view.set(declaration.id, Object.freeze({ id: declaration.id, spec: declaration.spec, ...(owner ? { owner } : {}) }));
+      } else if (known !== declaration.key && !issues.some(issue => issue.path === "animatable." + declaration.id))
+        issues.push({ path: "animatable." + declaration.id, message: `Animatable ${declaration.id} is declared twice with different specs. Give each component its own id or share one spec.` });
+    }
+    const changed = JSON.stringify(issues) !== JSON.stringify(animatableIssues) || JSON.stringify([...view.values()]) !== JSON.stringify([...animatableView.values()]);
+    animatableView = view;
+    animatableIssues = issues;
+    return changed;
+  };
   const measurements = new Map<symbol, Measurement>();
   const listeners = new Set<() => void>();
   let revision = 0;
@@ -114,6 +137,19 @@ export function createRegistry() {
     entries,
     measurements,
     get coverageIssues(){return coverageIssues;},
+    /** Read-only view of declared animatables (id -> spec and owning Surface id). */
+    get animatables(): ReadonlyMap<string, AnimatableEntry> { return animatableView; },
+    get animatableIssues(): SceneIssue[] { return animatableIssues; },
+    declareAnimatable(token: symbol, declaration: AnimatableDeclaration) {
+      const previous = declarations.get(token);
+      if (previous && previous.id === declaration.id && previous.key === declaration.key && previous.owner === declaration.owner) return;
+      declarations.set(token, declaration);
+      if (rebuildAnimatables()) publish();
+    },
+    releaseAnimatable(token: symbol) {
+      if (!declarations.delete(token)) return;
+      if (rebuildAnimatables()) publish();
+    },
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => {
@@ -172,6 +208,7 @@ export function createRegistry() {
       if (changed) {
         coverageDirty=true;
         measure();
+        rebuildAnimatables();
         publish();
       }
     },
@@ -183,6 +220,7 @@ export function createRegistry() {
       coverageDirty=true;
       measurements.delete(token);
       measure();
+      rebuildAnimatables();
       publish();
     },
   };

@@ -221,6 +221,41 @@
                         "type": "number",
                         "exclusiveMinimum": 0,
                         "maximum": 100
+                      },
+                      "scaleX": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 100
+                      },
+                      "scaleY": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 100
+                      },
+                      "scaleZ": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 100
+                      },
+                      "skewX": {
+                        "type": "number",
+                        "minimum": -89,
+                        "maximum": 89
+                      },
+                      "skewY": {
+                        "type": "number",
+                        "minimum": -89,
+                        "maximum": 89
+                      },
+                      "originX": {
+                        "type": "number",
+                        "minimum": -100,
+                        "maximum": 200
+                      },
+                      "originY": {
+                        "type": "number",
+                        "minimum": -100,
+                        "maximum": 200
                       }
                     },
                     "additionalProperties": false
@@ -289,13 +324,25 @@
                           "rotateY",
                           "rotateZ",
                           "scale",
+                          "scaleX",
+                          "scaleY",
+                          "scaleZ",
+                          "skewX",
+                          "skewY",
+                          "originX",
+                          "originY",
                           "opacity",
                           "blur",
                           "clipTop",
                           "clipRight",
                           "clipBottom",
                           "clipLeft",
-                          "clipRadius"
+                          "clipRadius",
+                          "brightness",
+                          "contrast",
+                          "saturate",
+                          "hueRotate",
+                          "grayscale"
                         ]
                       },
                       "keyframes": {
@@ -315,132 +362,140 @@
                               "default": "cinematic",
                               "anyOf": [
                                 {
-                                  "type": "string",
-                                  "enum": [
-                                    "linear",
-                                    "easeInOut",
-                                    "cinematic",
-                                    "hold",
-                                    "sine.in",
-                                    "sine.out",
-                                    "sine.inOut",
-                                    "quad.in",
-                                    "quad.out",
-                                    "quad.inOut",
-                                    "cubic.in",
-                                    "cubic.out",
-                                    "cubic.inOut",
-                                    "quart.in",
-                                    "quart.out",
-                                    "quart.inOut",
-                                    "quint.in",
-                                    "quint.out",
-                                    "quint.inOut",
-                                    "expo.in",
-                                    "expo.out",
-                                    "expo.inOut",
-                                    "circ.in",
-                                    "circ.out",
-                                    "circ.inOut",
-                                    "back.in",
-                                    "back.out",
-                                    "back.inOut",
-                                    "elastic.in",
-                                    "elastic.out",
-                                    "elastic.inOut",
-                                    "bounce.in",
-                                    "bounce.out",
-                                    "bounce.inOut"
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "linear",
+                                        "easeInOut",
+                                        "cinematic",
+                                        "hold",
+                                        "sine.in",
+                                        "sine.out",
+                                        "sine.inOut",
+                                        "quad.in",
+                                        "quad.out",
+                                        "quad.inOut",
+                                        "cubic.in",
+                                        "cubic.out",
+                                        "cubic.inOut",
+                                        "quart.in",
+                                        "quart.out",
+                                        "quart.inOut",
+                                        "quint.in",
+                                        "quint.out",
+                                        "quint.inOut",
+                                        "expo.in",
+                                        "expo.out",
+                                        "expo.inOut",
+                                        "circ.in",
+                                        "circ.out",
+                                        "circ.inOut",
+                                        "back.in",
+                                        "back.out",
+                                        "back.inOut",
+                                        "elastic.in",
+                                        "elastic.out",
+                                        "elastic.inOut",
+                                        "bounce.in",
+                                        "bounce.out",
+                                        "bounce.inOut"
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "cubicBezier": {
+                                          "type": "array",
+                                          "prefixItems": [
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "cubicBezier"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "spring": {
+                                          "type": "object",
+                                          "properties": {
+                                            "stiffness": {
+                                              "default": 170,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 10000
+                                            },
+                                            "damping": {
+                                              "default": 26,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 1000
+                                            },
+                                            "mass": {
+                                              "default": 1,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 100
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "required": [
+                                        "spring"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "steps": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 240
+                                        },
+                                        "jump": {
+                                          "default": "end",
+                                          "type": "string",
+                                          "enum": [
+                                            "start",
+                                            "end"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "steps"
+                                      ],
+                                      "additionalProperties": false
+                                    }
                                   ]
                                 },
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "cubicBezier": {
-                                      "type": "array",
-                                      "prefixItems": [
-                                        {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 1
-                                        },
-                                        {
-                                          "type": "number",
-                                          "minimum": -5,
-                                          "maximum": 5
-                                        },
-                                        {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 1
-                                        },
-                                        {
-                                          "type": "number",
-                                          "minimum": -5,
-                                          "maximum": 5
-                                        }
-                                      ]
-                                    }
-                                  },
-                                  "required": [
-                                    "cubicBezier"
-                                  ],
-                                  "additionalProperties": false
-                                },
-                                {
-                                  "type": "object",
-                                  "properties": {
-                                    "spring": {
-                                      "type": "object",
-                                      "properties": {
-                                        "stiffness": {
-                                          "default": 170,
-                                          "type": "number",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 10000
-                                        },
-                                        "damping": {
-                                          "default": 26,
-                                          "type": "number",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 1000
-                                        },
-                                        "mass": {
-                                          "default": 1,
-                                          "type": "number",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 100
-                                        }
-                                      },
-                                      "additionalProperties": false
-                                    }
-                                  },
-                                  "required": [
-                                    "spring"
-                                  ],
-                                  "additionalProperties": false
-                                },
-                                {
-                                  "type": "object",
-                                  "properties": {
-                                    "steps": {
-                                      "type": "integer",
-                                      "minimum": 1,
-                                      "maximum": 240
-                                    },
-                                    "jump": {
-                                      "default": "end",
-                                      "type": "string",
-                                      "enum": [
-                                        "start",
-                                        "end"
-                                      ]
-                                    }
-                                  },
-                                  "required": [
-                                    "steps"
-                                  ],
-                                  "additionalProperties": false
+                                  "type": "string",
+                                  "const": "auto"
                                 }
                               ]
                             }
@@ -676,132 +731,140 @@
                               "default": "cinematic",
                               "anyOf": [
                                 {
-                                  "type": "string",
-                                  "enum": [
-                                    "linear",
-                                    "easeInOut",
-                                    "cinematic",
-                                    "hold",
-                                    "sine.in",
-                                    "sine.out",
-                                    "sine.inOut",
-                                    "quad.in",
-                                    "quad.out",
-                                    "quad.inOut",
-                                    "cubic.in",
-                                    "cubic.out",
-                                    "cubic.inOut",
-                                    "quart.in",
-                                    "quart.out",
-                                    "quart.inOut",
-                                    "quint.in",
-                                    "quint.out",
-                                    "quint.inOut",
-                                    "expo.in",
-                                    "expo.out",
-                                    "expo.inOut",
-                                    "circ.in",
-                                    "circ.out",
-                                    "circ.inOut",
-                                    "back.in",
-                                    "back.out",
-                                    "back.inOut",
-                                    "elastic.in",
-                                    "elastic.out",
-                                    "elastic.inOut",
-                                    "bounce.in",
-                                    "bounce.out",
-                                    "bounce.inOut"
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "linear",
+                                        "easeInOut",
+                                        "cinematic",
+                                        "hold",
+                                        "sine.in",
+                                        "sine.out",
+                                        "sine.inOut",
+                                        "quad.in",
+                                        "quad.out",
+                                        "quad.inOut",
+                                        "cubic.in",
+                                        "cubic.out",
+                                        "cubic.inOut",
+                                        "quart.in",
+                                        "quart.out",
+                                        "quart.inOut",
+                                        "quint.in",
+                                        "quint.out",
+                                        "quint.inOut",
+                                        "expo.in",
+                                        "expo.out",
+                                        "expo.inOut",
+                                        "circ.in",
+                                        "circ.out",
+                                        "circ.inOut",
+                                        "back.in",
+                                        "back.out",
+                                        "back.inOut",
+                                        "elastic.in",
+                                        "elastic.out",
+                                        "elastic.inOut",
+                                        "bounce.in",
+                                        "bounce.out",
+                                        "bounce.inOut"
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "cubicBezier": {
+                                          "type": "array",
+                                          "prefixItems": [
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "cubicBezier"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "spring": {
+                                          "type": "object",
+                                          "properties": {
+                                            "stiffness": {
+                                              "default": 170,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 10000
+                                            },
+                                            "damping": {
+                                              "default": 26,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 1000
+                                            },
+                                            "mass": {
+                                              "default": 1,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 100
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "required": [
+                                        "spring"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "steps": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 240
+                                        },
+                                        "jump": {
+                                          "default": "end",
+                                          "type": "string",
+                                          "enum": [
+                                            "start",
+                                            "end"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "steps"
+                                      ],
+                                      "additionalProperties": false
+                                    }
                                   ]
                                 },
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "cubicBezier": {
-                                      "type": "array",
-                                      "prefixItems": [
-                                        {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 1
-                                        },
-                                        {
-                                          "type": "number",
-                                          "minimum": -5,
-                                          "maximum": 5
-                                        },
-                                        {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 1
-                                        },
-                                        {
-                                          "type": "number",
-                                          "minimum": -5,
-                                          "maximum": 5
-                                        }
-                                      ]
-                                    }
-                                  },
-                                  "required": [
-                                    "cubicBezier"
-                                  ],
-                                  "additionalProperties": false
-                                },
-                                {
-                                  "type": "object",
-                                  "properties": {
-                                    "spring": {
-                                      "type": "object",
-                                      "properties": {
-                                        "stiffness": {
-                                          "default": 170,
-                                          "type": "number",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 10000
-                                        },
-                                        "damping": {
-                                          "default": 26,
-                                          "type": "number",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 1000
-                                        },
-                                        "mass": {
-                                          "default": 1,
-                                          "type": "number",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 100
-                                        }
-                                      },
-                                      "additionalProperties": false
-                                    }
-                                  },
-                                  "required": [
-                                    "spring"
-                                  ],
-                                  "additionalProperties": false
-                                },
-                                {
-                                  "type": "object",
-                                  "properties": {
-                                    "steps": {
-                                      "type": "integer",
-                                      "minimum": 1,
-                                      "maximum": 240
-                                    },
-                                    "jump": {
-                                      "default": "end",
-                                      "type": "string",
-                                      "enum": [
-                                        "start",
-                                        "end"
-                                      ]
-                                    }
-                                  },
-                                  "required": [
-                                    "steps"
-                                  ],
-                                  "additionalProperties": false
+                                  "type": "string",
+                                  "const": "auto"
                                 }
                               ]
                             }
@@ -1034,132 +1097,140 @@
                               "default": "cinematic",
                               "anyOf": [
                                 {
-                                  "type": "string",
-                                  "enum": [
-                                    "linear",
-                                    "easeInOut",
-                                    "cinematic",
-                                    "hold",
-                                    "sine.in",
-                                    "sine.out",
-                                    "sine.inOut",
-                                    "quad.in",
-                                    "quad.out",
-                                    "quad.inOut",
-                                    "cubic.in",
-                                    "cubic.out",
-                                    "cubic.inOut",
-                                    "quart.in",
-                                    "quart.out",
-                                    "quart.inOut",
-                                    "quint.in",
-                                    "quint.out",
-                                    "quint.inOut",
-                                    "expo.in",
-                                    "expo.out",
-                                    "expo.inOut",
-                                    "circ.in",
-                                    "circ.out",
-                                    "circ.inOut",
-                                    "back.in",
-                                    "back.out",
-                                    "back.inOut",
-                                    "elastic.in",
-                                    "elastic.out",
-                                    "elastic.inOut",
-                                    "bounce.in",
-                                    "bounce.out",
-                                    "bounce.inOut"
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "linear",
+                                        "easeInOut",
+                                        "cinematic",
+                                        "hold",
+                                        "sine.in",
+                                        "sine.out",
+                                        "sine.inOut",
+                                        "quad.in",
+                                        "quad.out",
+                                        "quad.inOut",
+                                        "cubic.in",
+                                        "cubic.out",
+                                        "cubic.inOut",
+                                        "quart.in",
+                                        "quart.out",
+                                        "quart.inOut",
+                                        "quint.in",
+                                        "quint.out",
+                                        "quint.inOut",
+                                        "expo.in",
+                                        "expo.out",
+                                        "expo.inOut",
+                                        "circ.in",
+                                        "circ.out",
+                                        "circ.inOut",
+                                        "back.in",
+                                        "back.out",
+                                        "back.inOut",
+                                        "elastic.in",
+                                        "elastic.out",
+                                        "elastic.inOut",
+                                        "bounce.in",
+                                        "bounce.out",
+                                        "bounce.inOut"
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "cubicBezier": {
+                                          "type": "array",
+                                          "prefixItems": [
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "cubicBezier"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "spring": {
+                                          "type": "object",
+                                          "properties": {
+                                            "stiffness": {
+                                              "default": 170,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 10000
+                                            },
+                                            "damping": {
+                                              "default": 26,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 1000
+                                            },
+                                            "mass": {
+                                              "default": 1,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 100
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "required": [
+                                        "spring"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "steps": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 240
+                                        },
+                                        "jump": {
+                                          "default": "end",
+                                          "type": "string",
+                                          "enum": [
+                                            "start",
+                                            "end"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "steps"
+                                      ],
+                                      "additionalProperties": false
+                                    }
                                   ]
                                 },
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "cubicBezier": {
-                                      "type": "array",
-                                      "prefixItems": [
-                                        {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 1
-                                        },
-                                        {
-                                          "type": "number",
-                                          "minimum": -5,
-                                          "maximum": 5
-                                        },
-                                        {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 1
-                                        },
-                                        {
-                                          "type": "number",
-                                          "minimum": -5,
-                                          "maximum": 5
-                                        }
-                                      ]
-                                    }
-                                  },
-                                  "required": [
-                                    "cubicBezier"
-                                  ],
-                                  "additionalProperties": false
-                                },
-                                {
-                                  "type": "object",
-                                  "properties": {
-                                    "spring": {
-                                      "type": "object",
-                                      "properties": {
-                                        "stiffness": {
-                                          "default": 170,
-                                          "type": "number",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 10000
-                                        },
-                                        "damping": {
-                                          "default": 26,
-                                          "type": "number",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 1000
-                                        },
-                                        "mass": {
-                                          "default": 1,
-                                          "type": "number",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 100
-                                        }
-                                      },
-                                      "additionalProperties": false
-                                    }
-                                  },
-                                  "required": [
-                                    "spring"
-                                  ],
-                                  "additionalProperties": false
-                                },
-                                {
-                                  "type": "object",
-                                  "properties": {
-                                    "steps": {
-                                      "type": "integer",
-                                      "minimum": 1,
-                                      "maximum": 240
-                                    },
-                                    "jump": {
-                                      "default": "end",
-                                      "type": "string",
-                                      "enum": [
-                                        "start",
-                                        "end"
-                                      ]
-                                    }
-                                  },
-                                  "required": [
-                                    "steps"
-                                  ],
-                                  "additionalProperties": false
+                                  "type": "string",
+                                  "const": "auto"
                                 }
                               ]
                             }
@@ -1393,132 +1464,1254 @@
                               "default": "cinematic",
                               "anyOf": [
                                 {
-                                  "type": "string",
-                                  "enum": [
-                                    "linear",
-                                    "easeInOut",
-                                    "cinematic",
-                                    "hold",
-                                    "sine.in",
-                                    "sine.out",
-                                    "sine.inOut",
-                                    "quad.in",
-                                    "quad.out",
-                                    "quad.inOut",
-                                    "cubic.in",
-                                    "cubic.out",
-                                    "cubic.inOut",
-                                    "quart.in",
-                                    "quart.out",
-                                    "quart.inOut",
-                                    "quint.in",
-                                    "quint.out",
-                                    "quint.inOut",
-                                    "expo.in",
-                                    "expo.out",
-                                    "expo.inOut",
-                                    "circ.in",
-                                    "circ.out",
-                                    "circ.inOut",
-                                    "back.in",
-                                    "back.out",
-                                    "back.inOut",
-                                    "elastic.in",
-                                    "elastic.out",
-                                    "elastic.inOut",
-                                    "bounce.in",
-                                    "bounce.out",
-                                    "bounce.inOut"
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "linear",
+                                        "easeInOut",
+                                        "cinematic",
+                                        "hold",
+                                        "sine.in",
+                                        "sine.out",
+                                        "sine.inOut",
+                                        "quad.in",
+                                        "quad.out",
+                                        "quad.inOut",
+                                        "cubic.in",
+                                        "cubic.out",
+                                        "cubic.inOut",
+                                        "quart.in",
+                                        "quart.out",
+                                        "quart.inOut",
+                                        "quint.in",
+                                        "quint.out",
+                                        "quint.inOut",
+                                        "expo.in",
+                                        "expo.out",
+                                        "expo.inOut",
+                                        "circ.in",
+                                        "circ.out",
+                                        "circ.inOut",
+                                        "back.in",
+                                        "back.out",
+                                        "back.inOut",
+                                        "elastic.in",
+                                        "elastic.out",
+                                        "elastic.inOut",
+                                        "bounce.in",
+                                        "bounce.out",
+                                        "bounce.inOut"
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "cubicBezier": {
+                                          "type": "array",
+                                          "prefixItems": [
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "cubicBezier"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "spring": {
+                                          "type": "object",
+                                          "properties": {
+                                            "stiffness": {
+                                              "default": 170,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 10000
+                                            },
+                                            "damping": {
+                                              "default": 26,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 1000
+                                            },
+                                            "mass": {
+                                              "default": 1,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 100
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "required": [
+                                        "spring"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "steps": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 240
+                                        },
+                                        "jump": {
+                                          "default": "end",
+                                          "type": "string",
+                                          "enum": [
+                                            "start",
+                                            "end"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "steps"
+                                      ],
+                                      "additionalProperties": false
+                                    }
                                   ]
                                 },
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "cubicBezier": {
-                                      "type": "array",
-                                      "prefixItems": [
-                                        {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 1
-                                        },
-                                        {
-                                          "type": "number",
-                                          "minimum": -5,
-                                          "maximum": 5
-                                        },
-                                        {
-                                          "type": "number",
-                                          "minimum": 0,
-                                          "maximum": 1
-                                        },
-                                        {
-                                          "type": "number",
-                                          "minimum": -5,
-                                          "maximum": 5
-                                        }
-                                      ]
-                                    }
+                                  "type": "string",
+                                  "const": "auto"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "timeMs",
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "interpolation": {
+                        "type": "string",
+                        "enum": [
+                          "segments",
+                          "smooth"
+                        ]
+                      },
+                      "ease": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "linear",
+                              "easeInOut",
+                              "cinematic",
+                              "hold",
+                              "sine.in",
+                              "sine.out",
+                              "sine.inOut",
+                              "quad.in",
+                              "quad.out",
+                              "quad.inOut",
+                              "cubic.in",
+                              "cubic.out",
+                              "cubic.inOut",
+                              "quart.in",
+                              "quart.out",
+                              "quart.inOut",
+                              "quint.in",
+                              "quint.out",
+                              "quint.inOut",
+                              "expo.in",
+                              "expo.out",
+                              "expo.inOut",
+                              "circ.in",
+                              "circ.out",
+                              "circ.inOut",
+                              "back.in",
+                              "back.out",
+                              "back.inOut",
+                              "elastic.in",
+                              "elastic.out",
+                              "elastic.inOut",
+                              "bounce.in",
+                              "bounce.out",
+                              "bounce.inOut"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "cubicBezier": {
+                                "type": "array",
+                                "prefixItems": [
+                                  {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
                                   },
-                                  "required": [
-                                    "cubicBezier"
-                                  ],
-                                  "additionalProperties": false
-                                },
-                                {
-                                  "type": "object",
-                                  "properties": {
-                                    "spring": {
-                                      "type": "object",
-                                      "properties": {
-                                        "stiffness": {
-                                          "default": 170,
-                                          "type": "number",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 10000
-                                        },
-                                        "damping": {
-                                          "default": 26,
-                                          "type": "number",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 1000
-                                        },
-                                        "mass": {
-                                          "default": 1,
-                                          "type": "number",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 100
-                                        }
-                                      },
-                                      "additionalProperties": false
-                                    }
+                                  {
+                                    "type": "number",
+                                    "minimum": -5,
+                                    "maximum": 5
                                   },
-                                  "required": [
-                                    "spring"
-                                  ],
-                                  "additionalProperties": false
+                                  {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": -5,
+                                    "maximum": 5
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "cubicBezier"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "spring": {
+                                "type": "object",
+                                "properties": {
+                                  "stiffness": {
+                                    "default": 170,
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "damping": {
+                                    "default": 26,
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 1000
+                                  },
+                                  "mass": {
+                                    "default": 1,
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 100
+                                  }
                                 },
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "spring"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "steps": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 240
+                              },
+                              "jump": {
+                                "default": "end",
+                                "type": "string",
+                                "enum": [
+                                  "start",
+                                  "end"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "steps"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "noise": {
+                        "type": "object",
+                        "properties": {
+                          "amplitude": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1000
+                          },
+                          "frequency": {
+                            "default": 0.5,
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 30
+                          },
+                          "octaves": {
+                            "default": 2,
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4
+                          },
+                          "seed": {
+                            "default": 0,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 4294967295
+                          }
+                        },
+                        "required": [
+                          "amplitude"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "property",
+                      "keyframes"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "channel"
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "property": {
+                        "type": "string",
+                        "const": "value"
+                      },
+                      "keyframes": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "timeMs": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "value": {
+                              "type": "string",
+                              "maxLength": 128
+                            },
+                            "easing": {
+                              "default": "cinematic",
+                              "anyOf": [
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "steps": {
-                                      "type": "integer",
-                                      "minimum": 1,
-                                      "maximum": 240
-                                    },
-                                    "jump": {
-                                      "default": "end",
+                                  "anyOf": [
+                                    {
                                       "type": "string",
                                       "enum": [
-                                        "start",
-                                        "end"
+                                        "linear",
+                                        "easeInOut",
+                                        "cinematic",
+                                        "hold",
+                                        "sine.in",
+                                        "sine.out",
+                                        "sine.inOut",
+                                        "quad.in",
+                                        "quad.out",
+                                        "quad.inOut",
+                                        "cubic.in",
+                                        "cubic.out",
+                                        "cubic.inOut",
+                                        "quart.in",
+                                        "quart.out",
+                                        "quart.inOut",
+                                        "quint.in",
+                                        "quint.out",
+                                        "quint.inOut",
+                                        "expo.in",
+                                        "expo.out",
+                                        "expo.inOut",
+                                        "circ.in",
+                                        "circ.out",
+                                        "circ.inOut",
+                                        "back.in",
+                                        "back.out",
+                                        "back.inOut",
+                                        "elastic.in",
+                                        "elastic.out",
+                                        "elastic.inOut",
+                                        "bounce.in",
+                                        "bounce.out",
+                                        "bounce.inOut"
                                       ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "cubicBezier": {
+                                          "type": "array",
+                                          "prefixItems": [
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "cubicBezier"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "spring": {
+                                          "type": "object",
+                                          "properties": {
+                                            "stiffness": {
+                                              "default": 170,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 10000
+                                            },
+                                            "damping": {
+                                              "default": 26,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 1000
+                                            },
+                                            "mass": {
+                                              "default": 1,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 100
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "required": [
+                                        "spring"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "steps": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 240
+                                        },
+                                        "jump": {
+                                          "default": "end",
+                                          "type": "string",
+                                          "enum": [
+                                            "start",
+                                            "end"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "steps"
+                                      ],
+                                      "additionalProperties": false
                                     }
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "const": "auto"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "timeMs",
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "interpolation": {
+                        "type": "string",
+                        "enum": [
+                          "segments",
+                          "smooth"
+                        ]
+                      },
+                      "ease": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "linear",
+                              "easeInOut",
+                              "cinematic",
+                              "hold",
+                              "sine.in",
+                              "sine.out",
+                              "sine.inOut",
+                              "quad.in",
+                              "quad.out",
+                              "quad.inOut",
+                              "cubic.in",
+                              "cubic.out",
+                              "cubic.inOut",
+                              "quart.in",
+                              "quart.out",
+                              "quart.inOut",
+                              "quint.in",
+                              "quint.out",
+                              "quint.inOut",
+                              "expo.in",
+                              "expo.out",
+                              "expo.inOut",
+                              "circ.in",
+                              "circ.out",
+                              "circ.inOut",
+                              "back.in",
+                              "back.out",
+                              "back.inOut",
+                              "elastic.in",
+                              "elastic.out",
+                              "elastic.inOut",
+                              "bounce.in",
+                              "bounce.out",
+                              "bounce.inOut"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "cubicBezier": {
+                                "type": "array",
+                                "prefixItems": [
+                                  {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
                                   },
-                                  "required": [
-                                    "steps"
-                                  ],
-                                  "additionalProperties": false
+                                  {
+                                    "type": "number",
+                                    "minimum": -5,
+                                    "maximum": 5
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": -5,
+                                    "maximum": 5
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "cubicBezier"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "spring": {
+                                "type": "object",
+                                "properties": {
+                                  "stiffness": {
+                                    "default": 170,
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "damping": {
+                                    "default": 26,
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 1000
+                                  },
+                                  "mass": {
+                                    "default": 1,
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 100
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "spring"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "steps": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 240
+                              },
+                              "jump": {
+                                "default": "end",
+                                "type": "string",
+                                "enum": [
+                                  "start",
+                                  "end"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "steps"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "noise": {
+                        "type": "object",
+                        "properties": {
+                          "amplitude": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1000
+                          },
+                          "frequency": {
+                            "default": 0.5,
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 30
+                          },
+                          "octaves": {
+                            "default": 2,
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4
+                          },
+                          "seed": {
+                            "default": 0,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 4294967295
+                          }
+                        },
+                        "required": [
+                          "amplitude"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "property",
+                      "keyframes"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "style"
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "property": {
+                        "type": "string",
+                        "pattern": "^--[a-zA-Z][a-zA-Z0-9-]{0,63}$"
+                      },
+                      "keyframes": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "timeMs": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "value": {
+                              "type": "number"
+                            },
+                            "easing": {
+                              "default": "cinematic",
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "linear",
+                                        "easeInOut",
+                                        "cinematic",
+                                        "hold",
+                                        "sine.in",
+                                        "sine.out",
+                                        "sine.inOut",
+                                        "quad.in",
+                                        "quad.out",
+                                        "quad.inOut",
+                                        "cubic.in",
+                                        "cubic.out",
+                                        "cubic.inOut",
+                                        "quart.in",
+                                        "quart.out",
+                                        "quart.inOut",
+                                        "quint.in",
+                                        "quint.out",
+                                        "quint.inOut",
+                                        "expo.in",
+                                        "expo.out",
+                                        "expo.inOut",
+                                        "circ.in",
+                                        "circ.out",
+                                        "circ.inOut",
+                                        "back.in",
+                                        "back.out",
+                                        "back.inOut",
+                                        "elastic.in",
+                                        "elastic.out",
+                                        "elastic.inOut",
+                                        "bounce.in",
+                                        "bounce.out",
+                                        "bounce.inOut"
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "cubicBezier": {
+                                          "type": "array",
+                                          "prefixItems": [
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "cubicBezier"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "spring": {
+                                          "type": "object",
+                                          "properties": {
+                                            "stiffness": {
+                                              "default": 170,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 10000
+                                            },
+                                            "damping": {
+                                              "default": 26,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 1000
+                                            },
+                                            "mass": {
+                                              "default": 1,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 100
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "required": [
+                                        "spring"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "steps": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 240
+                                        },
+                                        "jump": {
+                                          "default": "end",
+                                          "type": "string",
+                                          "enum": [
+                                            "start",
+                                            "end"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "steps"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "const": "auto"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "timeMs",
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "unit": {
+                        "type": "string",
+                        "enum": [
+                          "px",
+                          "%",
+                          "deg",
+                          "em",
+                          "rem",
+                          "vw",
+                          "vh",
+                          ""
+                        ]
+                      },
+                      "interpolation": {
+                        "type": "string",
+                        "enum": [
+                          "segments",
+                          "smooth"
+                        ]
+                      },
+                      "ease": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "linear",
+                              "easeInOut",
+                              "cinematic",
+                              "hold",
+                              "sine.in",
+                              "sine.out",
+                              "sine.inOut",
+                              "quad.in",
+                              "quad.out",
+                              "quad.inOut",
+                              "cubic.in",
+                              "cubic.out",
+                              "cubic.inOut",
+                              "quart.in",
+                              "quart.out",
+                              "quart.inOut",
+                              "quint.in",
+                              "quint.out",
+                              "quint.inOut",
+                              "expo.in",
+                              "expo.out",
+                              "expo.inOut",
+                              "circ.in",
+                              "circ.out",
+                              "circ.inOut",
+                              "back.in",
+                              "back.out",
+                              "back.inOut",
+                              "elastic.in",
+                              "elastic.out",
+                              "elastic.inOut",
+                              "bounce.in",
+                              "bounce.out",
+                              "bounce.inOut"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "cubicBezier": {
+                                "type": "array",
+                                "prefixItems": [
+                                  {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": -5,
+                                    "maximum": 5
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": -5,
+                                    "maximum": 5
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "cubicBezier"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "spring": {
+                                "type": "object",
+                                "properties": {
+                                  "stiffness": {
+                                    "default": 170,
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 10000
+                                  },
+                                  "damping": {
+                                    "default": 26,
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 1000
+                                  },
+                                  "mass": {
+                                    "default": 1,
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 100
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "spring"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "steps": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 240
+                              },
+                              "jump": {
+                                "default": "end",
+                                "type": "string",
+                                "enum": [
+                                  "start",
+                                  "end"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "steps"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      "noise": {
+                        "type": "object",
+                        "properties": {
+                          "amplitude": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1000
+                          },
+                          "frequency": {
+                            "default": 0.5,
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 30
+                          },
+                          "octaves": {
+                            "default": 2,
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4
+                          },
+                          "seed": {
+                            "default": 0,
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 4294967295
+                          }
+                        },
+                        "required": [
+                          "amplitude"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "target",
+                      "property",
+                      "keyframes"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "style"
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "property": {
+                        "type": "string",
+                        "pattern": "^--[a-zA-Z][a-zA-Z0-9-]{0,63}$"
+                      },
+                      "keyframes": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "timeMs": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "value": {
+                              "type": "string",
+                              "maxLength": 128
+                            },
+                            "easing": {
+                              "default": "cinematic",
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "linear",
+                                        "easeInOut",
+                                        "cinematic",
+                                        "hold",
+                                        "sine.in",
+                                        "sine.out",
+                                        "sine.inOut",
+                                        "quad.in",
+                                        "quad.out",
+                                        "quad.inOut",
+                                        "cubic.in",
+                                        "cubic.out",
+                                        "cubic.inOut",
+                                        "quart.in",
+                                        "quart.out",
+                                        "quart.inOut",
+                                        "quint.in",
+                                        "quint.out",
+                                        "quint.inOut",
+                                        "expo.in",
+                                        "expo.out",
+                                        "expo.inOut",
+                                        "circ.in",
+                                        "circ.out",
+                                        "circ.inOut",
+                                        "back.in",
+                                        "back.out",
+                                        "back.inOut",
+                                        "elastic.in",
+                                        "elastic.out",
+                                        "elastic.inOut",
+                                        "bounce.in",
+                                        "bounce.out",
+                                        "bounce.inOut"
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "cubicBezier": {
+                                          "type": "array",
+                                          "prefixItems": [
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 1
+                                            },
+                                            {
+                                              "type": "number",
+                                              "minimum": -5,
+                                              "maximum": 5
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "cubicBezier"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "spring": {
+                                          "type": "object",
+                                          "properties": {
+                                            "stiffness": {
+                                              "default": 170,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 10000
+                                            },
+                                            "damping": {
+                                              "default": 26,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 1000
+                                            },
+                                            "mass": {
+                                              "default": 1,
+                                              "type": "number",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 100
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "required": [
+                                        "spring"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "steps": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 240
+                                        },
+                                        "jump": {
+                                          "default": "end",
+                                          "type": "string",
+                                          "enum": [
+                                            "start",
+                                            "end"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "steps"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "const": "auto"
                                 }
                               ]
                             }
@@ -2002,6 +3195,76 @@
         "image",
         "timeMs"
       ],
+      "additionalProperties": false
+    },
+    "editor": {
+      "type": "object",
+      "properties": {
+        "labels": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "colors": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "teal",
+              "blue",
+              "purple",
+              "gray"
+            ]
+          }
+        },
+        "locked": {
+          "maxItems": 1000,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "markers": {
+          "maxItems": 512,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "atMs": {
+                "type": "number",
+                "minimum": 0
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "required": [
+              "atMs",
+              "label"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
       "additionalProperties": false
     }
   },

@@ -2,6 +2,8 @@ export * from "./scene";
 export * from "./spatial";
 export * from "./motion";
 export * from "./easing";
+export * from "./color";
+export * from "./animatable";
 export * from "./noise";
 export * from "./lens";
 export * from "./shots";

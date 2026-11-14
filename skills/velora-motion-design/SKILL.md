@@ -114,6 +114,13 @@ Expected: three branded scenes that share fonts, colors and motion personality, 
 - **The guided cursor.** Screen-recording tools popularized a smooth cursor with an automatic zoom on each click (`cursor-demo`, `Cursor`).
 - **Springs.** Interface motion in modern design systems favors spring physics over fixed curves; the motion personalities map to spring and easing tables.
 
+## Motion Model v3 (Velora 1.1)
+
+- **Auto-bezier keyframes.** Set a keyframe's `easing` to `"auto"` and its outgoing segment becomes a monotone cubic Hermite through the neighboring keyframes: continuous velocity, never an overshoot. Use it for multi-point moves that should flow through waypoints while other segments keep their own curves. `"auto"` is valid only on numeric keyframes, not on a track `ease`.
+- **Color in OKLab.** Style tracks (`{ kind: "style", id }` with a `--name` property) and channel tracks accept color keyframes (`#rrggbb`, `rgb()`, `hsl()`, `oklab()`, `oklch()`, `transparent`). They blend in OKLab with premultiplied alpha and print canonical `rgb(R G B / A)`, so midpoints never go muddy and frames are deterministic. Named colors are rejected; use hex. Color tracks are segments only (no smooth, unit or noise).
+- **Animatables.** A component declares typed props with `useAnimatable(id, spec)` (number, color, boolean, enum). Each prop reads the channel `<id>.<prop>`: numbers clamp to min/max, booleans switch at 0.5, enums hold the rounded option index, and colors take color keyframes. Without a track the prop shows its spec default.
+- Restraint still applies: animate a color or a grade to support the story (an accent that warms on the reveal), not as decoration on every layer.
+
 ## Related Skills
 
 - `velora-brand`: tokens and motion personality.

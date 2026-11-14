@@ -147,6 +147,13 @@ Frame math: `frame = round(timeMs * fps / 1000)`; one cursor owns elapsed time; 
 - `velora shot --scene <id> --time <ms> --out <png> --json` produces a readable still at output size.
 - Preview scrub of beginning, middle, and end shows no inversion or disappearance.
 
+## Pivot, Skew, Grade and Style Variables (Velora 1.1)
+
+- Transforms (Surface `transform` and surface tracks) accept optional `scaleX`/`scaleY`/`scaleZ` ((0, 100], multiplying `scale`), `skewX`/`skewY` (-89..89 deg) and `originX`/`originY` (-100..200 %, the pivot for rotation, scale and skew; default 50/50). Rotate a card about its corner with `originX: 0, originY: 0`. Absent fields keep the previous CSS and matrices exactly.
+- Per-element grade tracks on surfaces: `brightness`, `contrast`, `saturate` (0..4), `hueRotate` (-360..360 deg) and `grayscale` (0..1). Like opacity and blur they style the content leaf only, so they never flatten 3D. A slow `grayscale` 1 to 0 on the hero card pulls the eye to it.
+- Style tracks write CSS custom properties on a Surface's outer element: `{ "target": { "kind": "style", "id": "card" }, "property": "--accent", "keyframes": [{ "timeMs": 0, "value": "#3b82f6" }, { "timeMs": 1200, "value": "#f97316" }] }`. Host components read `var(--accent)` with no Velora code; descendants inherit it. Numeric style tracks take an optional `unit` (`px`, `%`, `deg`, `em`, `rem`, `vw`, `vh`). The style target must be a registered Surface id.
+- Recipes may carry an optional `editor` block (`labels`, `colors`, `locked`, `markers`). It is editor-owned metadata that the renderer ignores; keep it accurate if you edit it.
+
 ## Related Skills
 
 - `velora`: root index and execution loop.

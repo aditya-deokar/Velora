@@ -22,6 +22,16 @@ export const TransformSchema = z.strictObject({
   rotateY: finite.default(0),
   rotateZ: finite.default(0),
   scale: finite.positive().max(100).default(1),
+  // v2.1 optional, default-less additions: absent fields keep today's CSS and matrices exactly.
+  // Per-axis scale multiplies the uniform scale; skew shears in the surface plane; origin is the
+  // pivot for rotation, scale and skew in percent of the element (absent = 50% 50%).
+  scaleX: finite.positive().max(100).optional(),
+  scaleY: finite.positive().max(100).optional(),
+  scaleZ: finite.positive().max(100).optional(),
+  skewX: finite.min(-89).max(89).optional(),
+  skewY: finite.min(-89).max(89).optional(),
+  originX: finite.min(-100).max(200).optional(),
+  originY: finite.min(-100).max(200).optional(),
 });
 export const NodeSchema = z.strictObject({
   id,

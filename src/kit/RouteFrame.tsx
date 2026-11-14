@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { RouteSchema } from "../core/templates";
-import { useCaptureSettle, useChannel } from "../react";
+import { useAnimatableState, useCaptureSettle } from "../react";
+import { SCROLL_SPEC, animatableIdFor } from "./brand";
 
 /** RouteFrame: a same-origin route of the running app, framed as live material in a Surface.
  * WHAT: an iframe of the host route at a fixed viewport size whose scroll follows a channel track;
@@ -36,8 +37,8 @@ function visibleImagesDecoded(document: Document): Promise<unknown> {
 }
 export function RouteFrame({ route, width, height, scrollChannel, scrollY = 0, freezeAnimations = true, hideScrollbars = true, title, style }: RouteFrameProps) {
   const parsed = RouteSchema.safeParse(route);
-  const channel = useChannel(scrollChannel ?? "", scrollY);
-  const scroll = scrollChannel ? channel : scrollY;
+  const scrollState = useAnimatableState(animatableIdFor(scrollChannel), SCROLL_SPEC, scrollChannel ? { channels: { scroll: scrollChannel } } : {});
+  const scroll = scrollChannel && scrollState.animated.has("scroll") ? scrollState.values.scroll : scrollY;
   const frame = useRef<HTMLIFrameElement>(null);
   const [state, setState] = useState<"loading" | "ready" | "blocked">("loading");
   const loaded = useMemo(() => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; }, [route]);

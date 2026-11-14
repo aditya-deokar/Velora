@@ -17,6 +17,7 @@ import {
   SCENE_BACKGROUND,
   cameraToCss,
   transformToCss,
+  transformOriginCss,
   uniformFocusBlur,
   motionTime,
   type CameraInput,
@@ -26,7 +27,7 @@ import {
   type SceneIssue,
   type TransformInput,
 } from "../core";
-import { SURFACE_VISUAL_PROPERTIES, type MotionInput, type MotionState, type SurfaceVisualProperty } from "../core/motion";
+import { SURFACE_VISUAL_PROPERTIES, motionFingerprint, type MotionInput, type MotionState, type SurfaceVisualProperty } from "../core/motion";
 import { FocusFilter } from "./FocusFilter";
 import { createRegistry, type Registry } from "./registry";
 
@@ -51,8 +52,25 @@ type SceneContextValue = {
   transforms: Map<string, TransformInput>;
   visuals: Map<string, SurfaceVisuals>;
   channels: Readonly<Record<string, number>>;
+  colorChannels: Readonly<Record<string, string>>;
+  styles: Readonly<Record<string, Readonly<Record<string, string>>>>;
   timeMs: number;
 };
+const noStrings: Readonly<Record<string, string>> = Object.freeze({});
+// DEV-only: motion inputs are immutable (core caches their compiled form). Warn once when a host
+// mutates a motion object in place instead of passing a new one.
+const development = (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV === true;
+const seenMotion = new WeakMap<object, string>();
+let warnedMutation = false;
+function checkMotionMutation(motion: MotionInput | undefined) {
+  if (!development || warnedMutation || typeof motion !== "object" || motion === null) return;
+  const print = motionFingerprint(motion), prior = seenMotion.get(motion);
+  seenMotion.set(motion, print);
+  if (prior !== undefined && prior !== print) {
+    warnedMutation = true;
+    console.warn("Velora: a motion object was mutated in place. Pass a new motion object for each change; evaluated frames are cached per object.");
+  }
+}
 const visualKeys: ReadonlySet<string> = new Set(SURFACE_VISUAL_PROPERTIES);
 const emptyMotion: MotionState = { surfaces: {}, camera: {}, focus: {}, channels: {}, issues: [] };
 const SceneContext = createContext<SceneContextValue | null>(null);
@@ -98,6 +116,7 @@ export function Scene({
   useLayout(() => {
     registry.refresh();
   });
+  checkMotionMutation(motion);
   const result = useMemo(() => {
     const bindings = Array.from(registry.entries.values());
     const state = motion ? RESOURCES["evaluate-motion"](motion, timeMs) : emptyMotion;
@@ -132,11 +151,18 @@ export function Scene({
     evaluation.issues.push(
       ...state.issues,
       ...(validated.success && validated.data.focus.maxBlur>0 ? registry.coverageIssues : []),
+      ...registry.animatableIssues,
       ...Object.keys(state.surfaces)
         .filter((id) => !ids.has(id))
         .map((id) => ({
           path: "motion." + id,
           message: "Motion target is not registered: " + id,
+        })),
+      ...Object.keys(state.styles ?? {})
+        .filter((id) => !ids.has(id))
+        .map((id) => ({
+          path: "motion." + id,
+          message: "Style target is not registered: " + id,
         })),
     );
     if (!Number.isFinite(timeMs))
@@ -157,6 +183,8 @@ export function Scene({
         ]),
       ),
       channels: result.state.channels,
+      colorChannels: result.state.colorChannels ?? noStrings,
+      styles: result.state.styles ?? {},
       nodes: new Map(result.evaluation.nodes.map((node) => [node.id, node])),
       transforms: new Map(
         result.validated.success
@@ -280,10 +308,11 @@ export function Surface({
     (content !== undefined || !grouped);
   const uniformBlur = filtering ? uniformFocusBlur(node.focus, node.width, node.height) : 0;
   const visual = context.visuals.get(id) ?? {};
+  const variables = Object.hasOwn(context.styles, id) ? context.styles[id] : undefined;
   const leafStyle: CSSProperties = {
     pointerEvents: style?.pointerEvents ?? "auto",
     opacity: visual.opacity ?? 1,
-    filter: leafFilter(!filtering || uniformBlur === 0 ? "none" : uniformBlur !== undefined ? uniformBlur : `url(#${filterId})`, visual.blur ?? 0),
+    filter: leafGrade(leafFilter(!filtering || uniformBlur === 0 ? "none" : uniformBlur !== undefined ? uniformBlur : `url(#${filterId})`, visual.blur ?? 0), visual),
     ...(leafClip(visual) ? { clipPath: leafClip(visual) } : {}),
   };
   return (
@@ -297,9 +326,11 @@ export function Surface({
         data-velora-depth={node?.worldPosition.z ?? 0}
         style={{
           ...style,
+          // Animated CSS custom properties cascade to descendants (var(--name)) without flattening 3D.
+          ...variables,
           position: style?.position ?? "relative",
           transform: transformToCss(transforms.get(id)),
-          transformOrigin: "50% 50%",
+          transformOrigin: transformOriginCss(transforms.get(id)),
           transformStyle: "preserve-3d",
           filter: "none",
           opacity: 1,
@@ -338,6 +369,19 @@ function leafFilter(focus: "none" | number | string, artistic: number): string {
   if (typeof focus === "number") return `blur(${Math.hypot(focus, artistic)}px)`;
   return `${focus} blur(${artistic}px)`;
 }
+// Per-element grade on the visual leaf, after focus and artistic blur, in a fixed order. With no
+// grade property the filter string is unchanged.
+function leafGrade(filter: string, visual: SurfaceVisuals): string {
+  const grade = [
+    visual.brightness !== undefined ? `brightness(${visual.brightness})` : "",
+    visual.contrast !== undefined ? `contrast(${visual.contrast})` : "",
+    visual.saturate !== undefined ? `saturate(${visual.saturate})` : "",
+    visual.hueRotate !== undefined ? `hue-rotate(${visual.hueRotate}deg)` : "",
+    visual.grayscale !== undefined ? `grayscale(${visual.grayscale})` : "",
+  ].filter(Boolean).join(" ");
+  if (!grade) return filter;
+  return filter === "none" ? grade : `${filter} ${grade}`;
+}
 // True masks on the visual leaf: a circle (iris) takes precedence over an inset (wipe).
 function leafClip(visual: SurfaceVisuals): string | undefined {
   if (visual.clipRadius !== undefined) return `circle(${visual.clipRadius}% at 50% 50%)`;
@@ -357,6 +401,16 @@ export function useChannel(id: string, fallback = 0): number {
   const context = useContext(SceneContext);
   if (!context) throw new Error("useChannel requires a Velora Scene.");
   return Object.hasOwn(context.channels, id) ? context.channels[id] : fallback;
+}
+/** A color channel's canonical rgb() value at the current scene time, or the fallback without a track. */
+export function useColorChannel(id: string, fallback: string): string {
+  const context = useContext(SceneContext);
+  if (!context) throw new Error("useColorChannel requires a Velora Scene.");
+  return Object.hasOwn(context.colorChannels, id) ? context.colorChannels[id] : fallback;
+}
+/** Internal: the Scene context for sibling adapters (animatables); not part of the public API. */
+export function useSceneContext() {
+  return { context: useContext(SceneContext), parent: useContext(ParentContext) };
 }
 /** Motion shares Surface registration; Scene supplies canonical evaluated tracks. */
 export const Motion = Surface;
@@ -397,3 +451,4 @@ function SceneErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
 export { useSceneCapture, useCaptureSettle } from "./capture";
 export { KineticText, kineticStyle, kineticWordIds, type KineticTextProps } from "./kinetic-text";
 export { WebGLSurface, type WebGLSurfaceProps, type WebGLTime } from "./three-bridge";
+export { useAnimatable, useAnimatableState, type AnimatableOptions } from "./animatable";

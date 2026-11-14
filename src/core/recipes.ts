@@ -29,6 +29,14 @@ export const SceneSnapshotSchema=z.strictObject({
  image:z.string().max(128_000).regex(/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/,"Use a Velora-generated PNG snapshot."),
  timeMs:z.number().finite().nonnegative().max(120_000),
 });
+const editorTarget = z.string().min(1).max(128);
+export const EDITOR_LABEL_COLORS = Object.freeze(["red", "orange", "yellow", "green", "teal", "blue", "purple", "gray"] as const);
+export const SceneEditorSchema = z.strictObject({
+  labels: z.record(editorTarget, z.string().max(80)).optional(),
+  colors: z.record(editorTarget, z.enum(EDITOR_LABEL_COLORS)).optional(),
+  locked: z.array(editorTarget).max(1000).optional(),
+  markers: z.array(z.strictObject({ atMs: z.number().finite().nonnegative(), label: z.string().max(80) })).max(512).optional(),
+});
 export const SceneRecipeSchema = z.strictObject({
   // Editor autocomplete: points at the JSON Schema shipped in the package's schemas/ directory.
   $schema: z.string().max(512).optional(),
@@ -45,6 +53,9 @@ export const SceneRecipeSchema = z.strictObject({
   }).optional(),
   definition: PreviewDefinitionSchema,
   snapshot:SceneSnapshotSchema.optional(),
+  // Editor-owned metadata (labels, swatch colors, locks, markers). The renderer and presentPreview
+  // never read it; the studio editor and agents may both write it.
+  editor: SceneEditorSchema.optional(),
 });
 export type SceneRecipe = z.output<typeof SceneRecipeSchema>;
 const BoundRecipeSchema = SceneRecipeSchema.extend({ source: z.string(), binding: z.string() });

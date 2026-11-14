@@ -94,7 +94,10 @@ import {z} from 'zod'; export const CascadeSchema=z.strictObject({}); export fun
   'src/core/easing.ts': '/** SOURCE OF TRUTH: applyEasing.\n * WHAT: easing curves for motion segments.\n * WHY: one evaluator for every renderer.\n * WHERE: consumed by core motion.\n */\nimport { z } from \'zod\'; export function applyEasing(){return 0;}',
   'src/core/noise.ts': '/** SOURCE OF TRUTH: NoiseSchema, sampleNoise.\n * WHAT: seeded noise texture over time.\n * WHY: deterministic handheld camera motion.\n * WHERE: consumed by core motion.\n */\nimport { z } from \'zod\'; export const NoiseSchema=z.strictObject({}); export function sampleNoise(){return 0;}',
   'src/core/lens.ts': '/** SOURCE OF TRUTH: perspectiveForFocalLength, focalLengthForPerspective, lensFor.\n * WHAT: lens millimetres mapped to perspective.\n * WHY: one lens language for every shot.\n * WHERE: consumed by builders and the guide.\n */\nexport function perspectiveForFocalLength(){return 0;} export function focalLengthForPerspective(){return 0;} export function lensFor(){return 0;}',
-  'src/core/motion.ts': '/** SOURCE OF TRUTH: MotionSchema, evaluateMotion, motionDuration, motionTime, cinematicProgress, cinematicTimeAtProgress, sampleFrameTime, loopSeam.\n * WHAT: validate motion and time.\n * WHY: prevent multiple competing clocks.\n * WHERE: consumed by React adapters.\n */\nimport { z } from \'zod\'; export const MotionSchema=z.strictObject({}); export function evaluateMotion(){return 0;} export function motionDuration(){return 0;} export function motionTime(){return 0;} export function cinematicProgress(){return 0;} export function cinematicTimeAtProgress(){return 0;} export function sampleFrameTime(){return 0;} export function loopSeam(){return 0;}',
+  'src/core/color.ts': '/** SOURCE OF TRUTH: parseCssColor, mixColors.\n * WHAT: parse and blend CSS colors.\n * WHY: deterministic perceptual color frames.\n * WHERE: consumed by core motion.\n */\nexport function parseCssColor(){return 0;} export function mixColors(){return 0;}',
+  'src/core/animatable.ts': '/** SOURCE OF TRUTH: AnimatableSpecSchema.\n * WHAT: typed animatable prop specs.\n * WHY: one contract for keyframeable props.\n * WHERE: consumed by the React hook.\n */\nimport { z } from "zod"; export const AnimatableSpecSchema=z.record(z.string(), z.number());',
+  'src/react/animatable.ts': '/** SOURCE OF TRUTH: useAnimatable.\n * WHAT: read typed props at scene time.\n * WHY: components share the motion clock.\n * WHERE: consumed by kit components.\n */\nexport function useAnimatable(){return {};}',
+  'src/core/motion.ts': '/** SOURCE OF TRUTH: MotionSchema, evaluateMotion, motionDuration, motionTime, cinematicProgress, cinematicTimeAtProgress, sampleFrameTime, loopSeam, monotoneTangents.\n * WHAT: validate motion and time.\n * WHY: prevent multiple competing clocks.\n * WHERE: consumed by React adapters.\n */\nimport { z } from \'zod\'; export function monotoneTangents(){return [];} export const MotionSchema=z.strictObject({}); export function evaluateMotion(){return 0;} export function motionDuration(){return 0;} export function motionTime(){return 0;} export function cinematicProgress(){return 0;} export function cinematicTimeAtProgress(){return 0;} export function sampleFrameTime(){return 0;} export function loopSeam(){return 0;}',
   'src/core/index.ts': `export * from './scene'; export { evaluateScene, transformToCss } from './spatial';`,
 };
 const fixture = (file, text, options) => checkArchitecture({ ...valid, [file]: text }, options);
@@ -360,3 +363,51 @@ test('kit may compose core and react', () => {
 test('kit cannot reach project services', () => rejects('src/kit/Frame.tsx', "import {readText} from '../project/services'; export function Frame(){readText('a','b'); return null;}"));
 test('kit cannot reach export services', () => rejects('src/kit/Frame.tsx', "import {openCapture} from '../export/services'; export function Frame(){openCapture({}); return null;}"));
 test('kit cannot read node globals', () => rejects('src/kit/Frame.tsx', "export function Frame(){return process.cwd();}", 'runtime-global'));
+
+// v2.1 Phase 00.5 layers: editor, three, bridgeServices and sourceAdapter, each with precise rule ids.
+test('v2.1 positive fixtures: editor composes preview, three composes React Three Fiber', () => {
+  const issues = checkArchitecture({ ...valid,
+    'src/editor/Inspector.tsx': `import {useState} from 'react'; import {Scene} from '../react'; import {ScenePreview} from '../preview/ScenePreview'; import {applyEasing} from '../core/easing'; export function Inspector(){useState(0); applyEasing(); return <Scene/>;}`,
+    'src/three/ThreeSurface.tsx': `import {Canvas} from '@react-three/fiber'; import {Mesh} from 'three'; import {useChannel} from '../react'; export function ThreeSurface(){useChannel('x'); return <Canvas/>;}`,
+    'src/preview/EditMode.tsx': `export const loadEditor = () => import('../editor/Inspector');`,
+    'src/project/services/bridge.ts': `import {createServer} from 'node:http'; import {atomic} from '../services'; const port = process.env.PORT; createServer();`,
+    'src/project/services.ts': `export const atomic=()=>0;`,
+    'src/project/source.ts': `import ts from 'typescript'; export const outline=()=>ts.version;`,
+    'src/project/edit.ts': `import {outline} from './source'; import {createServer} from './services/bridge'; outline();`,
+  });
+  assert.deepEqual(issues, []);
+});
+for (const [file, text, rule] of [
+  ['src/editor/save.ts', `import {executeProjectCommand} from '../project/commands';`, 'editor-project-boundary'],
+  ['src/editor/save.ts', `import {atomicWrite} from '../project/services';`, 'editor-project-boundary'],
+  ['src/editor/render.ts', `import {executeVideoExport} from '../export/commands';`, 'editor-project-boundary'],
+  ['src/editor/render.ts', `const x = import('../export/services');`, 'editor-project-boundary'],
+  ['src/preview/Shell.tsx', `import {Inspector} from '../editor/Inspector';`, 'editor-lazy-boundary'],
+  ['src/preview/Shell.tsx', `const editor = import('../editor/Inspector');`, 'editor-lazy-boundary'],
+  ['src/preview/EditMode.tsx', `import {Inspector} from '../editor/Inspector';`, 'editor-lazy-boundary'],
+  ['src/editor/Gizmo.tsx', `import {useFrame} from '@react-three/fiber';`, 'editor-three-boundary'],
+  ['src/editor/Gizmo.tsx', `import {Mesh} from 'three';`, 'editor-three-boundary'],
+  ['src/editor/Gizmo.tsx', `import {ThreeSurface} from '../three/ThreeSurface';`, 'editor-three-boundary'],
+  ['src/core/ease.ts', `import gsap from 'gsap';`, 'gsap-ban'],
+  ['src/react/ease.ts', `import {CustomEase} from 'gsap/CustomEase';`, 'gsap-ban'],
+  ['src/editor/ease.ts', `import {useGSAP} from '@gsap/react';`, 'gsap-ban'],
+  ['src/kit/ease.tsx', `const g = import('gsap');`, 'gsap-ban'],
+  ['src/three/ease.ts', `import gsap from 'gsap';`, 'gsap-ban'],
+  ['src/core/color.ts', `import React from 'react';`, 'module-boundary'],
+  ['src/core/color.ts', `import {Canvas} from '@react-three/fiber';`, 'module-boundary'],
+  ['src/three/leak.ts', `import {readFile} from 'node:fs';`, 'module-boundary'],
+  ['src/three/leak.ts', `import {Inspector} from '../editor/Inspector';`, 'module-boundary'],
+  ['src/project/source.ts', `import {readFile} from 'node:fs/promises';`, 'module-boundary'],
+  ['src/project/services/bridge.ts', `import {executeProjectCommand} from '../commands';`, 'module-boundary'],
+]) test(`v2.1 layer rejects ${file}: ${text}`, () => rejects(file, text, rule));
+test('v2.1 editor cannot read Node globals', () => rejects('src/editor/env.ts', 'process.env.HOME;', 'runtime-global'));
+
+test('v2.1 Phase 01 owners cannot be reimplemented elsewhere', () => {
+  for (const text of ['export function parseCssColor(){return 0;}', 'export const mixColors=()=>0;', 'export function monotoneTangents(){return [];}', 'export function useAnimatable(){return {};}'])
+    rejects('src/kit/copied.ts', text, 'canonical-owner');
+  rejects('src/preview/copied.ts', "import {z} from 'zod'; export const AnimatableSpecSchema=z.record(z.string(), z.number());", 'canonical-owner');
+});
+test('a record schema needs key and value schemas to count as an implementation', () => {
+  const doc = '/** SOURCE OF TRUTH: AnimatableSpecSchema.\n * WHAT: typed animatable prop specs.\n * WHY: one contract for keyframeable props.\n * WHERE: consumed by the React hook.\n */\n';
+  assert.ok(fixture('src/core/animatable.ts', doc + "import { z } from 'zod'; export const AnimatableSpecSchema=z.record();").some(issue => issue.rule === 'canonical-presence'));
+});

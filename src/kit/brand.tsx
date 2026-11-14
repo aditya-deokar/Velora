@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type CSSProperties, type ReactNode } from "react";
 import { BrandSchema, DEFAULT_BRAND, EasingSchema, MOTION_PERSONALITIES, applyEasing, type Brand, type BrandInput, type EasingInput } from "../core";
-import { useSceneTime } from "../react";
+import { useAnimatableState, useSceneTime } from "../react";
+import { ANIMATABLE_ID_PATTERN } from "../core";
 
 /** SOURCE OF TRUTH: BrandProvider, BrandMark, useBrand, useReveal.
  * WHAT: brand tokens (velora.brand.json) for every kit component, and the one reveal helper that
@@ -38,9 +39,27 @@ export function useBrand(): Brand {
   return useContext(BrandContext).brand;
 }
 export type RevealTiming = { startMs?: number; durationMs?: number; easing?: EasingInput };
+/** The animatable id for a kit component's id or channel name, when it is a valid animatable id. */
+export function animatableIdFor(name: string | undefined): string | undefined {
+  return name !== undefined && ANIMATABLE_ID_PATTERN.test(name) ? name : undefined;
+}
+/** Scroll offsets shared by ScrollFrame and RouteFrame (one spec, so one channel can drive both). */
+export const SCROLL_SPEC = { scroll: { type: "number", default: 0, unit: "px", label: "Scroll" } } as const;
+const REVEAL_SPEC = { reveal: { type: "number", default: 0, min: 0, max: 1, step: 0.01, label: "Reveal" } } as const;
+/** The brand personality's duration scale (kit components size their reveal spans with it). */
+export function useRevealScale(): number {
+  return MOTION_PERSONALITIES[useBrand().motion].durationScale;
+}
+/** With an `<id>.reveal` track (0..1), the scene time inside a component's reveal span that the
+ * track selects; otherwise undefined and the component keeps its prop timing. */
+export function useRevealOverride(id: string | undefined, startMs: number, spanMs: number): number | undefined {
+  const state = useAnimatableState(animatableIdFor(id), REVEAL_SPEC);
+  return state.animated.has("reveal") ? startMs + state.values.reveal * Math.max(0, spanMs) : undefined;
+}
 /** Eased 0..1 progress of a reveal at the current scene time; personality scales duration and sets the default easing. */
-export function useReveal({ startMs = 0, durationMs = 900, easing }: RevealTiming = {}, index = 0): number {
-  const time = useSceneTime();
+export function useReveal({ startMs = 0, durationMs = 900, easing }: RevealTiming = {}, index = 0, timeOverride?: number): number {
+  const sceneTime = useSceneTime();
+  const time = timeOverride ?? sceneTime;
   const personality = MOTION_PERSONALITIES[useBrand().motion];
   const duration = Math.max(1, durationMs * personality.durationScale);
   const start = startMs + index * personality.staggerMs;
@@ -48,8 +67,9 @@ export function useReveal({ startMs = 0, durationMs = 900, easing }: RevealTimin
   return applyEasing(curve, (time - start) / duration);
 }
 /** A reveal function for many items (lines, words, cards) without calling hooks in loops. */
-export function useRevealer(): (timing: RevealTiming, index?: number) => number {
-  const time = useSceneTime();
+export function useRevealer(timeOverride?: number): (timing: RevealTiming, index?: number) => number {
+  const sceneTime = useSceneTime();
+  const time = timeOverride ?? sceneTime;
   const personality = MOTION_PERSONALITIES[useBrand().motion];
   const fallback = useMemo(() => EasingSchema.parse(personality.easing), [personality]);
   return (timing, index = 0) => {
