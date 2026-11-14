@@ -16,6 +16,7 @@ import { formatOnboarding, terminalWelcome, type TerminalOptions } from "./termi
 import { executeDeliver, executeFrameRender, executeVideoRender, executeFramesRender, executeShotRender, executeCheck, executeSceneSnapshot, executeVideoExport, probeCapturePrerequisites } from "../export/commands";
 import { executeCreateCommand, executeStudioCommand, executeDoctorCommand, executeProjectCommand, executeAudioCommand, executeCaptionsCommand, executeSkillsCommand, executeInspectCommand, executeAssetsCommand, executeTemplateCommand, executeBrandCommand, executeEditorialCommand, type TemplateCommandResult, type BrandCommandResult, type EditorialCommandResult } from "../project/commands";
 import { executeRecipeCommand, type RecipeCommandResult } from "../project/recipes";
+import { executeEditCommand, type EditOperation } from "../project/edit";
 import type { ProjectResult } from "../core/project";
 
 /** SOURCE OF TRUTH: runCli adapter.
@@ -28,7 +29,9 @@ import type { ProjectResult } from "../core/project";
  */
 type Environment = { root: string; port?: string; terminal?: TerminalOptions; progress?: (text: string) => void;
   // Long-running commands (studio) print their ready line through emit and register a stop for Ctrl-C.
-  emit?: (text: string) => void; onShutdown?: (stop: () => Promise<void>) => void };
+  emit?: (text: string) => void; onShutdown?: (stop: () => Promise<void>) => void;
+  // velora edit apply --ops - reads the batch from standard input.
+  readStdin?: () => Promise<string> };
 type Execute = typeof executeProjectCommand;
 type Doctor = (input: { url?: string }, context: { root: string }) => Promise<DoctorResult>;
 type Renderer = typeof executeFrameRender;
@@ -92,8 +95,13 @@ velora transitions describe --type TYPE [--json]
 velora prompts ls [--json]
 velora prompts show --id ID [--json]
 velora create DIR [--name NAME] [--blueprint ID] [--json]
-velora studio --site URL [--port P] [--check] [--project DIR] [--json]
+velora studio --site URL [--port P] [--check] [--edit [--scene ID] [--read-only]] [--project DIR] [--json]
 velora studio init --site URL [--project DIR] [--json]
+velora edit ls --scene ID [--at MS] [--project DIR] [--json]
+velora edit apply --scene ID --ops FILE|- [--expect-sha SHA] [--write] [--project DIR] [--json]
+velora edit key --scene ID --track REF --at MS --value V [--ease E] [--expect-sha SHA] [--write] [--project DIR] [--json]
+velora edit ease --scene ID --track REF --at MS --ease E [--expect-sha SHA] [--write] [--project DIR] [--json]
+velora edit [--scene ID] [--port P] [--read-only] [--no-open] [--url ORIGIN] [--project DIR] [--json]
 velora skills install (--dir PATH | --agent claude|generic) [--agent claude|codex|cursor|generic] [--source PATH] [--json]
 velora skills ls [--dir PATH] [--source PATH] [--json]
 velora skills check [--dir PATH] [--source PATH] [--json]
@@ -136,6 +144,7 @@ const commandUsage: Record<string, string> = {
   transitions: "velora transitions ls [--json]\nvelora transitions describe --type TYPE [--json]\n\nList the entering-side transition catalog, or show one transition with example tracks.\nTransitions declare segment entrances; builders emit tracks to paste into recipe motion.",
   deliver: "velora deliver --composition FILE --targets LIST [--out DIR] [--quality draft|standard|master] [--parallel N] [--no-cache] [--no-stream] [--url ORIGIN] [--project DIR] [--json]\n\nRender every launch asset from one composition into a fresh directory (default deliverables/<id>).\nTargets: youtube, x, x-square, linkedin, reels, instagram-feed, tiktok, shorts, website-hero, readme-gif, og-image, product-hunt (or any delivery preset id).\nEach video uses its preset (size, codec, quality, loudness) and steps rate control until it fits the preset's size budget; website-hero adds an MP4 fallback,\na JPEG poster, embed.html and HeroVideo.tsx; og-image and product-hunt add exact-size stills. deliverables.json records files, SHAs, sizes and warnings.",
   studio: "velora studio --site URL [--port P] [--check] [--project DIR] [--json]\nvelora studio init --site URL [--project DIR] [--json]\n\nAny-site mode for non-React sites (Astro, SvelteKit, Rails, Django, static HTML): a managed studio in your user cache\n(React and Vite never enter your project) served at <origin>/__velora/, with every other path proxied to your site's\nloopback dev server so routes frame same-origin. Scenes, compositions and assets stay in this project.\nRuns in the foreground until Ctrl-C; --check starts it, verifies studio, proxy and framing, then stops.\nRoute-level shots only: the site's own animations are frozen; drive states through routes or query params.",
+  edit: "velora edit ls --scene ID [--at MS] [--project DIR] [--json]\nvelora edit apply --scene ID --ops FILE|- [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit key --scene ID --track REF --at MS --value V [--ease E] [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit ease --scene ID --track REF --at MS --ease E [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit [--scene ID] [--port P] [--read-only] [--no-open] [--url ORIGIN] [--project DIR] [--json]\n\nSurgical, diffable scene edits with exact undo, through the same EditOp vocabulary the studio editor uses.\nls lists tracks, clips, links, constraints and keyframes (--at adds evaluated values). apply, key and ease are dry runs:\nthey print the diff, labels and the inverse batch; --write writes once, compare-and-swap guarded (--expect-sha fails fast if the file changed).\nTrack refs: camera.z, focus.distance, <surface>.<prop>, style:<surface>.--name, channel:<id>, each with an optional @<clip>.\n--ops - reads the batch from stdin; an envelope's inverse can be applied directly to undo.\nWithout a subcommand, edit verifies the dev server, starts the loopback edit bridge (token in the URL fragment) and opens the editor; Ctrl-C stops it.",
   create: "velora create DIR [--name NAME] [--blueprint ID] [--json]\n\nWrite a starter launch studio into a new directory: a blank Vite React host with a branded landing page, velora.brand.json,\nand npm scripts (velora:setup runs init, installs the skills and scaffolds the blueprint, default launch-film-30s).\nFor teams without a React app; film an existing non-React site with velora studio --site.",
   prompts: "velora prompts ls [--json]\nvelora prompts show --id ID [--json]\n\nList the agent prompt library (launch film, feature drop, website hero loop, vertical teaser, cinematic dashboard, changelog, Product Hunt kit),\nor print one prompt to paste into your coding agent. Replace each <placeholder> before sending it.",
   skills: "velora skills install --dir PATH [--agent claude|codex|cursor|generic] [--source PATH] [--json]\nvelora skills ls [--dir PATH] [--source PATH] [--json]\nvelora skills check [--dir PATH] [--source PATH] [--json]\n\nInstall the Velora skills library (idempotent; differing files are ERR_SKILL_CONFLICT), list available/installed skills with version drift, or check front-matter and cross-links.\n--agent prints the registration snippet for that agent without writing config files.",
@@ -511,19 +520,84 @@ async function runCreateCommand(args: string[], environment: Environment, manage
   if (!result.success) return { code: 1, stdout: "", stderr: (json ? JSON.stringify(result) : result.issues.map(humanIssue).join("\n")) + "\n" };
   return { code: 0, stdout: (json ? JSON.stringify(result) : `Created ${result.data.dir} (${result.data.files.length} files, blueprint ${result.data.blueprint}). Next:\n${result.data.next.map(step => "  " + step).join("\n")}`) + "\n", stderr: "" };
 }
+// velora edit: ls/apply/key/ease are dry runs unless --write; without a subcommand it runs the edit bridge
+// in the foreground (Ctrl-C stops it), like studio.
+async function runEditCommand(args: string[], environment: Environment, manager: typeof executeEditCommand, fail: (message: string, code?: string, name?: string) => CliResult): Promise<CliResult> {
+  const grammar: Record<string, { values: string[]; booleans: string[] }> = {
+    ls: { values: ["--scene", "--at", "--project"], booleans: ["--json"] },
+    apply: { values: ["--scene", "--ops", "--expect-sha", "--label", "--project"], booleans: ["--write", "--json"] },
+    key: { values: ["--scene", "--track", "--at", "--value", "--ease", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
+    ease: { values: ["--scene", "--track", "--at", "--ease", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
+    bridge: { values: ["--scene", "--port", "--url", "--project"], booleans: ["--read-only", "--no-open", "--json"] },
+  };
+  const sub = args[0] && !args[0].startsWith("--") ? args[0] : "bridge";
+  if (sub === "bridge" && args[0] && !args[0].startsWith("--")) return fail(`Unknown edit subcommand: ${args[0]}.`, "ERR_UNKNOWN_COMMAND", "edit");
+  if (!Object.hasOwn(grammar, sub) || (sub === "bridge" && args[0] === "bridge")) return fail(`Unknown edit subcommand: ${sub}. Expected ls, apply, key, ease, or flags to start the bridge.`, "ERR_UNKNOWN_COMMAND", "edit");
+  const rest = sub === "bridge" ? args : args.slice(1);
+  const spec = grammar[sub];
+  const flags = new Map<string, string | true>();
+  for (let i = 0; i < rest.length; i++) {
+    const flag = rest[i];
+    if (!spec.values.includes(flag) && !spec.booleans.includes(flag)) return fail(`Unknown option: ${flag}`, "ERR_UNKNOWN_OPTION", "edit");
+    if (flags.has(flag)) return fail(`Duplicate option: ${flag}`, "ERR_DUPLICATE_OPTION", "edit");
+    if (spec.booleans.includes(flag)) { flags.set(flag, true); continue; }
+    const value = rest[++i];
+    if (value === undefined || (value.startsWith("--") && flag !== "--value")) return fail(`Missing value for ${flag}`, "ERR_MISSING_VALUE", "edit");
+    flags.set(flag, value);
+  }
+  for (const flag of ["--at", "--port"]) if (flags.has(flag) && !/^\d+(?:\.\d+)?$/.test(flags.get(flag) as string)) return fail(`${flag} must be a nonnegative number.`, "ERR_MISSING_VALUE", "edit");
+  const json = flags.has("--json");
+  const text = (flag: string) => flags.get(flag) as string | undefined;
+  let opsText: string | undefined;
+  if (text("--ops") === "-") {
+    if (!environment.readStdin) return fail("--ops - needs standard input.", "ERR_MISSING_VALUE", "edit");
+    opsText = await environment.readStdin();
+  }
+  const input = {
+    ...(text("--scene") ? { scene: text("--scene") } : {}), ...(flags.has("--at") ? { at: Number(text("--at")) } : {}),
+    ...(text("--ops") && text("--ops") !== "-" ? { ops: text("--ops") } : {}), ...(opsText !== undefined ? { opsText } : {}),
+    ...(text("--expect-sha") ? { expectSha: text("--expect-sha") } : {}), ...(flags.has("--write") ? { write: true } : {}),
+    ...(text("--track") ? { track: text("--track") } : {}), ...(text("--value") !== undefined ? { value: text("--value") } : {}),
+    ...(text("--ease") ? { ease: text("--ease") } : {}), ...(text("--label") ? { label: text("--label") } : {}),
+    ...(flags.has("--port") ? { port: Number(text("--port")) } : {}), ...(flags.has("--read-only") ? { readOnly: true } : {}),
+    ...(sub === "bridge" ? { launch: !flags.has("--no-open"), url: text("--url") ?? `http://127.0.0.1:${environment.port ?? "5173"}` } : {}),
+  };
+  const log = sub === "bridge" && json && environment.emit ? (entry: Record<string, unknown>) => environment.emit!(JSON.stringify({ log: entry }) + "\n") : undefined;
+  const result = await manager(sub as EditOperation, input, { root: text("--project") ?? environment.root, ...(environment.terminal?.version ? { version: environment.terminal.version } : {}), ...(log ? { log } : {}) });
+  if (!result.success) return { code: 1, stdout: "", stderr: (json ? JSON.stringify(result) : result.issues.map(humanIssue).join("\n")) + "\n" };
+  const { server, ...envelope } = result;
+  const data = result.data as Record<string, unknown>;
+  if (sub === "bridge") {
+    const body = (json ? JSON.stringify(envelope) : `Edit bridge ${data.readOnly ? "(read-only) " : ""}listening on ${data.bridge}\n  Editor: ${data.url}\n  Press Ctrl-C to stop.`) + "\n";
+    if (!server || !environment.emit) { await server?.stop(); return { code: 0, stdout: body, stderr: "" }; }
+    environment.emit(body);
+    environment.onShutdown?.(server.stop);
+    const exit = await server.closed;
+    return { code: exit === 0 || exit === null ? 0 : 1, stdout: "", stderr: "" };
+  }
+  if (json) return { code: 0, stdout: JSON.stringify(envelope) + "\n", stderr: "" };
+  if (sub === "ls") {
+    const tracks = data.tracks as { track: { target: { kind: string; id?: string }; property: string; clip?: string }; keyframes: { atMs: number; value: unknown }[] }[];
+    const lines = tracks.map(entry => `${entry.track.target.id ?? entry.track.target.kind}.${entry.track.property}${entry.track.clip ? "@" + entry.track.clip : ""}\t${entry.keyframes.map(frame => `${frame.atMs}ms=${JSON.stringify(frame.value)}`).join("  ")}`);
+    return { code: 0, stdout: `${data.path} (sha ${String(data.sha).slice(0, 12)}…, ${data.durationMs}ms)\n${lines.join("\n") || "No tracks."}\n`, stderr: "" };
+  }
+  const labels = (data.labels as string[]).map(label => "  " + label).join("\n");
+  const status = data.written ? `Wrote ${data.path} (sha ${String(data.nextSha).slice(0, 12)}…).` : `Dry run: ${data.path} is unchanged. Add --write to apply (--expect-sha ${data.sha}).`;
+  return { code: 0, stdout: `${labels}\n${data.diff || "(no change)"}\n${status}\n`, stderr: "" };
+}
 // Any-site mode: `studio init` records the site project; `studio` provisions and runs the managed studio in the
 // foreground (Ctrl-C stops it); `--check` starts it, verifies studio, proxy and framing, then stops.
 async function runStudioCommand(args: string[], environment: Environment, manager: typeof executeStudioCommand, fail: (message: string, code?: string, name?: string) => CliResult): Promise<CliResult> {
   const init = args[0] === "init";
   const rest = init ? args.slice(1) : args;
   if (!init && rest[0] && !rest[0].startsWith("--")) return fail(`Unknown studio subcommand: ${rest[0]}. Expected init, or flags.`, "ERR_UNKNOWN_COMMAND", "studio");
-  const allowed = init ? ["--site", "--project", "--json"] : ["--site", "--port", "--check", "--project", "--json"];
+  const allowed = init ? ["--site", "--project", "--json"] : ["--site", "--port", "--check", "--edit", "--scene", "--read-only", "--project", "--json"];
   const flags = new Map<string, string | true>();
   for (let i = 0; i < rest.length; i++) {
     const flag = rest[i];
     if (!allowed.includes(flag)) return fail(`Unknown option: ${flag}`, "ERR_UNKNOWN_OPTION", "studio");
     if (flags.has(flag)) return fail(`Duplicate option: ${flag}`, "ERR_DUPLICATE_OPTION", "studio");
-    if (flag === "--json" || flag === "--check") flags.set(flag, true);
+    if (flag === "--json" || flag === "--check" || flag === "--edit" || flag === "--read-only") flags.set(flag, true);
     else {
       const value = rest[++i];
       if (!value || value.startsWith("--")) return fail(`Missing value for ${flag}`, "ERR_MISSING_VALUE", "studio");
@@ -533,7 +607,9 @@ async function runStudioCommand(args: string[], environment: Environment, manage
   if (flags.has("--port") && !/^\d{2,5}$/.test(flags.get("--port") as string)) return fail("--port must be a TCP port number.", "ERR_MISSING_VALUE", "studio");
   const json = flags.has("--json");
   const operation = init ? "studio-init" : flags.has("--check") || !environment.emit ? "studio-check" : "studio-start";
-  const result = await manager(operation, { ...(flags.has("--site") ? { site: flags.get("--site") as string } : {}), ...(flags.has("--port") ? { port: Number(flags.get("--port")) } : {}) },
+  if ((flags.has("--scene") || flags.has("--read-only")) && !flags.has("--edit")) return fail("--scene and --read-only need --edit.", "ERR_INVALID_FLAG_COMBINATION", "studio");
+  const result = await manager(operation, { ...(flags.has("--site") ? { site: flags.get("--site") as string } : {}), ...(flags.has("--port") ? { port: Number(flags.get("--port")) } : {}),
+    ...(flags.has("--edit") ? { edit: true, ...(flags.has("--scene") ? { scene: flags.get("--scene") as string } : {}), ...(flags.has("--read-only") ? { readOnly: true } : {}) } : {}) },
     { root: (flags.get("--project") as string | undefined) ?? environment.root, ...(environment.terminal?.version ? { version: environment.terminal.version } : {}) });
   if (!result.success) return { code: 1, stdout: "", stderr: (json ? JSON.stringify(result) : result.issues.map(humanIssue).join("\n")) + "\n" };
   const { server, ...envelope } = result;
@@ -543,6 +619,7 @@ async function runStudioCommand(args: string[], environment: Environment, manage
       + `\n  Workspace: ${result.data.workspace}${result.data.installed ? ` (installed, ${Math.round((result.data.workspaceBytes ?? 0) / 1048576)} MB)` : ""}`
       + (result.data.checks ?? []).map(check => `\n  ${check.pass ? "ok" : "FAIL"} ${check.id}: ${check.detail}`).join("")
       + result.data.warnings.map(warning => `\n  Warning: ${warning.message}`).join("")
+      + (result.data.editor ? `\n  Editor: ${result.data.editor}` : "")
       + (server ? "\n  Render with --url " + server.origin + ". Press Ctrl-C to stop." : "");
   const body = (json ? JSON.stringify(envelope) : human) + "\n";
   if (!server) return { code: 0, stdout: body, stderr: "" };
@@ -760,7 +837,7 @@ function serverUrl(flags: Map<string, string | true>, environment: Environment):
 function cliVersion(environment: Environment): { version: string } | Record<string, never> {
   return environment.terminal?.version ? { version: environment.terminal.version } : {};
 }
-export async function runCli(argv: string[], environment: Environment, execute: Execute = executeProjectCommand, exporter: typeof executeVideoExport = executeVideoExport, recipes: typeof executeRecipeCommand = executeRecipeCommand, snapshotter:typeof executeSceneSnapshot=executeSceneSnapshot, doctor: Doctor = defaultDoctor, renderer: Renderer = executeFrameRender, audioManager?: AudioManager, captionManager?: CaptionManager, videoRenderer?: VideoRenderer, framesRenderer?: FramesRenderer, shotRenderer?: ShotRenderer, checkRunner?: CheckRunner, skillsManager?: SkillsManager, inspectManager?: InspectManager, assetsManager?: AssetsManager, templateManager?: TemplateManager, brandManager?: BrandManager, editorialManager?: EditorialManager, deliverer?: typeof executeDeliver, creator?: typeof executeCreateCommand, studioManager?: typeof executeStudioCommand): Promise<CliResult> {
+export async function runCli(argv: string[], environment: Environment, execute: Execute = executeProjectCommand, exporter: typeof executeVideoExport = executeVideoExport, recipes: typeof executeRecipeCommand = executeRecipeCommand, snapshotter:typeof executeSceneSnapshot=executeSceneSnapshot, doctor: Doctor = defaultDoctor, renderer: Renderer = executeFrameRender, audioManager?: AudioManager, captionManager?: CaptionManager, videoRenderer?: VideoRenderer, framesRenderer?: FramesRenderer, shotRenderer?: ShotRenderer, checkRunner?: CheckRunner, skillsManager?: SkillsManager, inspectManager?: InspectManager, assetsManager?: AssetsManager, templateManager?: TemplateManager, brandManager?: BrandManager, editorialManager?: EditorialManager, deliverer?: typeof executeDeliver, creator?: typeof executeCreateCommand, studioManager?: typeof executeStudioCommand, editManager?: typeof executeEditCommand): Promise<CliResult> {
   if (argv.length === 1 && ["--version", "-v"].includes(argv[0]))
     return {code:0, stdout:(environment.terminal?.version ?? "development") + "\n", stderr:""};
   if (argv.length === 0 || (argv.length === 1 && ["--help", "-h", "help"].includes(argv[0])))
@@ -795,10 +872,11 @@ export async function runCli(argv: string[], environment: Environment, execute: 
     return {code:0,stdout:(args[0]==="--json"?JSON.stringify({...guide,command:"guide"}):`${VELORA_BRAND.title}\n${VELORA_BRAND.url}\n\n${text}`)+"\n",stderr:""};
   }
   const aliases = { init: "init-project", sync: "sync-project", open: "open-preview", load: "load-project", validate: "validate-project" } as const;
-  if (command !== "snapshot" && command !== "export" && command !== "scenes" && command !== "doctor" && command !== "render" && command !== "audio" && command !== "captions" && command !== "transitions" && command !== "prompts" && command !== "deliver" && command !== "create" && command !== "studio" && command !== "templates" && command !== "new" && command !== "brand" && command !== "compose" && command !== "review" && command !== "frames" && command !== "shot" && command !== "check" && command !== "skills" && command !== "inspect" && command !== "assets" && !Object.hasOwn(aliases, command)) return fail(`Unknown command: ${command}`, "ERR_UNKNOWN_COMMAND");
+  if (command !== "snapshot" && command !== "export" && command !== "scenes" && command !== "doctor" && command !== "render" && command !== "audio" && command !== "captions" && command !== "transitions" && command !== "prompts" && command !== "deliver" && command !== "create" && command !== "studio" && command !== "edit" && command !== "templates" && command !== "new" && command !== "brand" && command !== "compose" && command !== "review" && command !== "frames" && command !== "shot" && command !== "check" && command !== "skills" && command !== "inspect" && command !== "assets" && !Object.hasOwn(aliases, command)) return fail(`Unknown command: ${command}`, "ERR_UNKNOWN_COMMAND");
   if (command === "transitions") return runTransitionsCommand(args, fail);
   if (command === "prompts") return runPromptsCommand(args, fail);
   if (command === "studio") return runStudioCommand(args, environment, studioManager ?? executeStudioCommand, fail);
+  if (command === "edit") return runEditCommand(args, environment, editManager ?? executeEditCommand, fail);
   if (command === "create") return runCreateCommand(args, environment, creator ?? executeCreateCommand, fail);
   if (command === "compose" || command === "review" || (command === "audio" && args[0] === "beats")) return runEditorialCommand(command, args, environment, editorialManager ?? executeEditorialCommand, fail);
   if (command === "brand") return runBrandCommand(args, environment, brandManager ?? executeBrandCommand, fail);

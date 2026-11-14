@@ -139,7 +139,7 @@ Phase 01 (both are stop conditions in Phase 00.1).
 
 | # | Status | Notes |
 |---|---|---|
-| D1 | Accepted (recommendation), confirm before 03 | Bridge design unbuilt; the checker already reserves `src/project/services/**` (bridgeServices) and `src/project/edit.ts` (commands). |
+| D1 | Confirmed 2026-11-14 (instruction to implement Phase 03); implemented | Bridge design unbuilt; the checker already reserves `src/project/services/**` (bridgeServices) and `src/project/edit.ts` (commands). |
 | D2 | Accepted and implemented (01) | The recipe `editor` block is optional editor-owned metadata; the renderer and `presentPreview` ignore it. |
 | D3 | Accepted (recommendation), confirm before 08 | The `sourceAdapter` layer (`src/project/source.ts`) is reserved. |
 | D4 | Accepted (recommendation), confirm before 09 | The `three` layer allows only `three` and `@react-three/fiber`; nothing is installed yet. |
@@ -310,4 +310,5 @@ on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 | 00 | done except spikes | Goldens (motion, spatial, optics/shot, format corpus, capture) and `scripts/golden.mjs`; baselines; v2.1 checker layers. Spikes: S5 partly run, S1–S4 and S6–S8 not run (`artifacts/phase-00-spikes.md`, `artifacts/phase-00-exit.md`). |
 | 01 | done | Motion model v3 with goldens unchanged; compiled evaluator about 1,700x faster than the Phase 00 baseline at 300 tracks (`artifacts/phase-01-exit.md`). |
 | 02 | done | Clips, staggers, position paths, links, lookAt/focusFollow and the orbit rig; goldens unchanged (`artifacts/phase-02-exit.md`). |
-| 03–16 | not started | — |
+| 03 | done | `EditOpSchema`/`applyEdits` with exact inverses, the formatting-preserving writer, `velora edit`, and the secure loopback bridge and watcher (`artifacts/phase-03-exit.md`). S2 not run. |
+| 04–16 | not started | — |

@@ -20,6 +20,7 @@ related-skills:
 - velora-brand
 - velora-looks
 - velora-editing
+- velora-editor
 - velora-init
 - velora-composition
 - velora-scenes
@@ -98,6 +99,7 @@ Every CLI command supports `--help` and `--json`. Exit 0 on success, 1 on operat
 | `velora new scene --template hero-push --id home-hero --route / --json` | `velora-templates` | `velora new scene --template hero-push --id home-hero --route / --json` |
 | `velora prompts ls --json` | `velora-launch` | `velora prompts show --id launch-film --json` |
 | `velora new video --blueprint launch-film-30s --id launch --route / --json` | `velora-templates` | `velora new video --blueprint launch-film-30s --id launch --route / --json` |
+| `velora edit key --scene home-hero --track camera.z --at 1200 --value 400 --json` | `velora-editor` | `velora edit apply --scene home-hero --ops ops.json --expect-sha <sha> --write --json` |
 | `velora review --composition launch.composition.json --json` | `velora-editing` | `velora review --composition launch.composition.json --platform youtube-1080p --json` |
 | `velora compose snap --composition launch.composition.json --to beats --json` | `velora-editing` | `velora compose snap --composition launch.composition.json --to beats --write --json` |
 | `velora audio beats --composition launch.composition.json --json` | `velora-audio` | `velora audio beats --composition launch.composition.json --write-markers --json` |

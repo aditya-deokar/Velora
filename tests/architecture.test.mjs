@@ -98,6 +98,9 @@ import {z} from 'zod'; export const CascadeSchema=z.strictObject({}); export fun
   'src/core/color.ts': '/** SOURCE OF TRUTH: parseCssColor, mixColors.\n * WHAT: parse and blend CSS colors.\n * WHY: deterministic perceptual color frames.\n * WHERE: consumed by core motion.\n */\nexport function parseCssColor(){return 0;} export function mixColors(){return 0;}',
   'src/core/animatable.ts': '/** SOURCE OF TRUTH: AnimatableSpecSchema.\n * WHAT: typed animatable prop specs.\n * WHY: one contract for keyframeable props.\n * WHERE: consumed by the React hook.\n */\nimport { z } from "zod"; export const AnimatableSpecSchema=z.record(z.string(), z.number());',
   'src/react/animatable.ts': '/** SOURCE OF TRUTH: useAnimatable.\n * WHAT: read typed props at scene time.\n * WHY: components share the motion clock.\n * WHERE: consumed by kit components.\n */\nexport function useAnimatable(){return {};}',
+  'src/core/edit.ts': '/** SOURCE OF TRUTH: EditOpSchema, applyEdits.\n * WHAT: typed edit operations and reducer.\n * WHY: one vocabulary for every author.\n * WHERE: consumed by the edit command.\n */\nimport { z } from \'zod\'; export const EditOpSchema=z.discriminatedUnion(\'op\', [z.strictObject({}), z.strictObject({})]); export function applyEdits(){return {};}',
+  'src/core/json.ts': '/** SOURCE OF TRUTH: formatJsonDocument.\n * WHAT: write JSON preserving formatting.\n * WHY: minimal diffs for author files.\n * WHERE: consumed by the edit command.\n */\nexport function formatJsonDocument(){return \'\';}',
+  'src/project/edit.ts': '/** SOURCE OF TRUTH: executeEditCommand.\n * WHAT: apply edit batches to recipes.\n * WHY: one write policy for agents and editors.\n * WHERE: CLI calls this owner.\n */\nexport async function executeEditCommand(){return {};}',
   'src/core/motion.ts': '/** SOURCE OF TRUTH: MotionSchema, evaluateMotion, motionDuration, motionTime, cinematicProgress, cinematicTimeAtProgress, sampleFrameTime, loopSeam, monotoneTangents.\n * WHAT: validate motion and time.\n * WHY: prevent multiple competing clocks.\n * WHERE: consumed by React adapters.\n */\nimport { z } from \'zod\'; export function monotoneTangents(){return [];} export const MotionSchema=z.strictObject({}); export function evaluateMotion(){return 0;} export function motionDuration(){return 0;} export function motionTime(){return 0;} export function cinematicProgress(){return 0;} export function cinematicTimeAtProgress(){return 0;} export function sampleFrameTime(){return 0;} export function loopSeam(){return 0;}',
   'src/core/index.ts': `export * from './scene'; export { evaluateScene, transformToCss } from './spatial';`,
 };
@@ -374,7 +377,12 @@ test('v2.1 positive fixtures: editor composes preview, three composes React Thre
     'src/project/services/bridge.ts': `import {createServer} from 'node:http'; import {atomic} from '../services'; const port = process.env.PORT; createServer();`,
     'src/project/services.ts': `export const atomic=()=>0;`,
     'src/project/source.ts': `import ts from 'typescript'; export const outline=()=>ts.version;`,
-    'src/project/edit.ts': `import {outline} from './source'; import {createServer} from './services/bridge'; outline();`,
+    'src/project/edit.ts': `/** SOURCE OF TRUTH: executeEditCommand.
+ * WHAT: apply edit batches to recipes.
+ * WHY: one write policy for agents and editors.
+ * WHERE: CLI calls this owner.
+ */
+import {outline} from './source'; import {createServer} from './services/bridge'; outline(); export async function executeEditCommand(){return {};}`,
   });
   assert.deepEqual(issues, []);
 });
@@ -416,4 +424,10 @@ test('a record schema needs key and value schemas to count as an implementation'
 test('v2.1 Phase 02 owners cannot be reimplemented elsewhere', () => {
   for (const text of ['export function createCascadeClip(){return {};}', 'export function buildOrbitRig(){return {};}', 'export const resolveConstraints=()=>({});'])
     rejects('src/react/copied.ts', text, 'canonical-owner');
+});
+
+test('v2.1 Phase 03 owners cannot be reimplemented elsewhere', () => {
+  for (const text of ['export function applyEdits(){return {};}', 'export function formatJsonDocument(){return "";}', 'export async function executeEditCommand(){return {};}'])
+    rejects('src/cli/copied.ts', text, 'canonical-owner');
+  rejects('src/preview/copied.ts', "import {z} from 'zod'; export const EditOpSchema=z.discriminatedUnion('op', [z.strictObject({}), z.strictObject({})]);", 'canonical-owner');
 });

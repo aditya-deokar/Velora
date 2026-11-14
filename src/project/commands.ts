@@ -1781,9 +1781,9 @@ export async function previewBase(root: string, url: string): Promise<string> {
  * WHERE: cli `studio`; services own the cache directory, npm, the child process and HTTP probes.
  */
 export type StudioResult =
-  | { success: true; command: "studio"; data: { project: ProjectState; site: string; studio?: string; url?: string; workspace?: string; installed?: boolean; workspaceBytes?: number; checks?: { id: string; pass: boolean; detail: string }[]; warnings: CliIssue[] }; server?: services.StudioServer }
+  | { success: true; command: "studio"; data: { project: ProjectState; site: string; studio?: string; url?: string; editor?: string; bridge?: string; workspace?: string; installed?: boolean; workspaceBytes?: number; checks?: { id: string; pass: boolean; detail: string }[]; warnings: CliIssue[] }; server?: services.StudioServer }
   | { success: false; command: "studio"; issues: CliIssue[]; next: string[] };
-export async function executeStudioCommand(operation: "studio-init" | "studio-start" | "studio-check", input: { site?: string; port?: number }, context: { root: string; version?: string }): Promise<StudioResult> {
+export async function executeStudioCommand(operation: "studio-init" | "studio-start" | "studio-check", input: { site?: string; port?: number; edit?: boolean; scene?: string; readOnly?: boolean }, context: { root: string; version?: string }): Promise<StudioResult> {
   const fail = (code: string, message: string, path?: string): StudioResult => {
     const issues = [normalizeIssue({ code, message, ...(path ? { path } : {}) })];
     return { success: false, command: "studio", issues, next: nextForIssues(issues) };
@@ -1834,6 +1834,14 @@ export async function executeStudioCommand(operation: "studio-init" | "studio-st
       return fail("ERR_STUDIO_FAILED", checks.filter(check => !check.pass).map(check => check.detail).join(" "));
     }
     if (operation === "studio-check") { await server.stop(); return { success: true, command: "studio", data }; }
+    if (input.edit) {
+      // Any-site Edit mode: the bridge lives in the studio process; only the studio origin may call it.
+      const { startSceneBridge, editorUrl } = await import("./edit");
+      const studioServer = server;
+      const bridge = await startSceneBridge(root, { origin: server.origin, readOnly: input.readOnly ?? false, version, projectId: project.projectId });
+      const stop = async () => { await bridge.server.stop(); await studioServer.stop(); };
+      return { success: true, command: "studio", data: { ...data, bridge: bridge.server.origin, editor: editorUrl(data.url, input.scene, bridge.server.port, bridge.token) }, server: { ...server, stop } };
+    }
     return { success: true, command: "studio", data, server };
   } catch (error) {
     await server?.stop();

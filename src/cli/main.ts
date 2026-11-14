@@ -11,6 +11,13 @@ const result = await runCli(process.argv.slice(2), {
   ...(interactive ? {progress:(text: string) => process.stdout.write(text)} : {}),
   port: process.env.APP_PORT ?? process.env.PORT,
   emit: (text: string) => { process.stdout.write(text); },
+  readStdin: () => new Promise<string>((resolve, reject) => {
+    let text = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", chunk => { text += chunk; });
+    process.stdin.on("end", () => resolve(text));
+    process.stdin.on("error", reject);
+  }),
   onShutdown: (stop: () => Promise<void>) => {
     const shutdown = () => { void stop(); };
     process.once("SIGINT", shutdown);

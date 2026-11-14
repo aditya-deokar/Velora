@@ -3,7 +3,7 @@ import { constants, existsSync } from "node:fs";
 import { lstat, realpath, open, opendir, mkdir, rename, link, unlink, copyFile, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { VELORA_PACKAGE } from "../core/branding";
 import { fault } from "./errors";
@@ -234,6 +234,8 @@ export async function removeFile(root: string, target: string): Promise<void> {
   }
 }
 export function newProjectId() { return randomUUID(); }
+/** SHA-256 (hex) of a text as UTF-8: the compare-and-swap identity of a project file revision. */
+export function textSha256(text: string): string { return createHash("sha256").update(text, "utf8").digest("hex"); }
 export function runtimeVersion(): string { return process.version; }
 
 // Real prerequisite probe: resolve true only when the executable starts and

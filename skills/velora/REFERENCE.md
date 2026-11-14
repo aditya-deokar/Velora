@@ -31,12 +31,13 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `new` | `--template`, `--blueprint`, `--id`, `--component`, `--route`, `--set`, `--aspect`, `--duration`, `--title`, `--project`, `--json` | `velora new scene --template hero-push --id home-hero --route / --json` |
 | `transitions` | `--type`, `--json` | `velora transitions ls --json` |
 | `deliver` | `--composition`, `--targets`, `--out`, `--quality`, `--parallel`, `--no-cache`, `--no-stream`, `--url`, `--project`, `--json` | `velora deliver --composition launch.composition.json --targets youtube,reels,website-hero --json` |
-| `studio` | `--site`, `--port`, `--check`, `--project`, `--json` | `velora studio --site http://127.0.0.1:4321 --json` |
+| `studio` | `--site`, `--port`, `--check`, `--edit`, `--scene`, `--read-only`, `--project`, `--json` | `velora studio --site http://127.0.0.1:4321 --json` |
+| `edit` | `--scene`, `--at`, `--ops`, `--expect-sha`, `--write`, `--track`, `--value`, `--ease`, `--label`, `--port`, `--url`, `--read-only`, `--no-open`, `--project`, `--json` | `velora edit key --scene home-hero --track camera.z --at 1200 --value 400 --json` |
 | `create` | `--name`, `--blueprint`, `--json` | `velora create my-launch --name Fieldnote --json` |
 | `prompts` | `--id`, `--json` | `velora prompts show --id launch-film --json` |
 | `skills` | `--dir`, `--agent`, `--source`, `--json` | `velora skills install --dir <path> --json` |
 
-Subcommands: `audio ls|check|beats`, `captions validate|check`, `transitions ls|describe`, `prompts ls|show`, `studio init`, `templates ls|show|check`, `new scene|video`, `brand init|check`, `compose snap`, `skills install|ls|check`, `assets ls|check|add|rm`. Every command supports `--help`; exit `0` ok, `1` operational failure, `2` usage error.
+Subcommands: `audio ls|check|beats`, `captions validate|check`, `transitions ls|describe`, `prompts ls|show`, `studio init`, `templates ls|show|check`, `new scene|video`, `brand init|check`, `compose snap`, `skills install|ls|check`, `assets ls|check|add|rm`, `edit ls|apply|key|ease` (bare `velora edit` starts the edit bridge). Every command supports `--help`; exit `0` ok, `1` operational failure, `2` usage error.
 
 ## Envelope and ERR_* catalog
 
@@ -59,6 +60,9 @@ Success: `{ success: true, command, data, warnings?, next? }`. Failure: `{ succe
 | `ERR_PROMPT_NOT_FOUND` | Prompt library | `velora prompts ls --json` |
 | `ERR_DELIVER_TARGET` | Unknown deliver target | `velora deliver --composition <file> --targets youtube --json` |
 | `ERR_SITE_NOT_LOOPBACK`, `ERR_SITE_UNREACHABLE`, `ERR_SITE_REDIRECT_EXTERNAL`, `ERR_STUDIO_FAILED` | Any-site studio | `velora studio --site <url> --check --json` |
+| `ERR_EDIT_INVALID`, `ERR_EDIT_TARGET`, `ERR_EDIT_UNSUPPORTED` | Edit op failed (path names the op) | `velora edit ls --scene <id> --json` |
+| `ERR_EDIT_CONFLICT` | The file changed since it was read | Re-read with `velora edit ls --scene <id> --json`, then apply again |
+| `ERR_BRIDGE_PORT`, `ERR_BRIDGE_HOST` | Edit bridge could not bind (port in use, non-loopback) | `velora edit --port <n>` |
 | `ERR_BRAND_INVALID`, `ERR_LOOK_INVALID` | Brand file and looks | `velora brand check --json` |
 | `ERR_CODEC_UNAVAILABLE`, `ERR_FFMPEG_FILTER`, `ERR_OUTPUT_UNWRITABLE` | Encoding and output paths | `velora doctor --json`, `velora render --help` |
 | `ERR_FLASH_RISK` | Photosensitivity (WCAG 2.3.1) | `velora check --video <file> --json` |

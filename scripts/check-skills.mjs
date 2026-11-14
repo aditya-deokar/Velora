@@ -12,7 +12,7 @@ const VELORA_SKILLS = [
   'velora-gsap', 'velora-threejs', 'velora-ewmotion', 'velora-typography',
   'velora-transitions', 'velora-audio', 'velora-export', 'velora-debug',
   'velora-performance', 'velora-verify', 'velora-templates', 'velora-cinematography',
-  'velora-brand', 'velora-looks', 'velora-motion-design', 'velora-editing', 'velora-launch',
+  'velora-brand', 'velora-looks', 'velora-motion-design', 'velora-editing', 'velora-launch', 'velora-editor',
 ];
 const REQUIRED_SECTIONS = [
   '## When to Use This Skill',

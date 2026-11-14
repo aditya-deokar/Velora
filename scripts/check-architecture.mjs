@@ -35,6 +35,8 @@ const owners = new Map([
   ['useAnimatable','src/react/animatable.ts'],
   // v2.1 Phase 02 owners: cascade clips, rigs and constraint resolution inside the spatial owner.
   ['createCascadeClip','src/core/choreography.ts'], ['buildOrbitRig','src/core/shots.ts'], ['resolveConstraints','src/core/spatial.ts'],
+  // v2.1 Phase 03 owners: the edit vocabulary and reducer, the formatting-preserving writer and the edit command.
+  ['EditOpSchema','src/core/edit.ts'], ['applyEdits','src/core/edit.ts'], ['formatJsonDocument','src/core/json.ts'], ['executeEditCommand','src/project/edit.ts'],
   ['NoiseSchema','src/core/noise.ts'], ['sampleNoise','src/core/noise.ts'],
   ...['perspectiveForFocalLength','focalLengthForPerspective','lensFor'].map(name=>[name,'src/core/lens.ts']),
   ['evaluateScene', 'src/core/spatial.ts'], ['transformToCss', 'src/core/spatial.ts'],
@@ -188,10 +190,10 @@ export function checkArchitecture(input, { compilerOptions = {} } = {}) {
           let expression = node.initializer;
           while (ts.isCallExpression(expression) && ts.isPropertyAccessExpression(expression.expression)) {
             const receiver = expression.expression.expression;
-            if (ts.isIdentifier(receiver) && ['object', 'strictObject', 'record'].includes(expression.expression.name.text)) {
+            if (ts.isIdentifier(receiver) && ['object', 'strictObject', 'record', 'discriminatedUnion'].includes(expression.expression.name.text)) {
               const declarations = checker.getSymbolAtLocation(receiver)?.declarations ?? [];
               // Objects need a literal shape; records need key and value schemas.
-              const shaped = expression.expression.name.text === 'record' ? expression.arguments.length >= 2 : expression.arguments.some(ts.isObjectLiteralExpression);
+              const shaped = ['record', 'discriminatedUnion'].includes(expression.expression.name.text) ? expression.arguments.length >= 2 : expression.arguments.some(ts.isObjectLiteralExpression);
               implemented = shaped && declarations.some(declaration => {
                 let parent = declaration;
                 while (parent && !ts.isImportDeclaration(parent)) parent = parent.parent;

@@ -22,6 +22,17 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
   for an `<id>.reveal` override.
 - **Recipe `editor` block:** optional labels, colors, locks and markers that the renderer ignores.
 
+### Added — Edit operations and the edit bridge (v2.1 Phase 03)
+- **`velora edit ls|apply|key|ease`:** surgical recipe edits through one typed `EditOp` vocabulary
+  (`EditOpSchema`, `applyEdits`): dry run by default with a diff, labels and the exact inverse batch;
+  `--write` is compare-and-swap guarded, and `--expect-sha` fails fast on a concurrent save.
+- **Formatting-preserving writer:** `formatJsonDocument` keeps author layout, key order, line endings and BOM,
+  so a one-keyframe edit changes one line and undo restores the file.
+- **Edit bridge:** `velora edit` (and `velora studio --site … --edit`) serves the studio editor over loopback
+  with a per-session token, an exact Origin allowlist, Host checks, bounded bodies, read-only mode, an audit
+  log and file-change events.
+- **Skill:** `velora-editor`.
+
 ### Added — Structure and cinematic constraints (v2.1 Phase 02, additive)
 - **Clips:** `motion.clips` group tracks in time (speed, trim, loop count, group ease, nesting up to 4) with
   replace or additive mode. One replace owner per property is enforced. Additive offsets without an owner
