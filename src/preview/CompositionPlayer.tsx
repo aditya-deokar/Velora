@@ -96,7 +96,7 @@ export function CompositionPlayer({ path, document, scenes, bindings, assetUrls,
           const blend = side && layers.blend ? blendStyle(layers.blend.transition.type, layers.blend.progress, side, layers.blend.transition.direction) : {};
           return <div key={segment.id} data-segment={segment.id} data-active={current ? "true" : "false"} aria-hidden={!current}
             style={{ position: "absolute", inset: 0, visibility: current ? "visible" : "hidden", ...blend }}>
-            <SceneErrorBoundary><Scene camera={recipe.definition.scene.camera} focus={recipe.definition.scene.focus} motion={recipe.definition.motion}
+            <SceneErrorBoundary><Scene camera={recipe.definition.scene.camera} focus={recipe.definition.scene.focus} constraints={recipe.definition.scene.constraints} motion={recipe.definition.motion}
               timeMs={current ? localFor(segment.id) : 0} style={{ width: composition.width, height: composition.height }}><Component/></Scene></SceneErrorBoundary>
           </div>;
         })}
@@ -105,7 +105,7 @@ export function CompositionPlayer({ path, document, scenes, bindings, assetUrls,
           const Component = recipe && bindings[recipe.binding];
           if (!recipe || !Component) return null;
           return <div key={track.id} data-overlay={track.id} style={{ position: "absolute", inset: 0, opacity: track.opacity, mixBlendMode: track.blend === "normal" ? undefined : track.blend }}>
-            <SceneErrorBoundary><Scene camera={recipe.definition.scene.camera} focus={recipe.definition.scene.focus} motion={recipe.definition.motion}
+            <SceneErrorBoundary><Scene camera={recipe.definition.scene.camera} focus={recipe.definition.scene.focus} constraints={recipe.definition.scene.constraints} motion={recipe.definition.motion}
               timeMs={session.timeMs - track.startMs + (track.inMs ?? 0)} style={{ width: composition.width, height: composition.height }}><Component/></Scene></SceneErrorBoundary>
           </div>;
         })}

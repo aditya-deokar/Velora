@@ -13,7 +13,7 @@ const sceneDoc = `/** SOURCE OF TRUTH: SceneSchema, TransformSchema.
  * WHY: keep all consumers consistent.
  * WHERE: consumed by spatial evaluator.
  */`;
-const spatialDoc = `/** SOURCE OF TRUTH: evaluateScene, transformToCss, focusForSurface, sampleFocus, focusMask, cameraToCss, uniformFocusBlur.
+const spatialDoc = `/** SOURCE OF TRUTH: evaluateScene, transformToCss, focusForSurface, sampleFocus, focusMask, cameraToCss, uniformFocusBlur, resolveConstraints.
  * WHAT: evaluate transforms and focus.
  * WHY: prevent divergent renderer math.
  * WHERE: consumed by React adapter.
@@ -80,17 +80,18 @@ import {z} from 'zod'; export const ExportVideoSchema=z.strictObject({}); export
  */
 export function executeVideoExport(){return {};} export function executeSceneSnapshot(){return {};}`,
 
- 'src/core/choreography.ts': `/** SOURCE OF TRUTH: CascadeSchema, createCascadeTracks.
+ 'src/core/choreography.ts': `/** SOURCE OF TRUTH: CascadeSchema, createCascadeTracks, createCascadeClip.
  * WHAT: define validated entrances.
  * WHY: prevent duplicate choreography.
  * WHERE: consumed by scene authors.
  */
-import {z} from 'zod'; export const CascadeSchema=z.strictObject({}); export function createCascadeTracks(){return [];}`,
+import {z} from 'zod'; export const CascadeSchema=z.strictObject({}); export function createCascadeTracks(){return [];} export function createCascadeClip(){return {};}`,
 
   'src/core/project.ts': `/** SOURCE OF TRUTH: InitProjectSchema, SyncProjectSchema.\n * WHAT: validate project command inputs.\n * WHY: keep adapters using contracts.\n * WHERE: consumed by trusted commands.\n */\nimport { z } from 'zod'; export const InitProjectSchema=z.strictObject({}); export const SyncProjectSchema=z.strictObject({});`,
   'src/project/commands.ts': `/** SOURCE OF TRUTH: executeProjectCommand.\n * WHAT: execute validated project commands.\n * WHY: protect scoped project state.\n * WHERE: invoked through CLI adapters.\n */\nexport async function executeProjectCommand(){return {};}`, 
   'src/core/scene.ts': `${sceneDoc}\nimport { z } from 'zod';\nexport const TransformSchema = z.strictObject({ x: z.number() });\nexport const SceneSchema = z.strictObject({ transform: TransformSchema }).superRefine(() => {});`,
-  'src/core/spatial.ts': `${spatialDoc}\nimport { SceneSchema } from './scene';\nexport function evaluateScene(input: unknown) { return SceneSchema.parse(input); }\nexport const transformToCss = () => 'none'; export const focusForSurface=()=>0; export const sampleFocus=()=>0; export const focusMask=()=>''; export const cameraToCss=()=>''; export const uniformFocusBlur=()=>0;`,
+  'src/core/spatial.ts': `${spatialDoc}\nimport { SceneSchema } from './scene';\nexport function evaluateScene(input: unknown) { return SceneSchema.parse(input); }\nexport const transformToCss = () => 'none'; export const focusForSurface=()=>0; export const sampleFocus=()=>0; export const focusMask=()=>''; export const cameraToCss=()=>''; export const uniformFocusBlur=()=>0; export const resolveConstraints=()=>({});`,
+  'src/core/shots.ts': '/** SOURCE OF TRUTH: buildOrbitRig.\n * WHAT: compile camera rigs to data.\n * WHY: one rig vocabulary for shots.\n * WHERE: consumed by templates and agents.\n */\nexport function buildOrbitRig(){return {};}',
   'src/core/easing.ts': '/** SOURCE OF TRUTH: applyEasing.\n * WHAT: easing curves for motion segments.\n * WHY: one evaluator for every renderer.\n * WHERE: consumed by core motion.\n */\nimport { z } from \'zod\'; export function applyEasing(){return 0;}',
   'src/core/noise.ts': '/** SOURCE OF TRUTH: NoiseSchema, sampleNoise.\n * WHAT: seeded noise texture over time.\n * WHY: deterministic handheld camera motion.\n * WHERE: consumed by core motion.\n */\nimport { z } from \'zod\'; export const NoiseSchema=z.strictObject({}); export function sampleNoise(){return 0;}',
   'src/core/lens.ts': '/** SOURCE OF TRUTH: perspectiveForFocalLength, focalLengthForPerspective, lensFor.\n * WHAT: lens millimetres mapped to perspective.\n * WHY: one lens language for every shot.\n * WHERE: consumed by builders and the guide.\n */\nexport function perspectiveForFocalLength(){return 0;} export function focalLengthForPerspective(){return 0;} export function lensFor(){return 0;}',
@@ -187,7 +188,7 @@ for (const text of [
 });
 test('empty function or signature cannot satisfy evaluator presence', () => {
   const issues = fixture('src/core/spatial.ts', `${spatialDoc}\nexport function evaluateScene(): void; export function transformToCss() {}`);
-  assert.equal(issues.filter(issue => issue.rule === 'canonical-presence').length, 7);
+  assert.equal(issues.filter(issue => issue.rule === 'canonical-presence').length, 8);
 });
 test('absent owner fails even if declarations are elsewhere', () => {
   const { 'src/core/scene.ts': scene, ...rest } = valid;
@@ -410,4 +411,9 @@ test('v2.1 Phase 01 owners cannot be reimplemented elsewhere', () => {
 test('a record schema needs key and value schemas to count as an implementation', () => {
   const doc = '/** SOURCE OF TRUTH: AnimatableSpecSchema.\n * WHAT: typed animatable prop specs.\n * WHY: one contract for keyframeable props.\n * WHERE: consumed by the React hook.\n */\n';
   assert.ok(fixture('src/core/animatable.ts', doc + "import { z } from 'zod'; export const AnimatableSpecSchema=z.record();").some(issue => issue.rule === 'canonical-presence'));
+});
+
+test('v2.1 Phase 02 owners cannot be reimplemented elsewhere', () => {
+  for (const text of ['export function createCascadeClip(){return {};}', 'export function buildOrbitRig(){return {};}', 'export const resolveConstraints=()=>({});'])
+    rejects('src/react/copied.ts', text, 'canonical-owner');
 });

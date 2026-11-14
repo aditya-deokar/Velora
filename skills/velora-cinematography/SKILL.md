@@ -153,6 +153,14 @@ These techniques are named after where they are commonly taught and recognized; 
 - **The dolly zoom.** Moving the camera while zooming the opposite way, first popularized in 1950s and 1970s suspense films (`dolly-zoom`).
 - **Macro inserts and light sweeps.** Product-film close-ups that isolate one detail before showing context (`macro-detail`, `LightSweep`).
 
+## Look-At, Follow Focus and the Orbit Rig (Velora 1.1)
+
+- **Look-at.** `scene.constraints: [{ "kind": "lookAt", "target": { "surface": "hero", "anchor": [0.5, 0.4] } }]` pans and tilts the camera about its eye so the anchor (u, v in 0..1 of the Surface) sits at frame center. Camera x/y/z tracks still move the eye; rotateX/rotateY become derived, and the camera's x/y/z values are adjusted so the eye stays fixed. A `{ "point": [x, y, z] }` target aims at a stage point.
+- **Follow focus.** `{ "kind": "focusFollow", "target": { "surface": "hero" }, "offset": 0 }` holds `focus.distance` on the target's camera depth, so a dolly never loses the subject. Pair it with lookAt for subject-locked moves.
+- **Settling with weight.** `weight` (0..1, or a channel track `{ "target": { "kind": "channel", "id": "settle" }, "property": "value" }`) blends from the authored rotation to the aimed one. Ramp a `settle` channel from 0 to 1 over the last second for a camera that drifts, then locks on.
+- **Orbit rig.** `buildOrbitRig({ radius, fromDeg, toDeg, height, durationMs, ease })` returns `{ clip, constraint }`: a constant-speed camera position path, eased as a group, plus a lookAt. Add the clip to `motion.clips` and the constraint to `scene.constraints`. Keep arcs within about 60 degrees for UI subjects, and pair the rig with focusFollow at long lenses.
+- Constraints resolve in the spatial owner from live layout, so preview and export agree. A constraint target must be a node in `scene.nodes`.
+
 ## Related Skills
 
 - `velora-templates`: certified starting points that encode these moves.

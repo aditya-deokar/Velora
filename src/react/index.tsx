@@ -20,7 +20,12 @@ import {
   transformOriginCss,
   uniformFocusBlur,
   motionTime,
+  withAdditive,
+  CameraSchema,
+  FocusSchema,
+  TransformSchema,
   type CameraInput,
+  type SceneConstraintInput,
   type EvaluatedNode,
   type FocusInput,
   type Measurements,
@@ -72,6 +77,11 @@ function checkMotionMutation(motion: MotionInput | undefined) {
   }
 }
 const visualKeys: ReadonlySet<string> = new Set(SURFACE_VISUAL_PROPERTIES);
+// Static bases for add-clip offsets on properties without a replace owner.
+const CAMERA_BASE = CameraSchema.parse({}), FOCUS_BASE = FocusSchema.parse({}), TRANSFORM_BASE = TransformSchema.parse({});
+const VISUAL_BASE: Record<string, number> = { opacity: 1, blur: 0, brightness: 1, contrast: 1, saturate: 1, hueRotate: 0, grayscale: 0, clipTop: 0, clipRight: 0, clipBottom: 0, clipLeft: 0 };
+const pick = (values: Record<string, number> | undefined, visual: boolean) =>
+  values ? Object.fromEntries(Object.entries(values).filter(([key]) => visualKeys.has(key) === visual)) : undefined;
 const emptyMotion: MotionState = { surfaces: {}, camera: {}, focus: {}, channels: {}, issues: [] };
 const SceneContext = createContext<SceneContextValue | null>(null);
 const ParentContext = createContext<symbol | undefined>(undefined);
@@ -82,6 +92,8 @@ export type SceneProps = {
   children?: ReactNode;
   camera?: CameraInput;
   focus?: FocusInput;
+  /** Scene constraints (lookAt, focusFollow) resolved by the spatial owner from live layout. */
+  constraints?: SceneConstraintInput[];
   className?: string;
   style?: CSSProperties;
   onDiagnostics?: (issues: SceneIssue[]) => void;
@@ -99,6 +111,7 @@ export function Scene({
   children,
   camera,
   focus,
+  constraints,
   motion,
   timeMs = 0,
   className,
@@ -120,15 +133,17 @@ export function Scene({
   const result = useMemo(() => {
     const bindings = Array.from(registry.entries.values());
     const state = motion ? RESOURCES["evaluate-motion"](motion, timeMs) : emptyMotion;
+    const additive = state.additive;
     const input = {
-      camera: { ...camera, ...state.camera },
-      focus: { ...focus, ...state.focus },
+      camera: withAdditive({ ...camera, ...state.camera }, additive?.camera, CAMERA_BASE),
+      focus: withAdditive({ ...focus, ...state.focus }, additive?.focus, FOCUS_BASE),
+      ...(constraints ? { constraints } : {}),
       nodes: bindings.map((binding) => ({
         id: binding.id,
         parentId: binding.parent
           ? registry.entries.get(binding.parent)?.id
           : undefined,
-        transform: {
+        transform: withAdditive({
           ...binding.transform,
           // Visual properties style the content leaf; only transform keys reach the spatial node.
           ...Object.fromEntries(
@@ -136,7 +151,7 @@ export function Scene({
               ([key]) => !visualKeys.has(key),
             ),
           ),
-        },
+        }, pick(additive?.surfaces?.[binding.id], false), TRANSFORM_BASE),
       })),
     };
     const validated = RESOURCES["validate-definition"](input);
@@ -146,7 +161,7 @@ export function Scene({
         return measurement ? [[binding.id, measurement] as const] : [];
       }),
     );
-    const evaluation = RESOURCES["evaluate-spatial"](input, measurements);
+    const evaluation = RESOURCES["evaluate-spatial"](input, measurements, { channels: state.channels });
     const ids = new Set(bindings.map((b) => b.id));
     evaluation.issues.push(
       ...state.issues,
@@ -171,15 +186,18 @@ export function Scene({
         message: "Scene time must be finite.",
       });
     return { evaluation, validated, state };
-  }, [registry, revision, camera, focus, motion, timeMs]);
+  }, [registry, revision, camera, focus, constraints, motion, timeMs]);
   const context = useMemo(
     () => ({
       registry,
       timeMs: motion ? motionTime(motion, timeMs) : Number.isFinite(timeMs) ? timeMs : 0,
       visuals: new Map(
-        Object.entries(result.state.surfaces).map(([id, s]) => [
+        [...new Set([...Object.keys(result.state.surfaces), ...Object.keys(result.state.additive?.surfaces ?? {})])].map((id) => [
           id,
-          Object.fromEntries(Object.entries(s).filter(([key]) => visualKeys.has(key))) as SurfaceVisuals,
+          withAdditive(
+            Object.fromEntries(Object.entries(result.state.surfaces[id] ?? {}).filter(([key]) => visualKeys.has(key))),
+            pick(result.state.additive?.surfaces?.[id], true), VISUAL_BASE,
+          ) as SurfaceVisuals,
         ]),
       ),
       channels: result.state.channels,
@@ -206,8 +224,9 @@ export function Scene({
       callback.current?.(JSON.parse(issueKey) as SceneIssue[]);
     }
   }, [issueKey]);
+  // The resolved camera (after constraints) drives the stage; it equals the input without constraints.
   const validCamera = result.validated.success
-    ? result.validated.data.camera
+    ? result.evaluation.camera ?? result.validated.data.camera
     : undefined;
   return (
     <SceneContext.Provider value={context}>

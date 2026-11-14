@@ -25,6 +25,11 @@ describe("editor JSON Schemas", () => {
     for (const term of ["\"auto\"", "\"style\"", "scaleX", "skewY", "originX", "brightness", "hueRotate", "grayscale", "markers", "locked", "\"teal\"", "rem"])
       expect(recipe, term).toContain(term);
   });
+  it("describes the v2.1 structure vocabulary (clips, paths, links, constraints)", () => {
+    const recipe = JSON.stringify(jsonSchemas()["scene-recipe.schema.json"]);
+    for (const term of ["clips", "stagger", "members", "center-out", "position", "inTangent", "rove", "orient", "links", "delayMs", "constraints", "lookAt", "focusFollow", "anchor"])
+      expect(recipe, term).toContain(term);
+  });
   it("lets recipes and compositions carry a $schema pointer", () => {
     const $schema = "../../../node_modules/@adityadeokar/velora/schemas/scene-recipe.schema.json";
     expect(SceneRecipeSchema.safeParse({ $schema, version: 1, id: "a", title: "A", definition: { scene: { nodes: [] } } }).success).toBe(true);

@@ -169,7 +169,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
               {/* One aspect-preserving cover frame fills preview and capture; overflow is cropped, never stretched. */}
               <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
                 <LookLayer look={look} timeMs={session.timeMs} width={definition.width} height={definition.height}>
-                  <Scene camera={definition.scene.camera} focus={definition.scene.focus} motion={definition.motion}
+                  <Scene camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
                     timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}}>
                     {children}
                   </Scene>

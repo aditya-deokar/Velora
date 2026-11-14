@@ -33,6 +33,8 @@ const owners = new Map([
   ['parseCssColor','src/core/color.ts'], ['mixColors','src/core/color.ts'],
   ['AnimatableSpecSchema','src/core/animatable.ts'], ['monotoneTangents','src/core/motion.ts'],
   ['useAnimatable','src/react/animatable.ts'],
+  // v2.1 Phase 02 owners: cascade clips, rigs and constraint resolution inside the spatial owner.
+  ['createCascadeClip','src/core/choreography.ts'], ['buildOrbitRig','src/core/shots.ts'], ['resolveConstraints','src/core/spatial.ts'],
   ['NoiseSchema','src/core/noise.ts'], ['sampleNoise','src/core/noise.ts'],
   ...['perspectiveForFocalLength','focalLengthForPerspective','lensFor'].map(name=>[name,'src/core/lens.ts']),
   ['evaluateScene', 'src/core/spatial.ts'], ['transformToCss', 'src/core/spatial.ts'],

@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { TransformSchema, CameraSchema, FocusSchema } from "./scene";
-import { evaluateMotion, type MotionInput } from "./motion";
-import { matrixFor, multiply, focusForSurface, sampleFocus, type Matrix } from "./spatial";
+import { CameraSchema, FocusSchema, SceneConstraintSchema, ConstraintTargetSchema, type SceneConstraint } from "./scene";
+import { evaluateMotion, withAdditive, type MotionInput, type MotionClipInput, type MotionState } from "./motion";
+import { matrixFor, multiply, focusForSurface, sampleFocus, cameraMatrix as stageCamera, resolveConstraints, type Matrix } from "./spatial";
+import { EasingSchema } from "./easing";
 import { lensFor } from "./lens";
 import type { EasingInput } from "./easing";
 
-/** SOURCE OF TRUTH: ShotInputSchema, buildShot, framingReport, projectSubject, projectPoints, ASPECT_FRAMES.
+/** SOURCE OF TRUTH: ShotInputSchema, buildShot, framingReport, projectSubject, projectPoints, ASPECT_FRAMES, buildOrbitRig.
  * WHAT: the camera-move vocabulary (push, survey, orbit, crane, rise, dolly zoom, rack focus,
  * scroll-through, macro, float loop, handheld, whip) compiled into plain scene + motion data,
  * plus a pure framing report that projects the subject through the canonical camera math.
@@ -52,7 +53,7 @@ export const ShotInputSchema = z.strictObject({
 export type ShotInput = z.input<typeof ShotInputSchema>;
 export type ShotDefinition = {
   width: number; height: number;
-  scene: { camera: z.input<typeof CameraSchema>; focus: z.input<typeof FocusSchema>; nodes: { id: string }[] };
+  scene: { camera: z.input<typeof CameraSchema>; focus: z.input<typeof FocusSchema>; nodes: { id: string }[]; constraints?: z.input<typeof SceneConstraintSchema>[] };
   motion: MotionInput;
 };
 export const SUBJECT_ID = "subject";
@@ -70,8 +71,20 @@ function apply(m: Matrix, [x, y, z]: readonly [number, number, number]): [number
   return [m[0] * x + m[1] * y + m[2] * z + m[3], m[4] * x + m[5] * y + m[6] * z + m[7], m[8] * x + m[9] * y + m[10] * z + m[11]];
 }
 // The same camera matrix evaluateScene uses: scene positions minus camera, after stage rotation.
-function cameraMatrix(c: Camera): Matrix {
-  return matrixFor(TransformSchema.parse({ x: -c.x, y: -c.y, z: -c.z, rotateX: c.rotateX, rotateY: c.rotateY, rotateZ: c.rotateZ }));
+// The spatial owner's camera matrix (one definition for evaluateScene, shots and rigs).
+const cameraMatrix = (c: Camera): Matrix => stageCamera(c);
+/** Camera and focus at one time: tracks, add-clip offsets, then constraints. The subject Surface is
+ * centered on the stage with the given size; point targets need no measurement. */
+function resolvedLens(definition: Pick<ShotDefinition, "scene" | "motion">, state: MotionState, subject?: { width: number; height: number }) {
+  const camera = CameraSchema.parse(withAdditive({ ...definition.scene.camera, ...state.camera }, state.additive?.camera, CameraSchema.parse({})));
+  const focus = FocusSchema.parse(withAdditive({ ...definition.scene.focus, ...state.focus }, state.additive?.focus, FocusSchema.parse({})));
+  const constraints = definition.scene.constraints?.map(constraint => SceneConstraintSchema.parse(constraint));
+  return resolveConstraints(constraints, camera, focus, target => {
+    if ("point" in target) return [...target.point] as [number, number, number];
+    if (target.surface !== SUBJECT_ID) return undefined;
+    const [u, v] = target.anchor ?? [0.5, 0.5];
+    return [(u - 0.5) * (subject?.width ?? 0), (v - 0.5) * (subject?.height ?? 0), 0];
+  }, { channels: state.channels });
 }
 const rotation = (c: Pick<Camera, "rotateX" | "rotateY" | "rotateZ">) => cameraMatrix({ x: 0, y: 0, z: 0, ...c });
 // Camera distance that makes the subject's limiting side fill `fill` of the frame (at the stage center plane).
@@ -274,8 +287,7 @@ export function framingReport(definition: ShotDefinition, subject: { width: numb
   const subjectGrid = grid(0, 0, subject.width, subject.height, 9), regionGrid = grid(region.x, region.y, region.width, region.height, 5);
   const samples = times.map(timeMs => {
     const state = evaluateMotion(motion, timeMs);
-    const c = CameraSchema.parse({ ...definition.scene.camera, ...state.camera });
-    const f = FocusSchema.parse({ ...definition.scene.focus, ...state.focus });
+    const { camera: c, focus: f } = resolvedLens(definition, state, subject);
     const m = cameraMatrix(c);
     const project = ([x, y]: readonly [number, number]) => {
       const [wx, wy, wz] = apply(m, [x, y, 0]);
@@ -304,7 +316,7 @@ export function framingReport(definition: ShotDefinition, subject: { width: numb
  * camera) at one time through the canonical camera. Points behind the camera are null. */
 export function projectPoints(definition: Pick<ShotDefinition, "width" | "height" | "scene" | "motion">, points: readonly (readonly [number, number, number])[], timeMs: number): ({ x: number; y: number } | null)[] {
   const state = evaluateMotion(definition.motion, timeMs);
-  const c = CameraSchema.parse({ ...definition.scene.camera, ...state.camera });
+  const c = resolvedLens(definition, state).camera;
   const m = cameraMatrix(c);
   return points.map(point => {
     const [x, y, z] = apply(m, point);
@@ -318,4 +330,47 @@ export function projectPoints(definition: Pick<ShotDefinition, "width" | "height
 export function projectSubject(definition: ShotDefinition, subject: { width: number; height: number }, timeMs: number): ({ x: number; y: number } | null)[] {
   const w = subject.width / 2, h = subject.height / 2;
   return projectPoints(definition, [[-w, -h, 0], [w, -h, 0], [w, h, 0], [-w, h, 0]], timeMs);
+}
+
+/** Orbit rig input: the camera circles `center` at `radius` (stage px) from fromDeg to toDeg while a
+ * lookAt constraint keeps `target` at frame center. `height` raises the camera above the orbit plane. */
+export const OrbitRigSchema = z.strictObject({
+  target: ConstraintTargetSchema.default({ surface: SUBJECT_ID }),
+  center: z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]).default([0, 0, 0]),
+  radius: z.number().finite().positive().max(20_000),
+  fromDeg: z.number().finite().min(-720).max(720),
+  toDeg: z.number().finite().min(-720).max(720),
+  height: z.number().finite().min(-20_000).max(20_000).default(0),
+  perspective: z.number().finite().min(100).max(10_000).default(1400),
+  startMs: z.number().finite().nonnegative().default(0),
+  durationMs: z.number().finite().positive().max(120_000),
+  ease: EasingSchema.default("cinematic"),
+  stepDeg: z.number().finite().min(1).max(45).default(10),
+  id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/).default("orbit"),
+});
+export type OrbitRigInput = z.input<typeof OrbitRigSchema>;
+/** Sugar that compiles to data: one clip (a constant-speed camera position path, eased as a group,
+ * plus matching rotation hints) and a lookAt constraint. Add both to a recipe. */
+export function buildOrbitRig(input: OrbitRigInput): { clip: MotionClipInput; constraint: SceneConstraint } {
+  const rig = OrbitRigSchema.parse(input);
+  const sweep = rig.toDeg - rig.fromDeg;
+  const steps = Math.max(1, Math.ceil(Math.abs(sweep) / rig.stepDeg));
+  const distance = Math.hypot(rig.radius, rig.height);
+  const pitch = (Math.atan2(rig.height, rig.radius) * 180) / Math.PI;
+  const keys = Array.from({ length: steps + 1 }, (_, k) => {
+    const yaw = rig.fromDeg + (sweep * k) / steps;
+    // The camera that sees `center` head-on at this yaw/pitch from `distance`: c = R(center) - (0, 0, P - D).
+    const [x, y, z] = apply(rotation({ rotateX: pitch, rotateY: yaw, rotateZ: 0 }), rig.center);
+    return { timeMs: round((rig.durationMs * k) / steps), yaw, value: [round(x), round(y), round(z - (rig.perspective - distance))] as [number, number, number] };
+  });
+  const tracks = [
+    { target: camera, property: "position" as const, rove: true, keyframes: keys.map(({ timeMs, value }) => ({ timeMs, value, easing: "linear" as const })) },
+    // Authored rotation hints near the solution, so lookAt picks the same branch at every yaw.
+    { target: camera, property: "rotateY" as const, keyframes: keys.map(({ timeMs, yaw }) => ({ timeMs, value: round(yaw), easing: "linear" as const })) },
+    { target: camera, property: "rotateX" as const, keyframes: [{ timeMs: 0, value: round(pitch) }] },
+  ];
+  return {
+    clip: { id: rig.id, label: "Orbit rig", startMs: rig.startMs, ease: rig.ease, tracks, source: { behavior: "orbit-rig", version: 1, params: { radius: rig.radius, fromDeg: rig.fromDeg, toDeg: rig.toDeg, height: rig.height } } },
+    constraint: { kind: "lookAt", subject: "camera", target: rig.target },
+  };
 }

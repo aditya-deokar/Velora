@@ -7,10 +7,15 @@ import {
   CameraSchema,
   type CameraInput,
   type SceneDefinition,
+  type SceneConstraint,
+  type CameraDefinition,
+  type FocusDefinition,
+  type NodeDefinition,
 } from "./scene";
 
-/** SOURCE OF TRUTH: evaluateScene, transformToCss, cameraToCss, focusForSurface, sampleFocus, focusMask, uniformFocusBlur.
- * WHAT: camera-space transforms and progressive spatial focus for every renderer consumer.
+/** SOURCE OF TRUTH: evaluateScene, transformToCss, cameraToCss, focusForSurface, sampleFocus, focusMask, uniformFocusBlur, resolveConstraints.
+ * WHAT: camera-space transforms, scene constraints (lookAt, focusFollow) resolved from layout, and
+ * progressive spatial focus for every renderer consumer.
  * WHY: one mathematical definition keeps DOM preview and future output adapters consistent.
  * WHERE: React registration provides untransformed layout measurements; no DOM or transport is imported here.
  */
@@ -35,7 +40,94 @@ export type Evaluation = {
   nodes: EvaluatedNode[];
   focusDepth: number;
   issues: SceneIssue[];
+  /** Camera and focus after constraints (equal to the input values without constraints). */
+  camera?: CameraDefinition;
+  focus?: FocusDefinition;
 };
+export type SpatialOptions = { channels?: Readonly<Record<string, number>> };
+/** The stage camera matrix: scene positions minus camera, after stage rotation (cameraToCss convention). */
+export function cameraMatrix(c: Pick<CameraDefinition, "x" | "y" | "z" | "rotateX" | "rotateY" | "rotateZ">): Matrix {
+  return matrixFor(TransformSchema.parse({ x: -c.x, y: -c.y, z: -c.z, rotateX: c.rotateX, rotateY: c.rotateY, rotateZ: c.rotateZ }));
+}
+type Vec3 = [number, number, number];
+const applyPoint = (m: Matrix, [x, y, z]: readonly number[]): Vec3 =>
+  [m[0] * x + m[1] * y + m[2] * z + m[3], m[4] * x + m[5] * y + m[6] * z + m[7], m[8] * x + m[9] * y + m[10] * z + m[11]];
+const wrap = (degrees: number) => ((((degrees + 180) % 360) + 360) % 360) - 180;
+/** Pan/tilt about the camera's eye: rotateX/rotateY (degrees, nearest the authored ones, target in
+ * front) that put stage point p at frame center, with camera x/y/z re-derived so the eye stays fixed.
+ * In camera space the eye sits at (0, 0, perspective), so eye = R^T (c + (0, 0, P)) in stage space. */
+function aimAt(camera: CameraDefinition, p: Vec3, weight: number): CameraDefinition {
+  if (weight === 0) return camera;
+  const rad = Math.PI / 180;
+  const rotationOf = (rotateX: number, rotateY: number) => cameraMatrix({ x: 0, y: 0, z: 0, rotateX, rotateY, rotateZ: camera.rotateZ });
+  const r0 = rotationOf(camera.rotateX, camera.rotateY);
+  const shifted = [camera.x, camera.y, camera.z + camera.perspective];
+  const eye: Vec3 = [0, 1, 2].map(col => r0[col] * shifted[0] + r0[4 + col] * shifted[1] + r0[8 + col] * shifted[2]) as Vec3;
+  const d: Vec3 = [p[0] - eye[0], p[1] - eye[1], p[2] - eye[2]];
+  if (Math.hypot(...d) < 1e-9) return camera;
+  const g = camera.rotateZ * rad;
+  const q: Vec3 = [Math.cos(g) * d[0] - Math.sin(g) * d[1], Math.sin(g) * d[0] + Math.cos(g) * d[1], d[2]];
+  const candidates: { rotateX: number; rotateY: number; front: boolean; cost: number }[] = [];
+  const phi = Math.atan2(q[2], q[0]);
+  const betas = Math.hypot(q[0], q[2]) < 1e-12 ? [camera.rotateY * rad] : [phi + Math.PI / 2, phi - Math.PI / 2];
+  for (const b of betas) {
+    const vy = q[1], vz = -Math.sin(b) * q[0] + Math.cos(b) * q[2];
+    const psi = Math.atan2(vz, vy);
+    const alphas = Math.hypot(vy, vz) < 1e-12 ? [camera.rotateX * rad] : [-psi + Math.PI / 2, -psi - Math.PI / 2];
+    for (const a of alphas) {
+      const z = Math.sin(a) * vy + Math.cos(a) * vz;
+      const rotateX = camera.rotateX + wrap(a / rad - camera.rotateX), rotateY = camera.rotateY + wrap(b / rad - camera.rotateY);
+      candidates.push({ rotateX, rotateY, front: z < 0, cost: Math.abs(rotateX - camera.rotateX) + Math.abs(rotateY - camera.rotateY) });
+    }
+  }
+  candidates.sort((a, b) => Number(b.front) - Number(a.front) || a.cost - b.cost);
+  const rotateX = camera.rotateX + weight * (candidates[0].rotateX - camera.rotateX);
+  const rotateY = camera.rotateY + weight * (candidates[0].rotateY - camera.rotateY);
+  const r = rotationOf(rotateX, rotateY);
+  const [x, y, z] = applyPoint(r, eye);
+  return { ...camera, rotateX, rotateY, x, y, z: z - camera.perspective };
+}
+/** Resolve lookAt then focusFollow. `stagePoint` locates a target before the camera transform. */
+export function resolveConstraints(constraints: readonly SceneConstraint[] | undefined, camera: CameraDefinition, focus: FocusDefinition,
+  stagePoint: (target: SceneConstraint["target"]) => Vec3 | undefined, options: SpatialOptions = {}): { camera: CameraDefinition; focus: FocusDefinition } {
+  if (!constraints?.length) return { camera, focus };
+  const weightOf = (constraint: SceneConstraint) => {
+    const w = constraint.weight;
+    if (w === undefined) return 1;
+    if (typeof w === "number") return w;
+    const channel = options.channels && Object.hasOwn(options.channels, w.target.id) ? options.channels[w.target.id] : 1;
+    return Math.max(0, Math.min(1, channel));
+  };
+  let resolvedCamera = camera, resolvedFocus = focus;
+  for (const constraint of constraints) {
+    if (constraint.kind !== "lookAt") continue;
+    const point = stagePoint(constraint.target);
+    if (!point) continue;
+    resolvedCamera = aimAt(resolvedCamera, point, weightOf(constraint));
+  }
+  for (const constraint of constraints) {
+    if (constraint.kind !== "focusFollow") continue;
+    const point = stagePoint(constraint.target);
+    if (!point) continue;
+    const depth = resolvedCamera.perspective - applyPoint(cameraMatrix(resolvedCamera), point)[2] + (constraint.offset ?? 0);
+    const distance = resolvedFocus.distance + weightOf(constraint) * (depth - resolvedFocus.distance);
+    resolvedFocus = { ...resolvedFocus, distance: Math.max(resolvedFocus.focalLength + 1e-3, distance) };
+  }
+  return { camera: resolvedCamera, focus: resolvedFocus };
+}
+/** A node's local matrix: transform plus layout offset, with the optional pivot T(o)·M·T(-o). */
+function localMatrix(node: NodeDefinition, size: Measurement | undefined, validOffset: boolean): Matrix {
+  const offsetX = size?.offsetX ?? 0, offsetY = size?.offsetY ?? 0;
+  const pivot = node.transform.originX !== undefined || node.transform.originY !== undefined;
+  const ox = pivot ? (((node.transform.originX ?? 50) - 50) / 100) * (size?.width ?? 0) : 0;
+  const oy = pivot ? (((node.transform.originY ?? 50) - 50) / 100) * (size?.height ?? 0) : 0;
+  const placed = matrixFor({
+    ...node.transform,
+    x: node.transform.x + (validOffset ? offsetX : 0) + ox,
+    y: node.transform.y + (validOffset ? offsetY : 0) + oy,
+  });
+  return pivot && Number.isFinite(ox) && Number.isFinite(oy) ? multiply(placed, [1, 0, 0, -ox, 0, 1, 0, -oy, 0, 0, 1, 0, 0, 0, 0, 1]) : placed;
+}
 export function multiply(a: Matrix, b: Matrix): Matrix {
   return Array.from({ length: 16 }, (_, index) => {
     const row = Math.floor(index / 4),
@@ -101,28 +193,33 @@ export function transformToCss(input: TransformInput = {}): string {
 export function evaluateScene(
   input: unknown,
   measurements: Measurements = {},
+  options: SpatialOptions = {},
 ): Evaluation {
   const parsed = validateScene(input);
   if (!parsed.success)
     return { nodes: [], focusDepth: 0, issues: parsed.issues };
-  const scene = parsed.data;
-  const nodeMap = new Map(scene.nodes.map((node) => [node.id, node]));
+  const nodeMap = new Map(parsed.data.nodes.map((node) => [node.id, node]));
+  // Constraints need stage-space geometry (before the camera), which does not depend on the camera.
+  const stage = new Map<string, Matrix>();
+  const stageWorld = (id: string): Matrix => {
+    const cached = stage.get(id);
+    if (cached) return cached;
+    const node = nodeMap.get(id)!, size = measurements[id];
+    const valid = Number.isFinite(size?.offsetX ?? 0) && Number.isFinite(size?.offsetY ?? 0);
+    const local = localMatrix(node, size, valid);
+    const world = node.parentId ? multiply(stageWorld(node.parentId), local) : local;
+    stage.set(id, world);
+    return world;
+  };
+  const resolved = resolveConstraints(parsed.data.constraints, parsed.data.camera, parsed.data.focus, target => {
+    if ("point" in target) return [...target.point] as Vec3;
+    const size = measurements[target.surface], [u, v] = target.anchor ?? [0.5, 0.5];
+    return applyPoint(stageWorld(target.surface), [(u - 0.5) * (size?.width ?? 0), (v - 0.5) * (size?.height ?? 0), 0]);
+  }, options);
+  const scene = resolved.camera === parsed.data.camera && resolved.focus === parsed.data.focus ? parsed.data : { ...parsed.data, camera: resolved.camera, focus: resolved.focus };
   const cache = new Map<string, Matrix>();
   const issues: SceneIssue[] = [];
-  const camera = matrixFor(
-    TransformSchema.parse(
-      scene.camera
-        ? {
-            x: -scene.camera.x,
-            y: -scene.camera.y,
-            z: -scene.camera.z,
-            rotateX: scene.camera.rotateX,
-            rotateY: scene.camera.rotateY,
-            rotateZ: scene.camera.rotateZ,
-          }
-        : {},
-    ),
-  );
+  const camera = cameraMatrix(scene.camera);
   const getWorld = (id: string): Matrix => {
     const cached = cache.get(id);
     if (cached) return cached;
@@ -136,16 +233,7 @@ export function evaluateScene(
         path: id,
         message: "Invalid layout measurement for " + id,
       });
-    // A pivot applies T(o) · M · T(-o), with o the origin's offset from the element center.
-    const pivot = node.transform.originX !== undefined || node.transform.originY !== undefined;
-    const ox = pivot ? (((node.transform.originX ?? 50) - 50) / 100) * (size?.width ?? 0) : 0;
-    const oy = pivot ? (((node.transform.originY ?? 50) - 50) / 100) * (size?.height ?? 0) : 0;
-    const placed = matrixFor({
-      ...node.transform,
-      x: node.transform.x + (validOffset ? offsetX : 0) + ox,
-      y: node.transform.y + (validOffset ? offsetY : 0) + oy,
-    });
-    const local = pivot && Number.isFinite(ox) && Number.isFinite(oy) ? multiply(placed, [1, 0, 0, -ox, 0, 1, 0, -oy, 0, 0, 1, 0, 0, 0, 0, 1]) : placed;
+    const local = localMatrix(node, size, validOffset);
     const world = multiply(
       node.parentId ? getWorld(node.parentId) : camera,
       local,
@@ -221,7 +309,7 @@ export function evaluateScene(
       height: m?.height ?? 0,
     };
   });
-  return { nodes, focusDepth, issues };
+  return { nodes, focusDepth, issues, camera: scene.camera, focus: scene.focus };
 }
 
 /** SOURCE OF TRUTH: FocusField, focusForSurface, sampleFocus, focusMask, uniformFocusBlur.

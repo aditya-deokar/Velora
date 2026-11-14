@@ -22,6 +22,18 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
   for an `<id>.reveal` override.
 - **Recipe `editor` block:** optional labels, colors, locks and markers that the renderer ignores.
 
+### Added — Structure and cinematic constraints (v2.1 Phase 02, additive)
+- **Clips:** `motion.clips` group tracks in time (speed, trim, loop count, group ease, nesting up to 4) with
+  replace or additive mode. One replace owner per property is enforced. Additive offsets without an owner
+  are reported in `MotionState.additive` and applied with `withAdditive`.
+- **Staggers:** clip `members` plus `stagger` (forward, reverse, center-out, edges-in, seeded random, eased)
+  over `$member` tracks; `createCascadeClip`.
+- **Position paths:** `property: "position"` with `[x, y, z]` keyframes, automatic or explicit Bézier handles,
+  arc-length timing, `rove` and `orient`.
+- **Links:** `motion.links` declarative drivers (`scale`, `offset`, `delayMs`, add mode); acyclic, no expressions.
+- **Constraints:** `scene.constraints` `lookAt` (pan/tilt about the camera eye) and `focusFollow`, resolved
+  by `evaluateScene` from layout. `Scene` takes a `constraints` prop. `buildOrbitRig` returns a clip plus a lookAt.
+
 ### Changed
 - `evaluateMotion` compiles once per immutable motion object (WeakMap cache). At 300 tracks a cached call
   is about 1,700x faster than before, and cold parsing is about 40x faster. Outputs are byte-identical.

@@ -121,6 +121,14 @@ Expected: three branded scenes that share fonts, colors and motion personality, 
 - **Animatables.** A component declares typed props with `useAnimatable(id, spec)` (number, color, boolean, enum). Each prop reads the channel `<id>.<prop>`: numbers clamp to min/max, booleans switch at 0.5, enums hold the rounded option index, and colors take color keyframes. Without a track the prop shows its spec default.
 - Restraint still applies: animate a color or a grade to support the story (an accent that warms on the reveal), not as decoration on every layer.
 
+## Clips, Staggers, Additive Layers and Links (Velora 1.1)
+
+- **Clips (groups in time).** `motion.clips: [{ "id": "intro", "startMs": 400, "speed": 1, "ease": "cubic.out", "tracks": [...] }]` moves, retimes and eases a group of tracks as one unit (track times are clip-local). `inMs`/`durationMs` trim, `loop` is a play count, and clips nest up to 4 deep. Each property has one replace owner across root tracks and replace clips; validation names both owners when two collide.
+- **Additive layers.** `"mode": "add"` sums a clip's values onto the owner (or onto the static base without one). Keyframe offsets around 0, for example a handheld `noise` on camera x over a push-in, or a bank on camera rotateZ.
+- **Staggers.** A clip with `"members": ["card-1", "card-2", "card-3"]` and `"stagger": { "eachMs": 120, "order": "center-out", "ease": "quad.out" }` repeats its `{ "kind": "surface", "id": "$member" }` tracks per member, offset by `ease(position) × eachMs × (n − 1)`. Orders: forward, reverse, center-out, edges-in, or `{ "random": seed }`. `createCascadeClip` builds the depth cascade as a clip.
+- **Paths.** A `"property": "position"` track with `[x, y, z]` keyframes moves along a curve (automatic handles, or `inTangent`/`outTangent` offsets); easing maps time to distance along each segment. `rove: true` gives constant speed, and `orient` turns the layer along the path. A path replaces x/y/z tracks on that target.
+- **Links (no expressions).** `motion.links: [{ "to": { "target": { "kind": "surface", "id": "bg" }, "property": "x" }, "from": { "target": { "kind": "camera" }, "property": "x" }, "scale": -0.2 }]` creates parallax; `delayMs` makes echoes and trails; `{ "channel": "scroll" }` drives counters. Links are acyclic, at most 8 deep.
+
 ## Related Skills
 
 - `velora-brand`: tokens and motion personality.
