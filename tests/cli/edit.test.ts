@@ -95,3 +95,16 @@ describe("velora edit", () => {
     expect(help.stdout).toContain("velora edit apply --scene ID --ops FILE|-");
   });
 });
+
+describe("velora edit paste", () => {
+  it("applies a studio keyframe clipboard at a time, onto another surface", async () => {
+    const clipboard = { type: "application/x-velora-keyframes+json", version: 1, tracks: [{ target: { kind: "surface", id: "headline" }, property: "opacity", keyframes: [{ offsetMs: 0, value: 0 }, { offsetMs: 400, value: 1, easing: "linear" }] }] };
+    await writeFile(path.join(root, "copied.json"), JSON.stringify(clipboard));
+    const result = await run(["paste", "--scene", "demo", "--from", "copied.json", "--at", "600", "--onto", "card", "--write", "--json"]);
+    expect(result.code, result.stderr).toBe(0);
+    const track = JSON.parse(await readFile(file(), "utf8")).definition.motion.tracks.find((entry: { property: string }) => entry.property === "opacity");
+    expect(track).toEqual({ target: { kind: "surface", id: "card" }, property: "opacity", keyframes: [{ timeMs: 600, value: 0 }, { timeMs: 1000, value: 1, easing: "linear" }] });
+    const bad = await run(["paste", "--scene", "demo", "--from", "copied.json", "--at", "0", "--onto", "card", "--json"].map(arg => arg === "copied.json" ? "missing.json" : arg));
+    expect(JSON.parse(bad.stderr).issues[0].code).toBe("ERR_EDIT_TARGET");
+  });
+});

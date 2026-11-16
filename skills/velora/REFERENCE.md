@@ -32,12 +32,12 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `transitions` | `--type`, `--json` | `velora transitions ls --json` |
 | `deliver` | `--composition`, `--targets`, `--out`, `--quality`, `--parallel`, `--no-cache`, `--no-stream`, `--url`, `--project`, `--json` | `velora deliver --composition launch.composition.json --targets youtube,reels,website-hero --json` |
 | `studio` | `--site`, `--port`, `--check`, `--edit`, `--scene`, `--read-only`, `--project`, `--json` | `velora studio --site http://127.0.0.1:4321 --json` |
-| `edit` | `--scene`, `--at`, `--ops`, `--expect-sha`, `--write`, `--track`, `--value`, `--ease`, `--label`, `--port`, `--url`, `--read-only`, `--no-open`, `--project`, `--json` | `velora edit key --scene home-hero --track camera.z --at 1200 --value 400 --json` |
+| `edit` | `--scene`, `--at`, `--ops`, `--expect-sha`, `--write`, `--track`, `--value`, `--ease`, `--label`, `--from`, `--onto`, `--port`, `--url`, `--read-only`, `--no-open`, `--project`, `--json` | `velora edit key --scene home-hero --track camera.z --at 1200 --value 400 --json` |
 | `create` | `--name`, `--blueprint`, `--json` | `velora create my-launch --name Fieldnote --json` |
 | `prompts` | `--id`, `--json` | `velora prompts show --id launch-film --json` |
 | `skills` | `--dir`, `--agent`, `--source`, `--json` | `velora skills install --dir <path> --json` |
 
-Subcommands: `audio ls|check|beats`, `captions validate|check`, `transitions ls|describe`, `prompts ls|show`, `studio init`, `templates ls|show|check`, `new scene|video`, `brand init|check`, `compose snap`, `skills install|ls|check`, `assets ls|check|add|rm`, `edit ls|apply|key|ease` (bare `velora edit` starts the edit bridge). Every command supports `--help`; exit `0` ok, `1` operational failure, `2` usage error.
+Subcommands: `audio ls|check|beats`, `captions validate|check`, `transitions ls|describe`, `prompts ls|show`, `studio init`, `templates ls|show|check`, `new scene|video`, `brand init|check`, `compose snap`, `skills install|ls|check`, `assets ls|check|add|rm`, `edit ls|apply|key|ease|paste` (bare `velora edit` starts the edit bridge). Every command supports `--help`; exit `0` ok, `1` operational failure, `2` usage error.
 
 ## Envelope and ERR_* catalog
 

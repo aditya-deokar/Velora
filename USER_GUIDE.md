@@ -288,6 +288,18 @@ You can string multiple scenes together into a complete product launch video:
 
 ---
 
+### Editing scenes by hand (Edit mode)
+
+Run `npx velora edit --scene <id>` while your dev server is running. It opens the studio in **Edit mode**:
+- **Layers** (left): camera, focus, your Surfaces, typed component props and clips. Rename, color-tag, lock, solo or hide (solo and hide are editor-only).
+- **Inspector** (right): click ⏱ to animate a property, then type values or drag-scrub fields; the value at the playhead shows in italics while interpolating. ◀ ◆ ▶ jump between and toggle keyframes.
+- **Timeline** (bottom): drag keyframes (snapping to frames, the playhead, markers and other keys; Shift suspends), Alt-drag to retime a selection, drag clip bars, press G for the graph editor and E for the easing library.
+- **Saving**: every gesture saves to `src/velora/scenes/<id>.scene.json`; Ctrl/⌘+Z undoes exactly. If an agent or your IDE changes the file, the editor rebases or shows **Changed on disk**.
+
+Agents make the same edits with `npx velora edit ls|apply|key|ease|paste` (dry run first, then `--write --expect-sha`).
+
+---
+
 ## 5. Helpful CLI Diagnostic Commands
 
 Velora comes with a complete suite of verification and diagnostics:

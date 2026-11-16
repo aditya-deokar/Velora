@@ -38,7 +38,7 @@ The default Vite build ships only the product entry. Demo applications, gallerie
 
 ## Current scope
 
-Velora 1.0 joins installation (React hosts, the starter and any-site mode), agent handoff, templates, kit, brand and looks, editorial tools, studio, master rendering and launch delivery. A focus-position editor, visual builder, hosted connection, product accounts and licensing are not implemented. Future adapters must call the existing operation boundaries rather than copy their policy. Previous demo/trial evidence remains in Morphite history; its old routes and application directories are retired.
+Velora 1.0 joins installation (React hosts, the starter and any-site mode), agent handoff, templates, kit, brand and looks, editorial tools, studio, master rendering and launch delivery. v2.1 adds the motion model v3, structure and constraints, the edit-op vocabulary and edit bridge, and the studio editor (Edit mode: shell, timeline and graph editor). Viewport gizmos, codemods, the Three.js entry, a hosted connection, product accounts and licensing are not implemented. Future adapters must call the existing operation boundaries rather than copy their policy. Previous demo/trial evidence remains in Morphite history; its old routes and application directories are retired.
 
 ## Source recipe catalog and library
 
@@ -274,3 +274,12 @@ Local installed-package checks exercise Next App Router on React 19, Pages Route
 ## Terminal onboarding
 
 `src/cli/terminal.ts` owns Amethyst lettering, color capability fallbacks and human setup formatting. It consumes canonical `ProjectResult` and `VELORA_BRAND`; it never discovers hosts or changes installation policy. `cli/main.ts` supplies TTY width/color support and a build-injected version from `package.json`. Interactive init prints a real pending message before the operation, followed by confirmed results; retries say verified rather than added. Unknown React hosts keep their explicit connection step. Pipes and NO_COLOR remain plain, narrow terminals use a compact wordmark, and JSON bypasses all presentation. CLI tests cover these alternate entry points and failed setup/open recovery.
+
+## Editor and edit bridge
+
+- **One vocabulary.** Every edit is a typed `EditOp` (`src/core/edit.ts`) applied by the pure reducer `applyEdits`, which validates through `SceneRecipeSchema` and `presentPreview` and returns exact inverses. `formatJsonDocument` (`src/core/json.ts`) writes the result while keeping author layout. `velora edit` (`src/project/edit.ts`) applies batches from the CLI; dry runs print diffs, and `--write` is compare-and-swap.
+- **The bridge.** `velora edit` (or `velora studio --site … --edit`) starts a loopback HTTP server (`src/project/services/bridge.ts`) after verifying the dev server. It accepts only the verified origin, a bearer token passed in the URL fragment, matching Host headers, bounded JSON bodies and the scene files the policy allows. A watcher streams file changes to the editor.
+- **The editor layer.** `src/editor/**` is lazy-loaded by `src/preview/EditMode.tsx` (the only allowed preview → editor edge, a dynamic import; the architecture checker enforces it and the editor never imports project, export or Three.js modules). `createEditorStore` holds the base recipe and SHA, pending and transient ops, the derived draft, history and save state with one write in flight. Drafts are ordinary definitions for the one preview session: no second clock, evaluator or validator. `intentToOps` implements the property-change rules once, and `EDITOR_COMMANDS` is the single registry for shortcuts, the palette and menus.
+- **Scene data.** Editor panels read a live Scene through `useSceneInspector` (`src/react/inspector.ts`): plain, frozen snapshots of bindings, measurements, animatables, evaluated nodes and motion state, published through a channel that `ScenePreview` creates in `layout="editor"`.
+- **Capture safety.** Every editor element is chrome-marked (`data-velora-preview-chrome`); the copied export URL strips `velora-edit` and the fragment, so captures never load the editor.
+

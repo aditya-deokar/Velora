@@ -144,7 +144,7 @@ Phase 01 (both are stop conditions in Phase 00.1).
 | D3 | Accepted (recommendation), confirm before 08 | The `sourceAdapter` layer (`src/project/source.ts`) is reserved. |
 | D4 | Accepted (recommendation), confirm before 09 | The `three` layer allows only `three` and `@react-three/fiber`; nothing is installed yet. |
 | D5 | Accepted (recommendation), confirm before 11 | Guide stays version 3 through 01. |
-| D6 | Open: S1 not run | In-house stays the default until spike S1 reports. |
+| D6 | Resolved 2026-11-16: in-house | Built in-house (SVG per visible row, virtualized, dense rows as paths); measured budgets in `artifacts/phase-05-exit.md`. |
 | D7 | Accepted (recommendation) | Phase 01 changes are additive within recipe version 1 and scene version 3. |
 | D8 | Accepted and enforced (00) | The architecture rule `gsap-ban` rejects `gsap` and `@gsap/*` in every layer. |
 | D9 | Accepted (recommendation), confirm before 12 | Stop condition if declined. |
@@ -311,4 +311,6 @@ on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 | 01 | done | Motion model v3 with goldens unchanged; compiled evaluator about 1,700x faster than the Phase 00 baseline at 300 tracks (`artifacts/phase-01-exit.md`). |
 | 02 | done | Clips, staggers, position paths, links, lookAt/focusFollow and the orbit rig; goldens unchanged (`artifacts/phase-02-exit.md`). |
 | 03 | done | `EditOpSchema`/`applyEdits` with exact inverses, the formatting-preserving writer, `velora edit`, and the secure loopback bridge and watcher (`artifacts/phase-03-exit.md`). S2 not run. |
-| 04–16 | not started | — |
+| 04 | done | Edit mode shell: store, bridge client, layers, inspector, history, palette; scripted journey byte-exact with undo; time to first keyframe 1.5 s (`artifacts/phase-04-exit.md`). |
+| 05 | done (budgets partly) | Dope sheet, snapping, clip bars, graph editor, easing library, `edit paste`; 200×1000 timeline with no long tasks; drag/graph budgets not yet met (`artifacts/phase-05-exit.md`). |
+| 06–16 | not started | — |

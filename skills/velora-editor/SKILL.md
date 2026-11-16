@@ -43,6 +43,7 @@ renderer uses, written only when you ask, and always reversible.
 | `velora edit key --scene <id> --track camera.z --at 1200 --value 400 --ease cubic.out --json` | Upsert one keyframe (dry run) |
 | `velora edit ease --scene <id> --track headline.x --at 0 --ease '{"cubicBezier":[0.33,0,0.67,1]}' --json` | Set the easing of the segment that starts at a keyframe |
 | `velora edit apply --scene <id> --ops ops.json --expect-sha <sha> --write --json` | Any `EditOp[]` batch (use `--ops -` for stdin) |
+| `velora edit paste --scene <id> --from copied.json --at 3000 --onto caption --json` | Apply a keyframe clipboard copied in the studio editor |
 | `velora edit --scene <id> --no-open --json` | Start the loopback edit bridge for the studio editor |
 
 ## Prerequisites
@@ -88,6 +89,21 @@ Ease the headline entrance and push the camera arrival 200 ms later:
 `velora edit apply --scene home-hero --ops ops.json --json` prints the diff (only those lines change),
 the labels ("Ease headline y keyframe at 0.00 s: expo.out", "Move camera z keyframe 4.00 s → 4.20 s") and
 the inverse. Then add `--write --expect-sha <sha>`.
+
+## Edit Mode (the studio editor)
+
+`velora edit --scene <id>` opens the studio in Edit mode on the running app. The person editing there makes
+the same ops you make, through the same bridge:
+- The inspector's stopwatch (⏱) animates a property; typing a value keys it at the playhead (Auto-key keys
+  the first change too); without animation a change is a static override (camera and focus statics write
+  `scene.camera` / `scene.focus`).
+- The timeline drags keyframes (snapped to frames, playhead, markers and keys), Alt-drag retimes, clip bars
+  move and trim, G opens the graph editor (bezier handles map exactly to `cubicBezier`), E the easing library,
+  F9 Easy Ease, Ctrl/⌘+G groups tracks into a clip.
+- Copying keyframes (Ctrl/⌘+C) produces an `application/x-velora-keyframes+json` clipboard; agents can apply
+  one with `velora edit paste --scene <id> --from <file> --at <ms> [--onto <surface>]`.
+- While the editor is open, always pass `--expect-sha`: the editor saves after every gesture. If you write, it
+  rebases its pending edits or shows **Changed on disk**; it never overwrites yours.
 
 ## Anti-Patterns
 

@@ -165,6 +165,8 @@ try {
   const assets=path.join(host,'dist/assets');
   const productionCode=(await Promise.all((await readdir(assets)).filter(name=>name.endsWith('.js')).map(name=>readFile(path.join(assets,name),'utf8')))).join('\n');
   assert.ok(!productionCode.includes('velora-library-scroll')&&!productionCode.includes('data-velora-capture'),'Production host must not ship the unused studio renderer');
+  // v2.1 S5: the Edit-mode editor is a lazy chunk the production host never ships.
+  assert.ok(!productionCode.includes('data-velora-editor-timeline')&&!productionCode.includes('velora-editor-grid'),'Production host must not ship the studio editor chunk');
   const previewPort=await port();const productionOrigin=`http://127.0.0.1:${previewPort}`;
   const production=logged(spawn(process.execPath,['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port',String(previewPort),'--strictPort'],{cwd:host,stdio:['ignore','pipe','pipe']}));processes.push(production);
   await waitFor(productionOrigin,production);

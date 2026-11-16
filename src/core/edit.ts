@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { EasingSchema } from "./easing";
-import { KeyframeEasingSchema, TrackRefSchema, STAGGER_ORDERS, evaluateMotion, MotionLinkSchema } from "./motion";
+import { KeyframeEasingSchema, TrackRefSchema, STAGGER_ORDERS, evaluateMotion, MotionLinkSchema, MotionSchema } from "./motion";
 import { SceneConstraintSchema } from "./scene";
 import { SceneRecipeSchema, EDITOR_LABEL_COLORS } from "./recipes";
 import { presentPreview } from "./preview";
@@ -597,7 +597,10 @@ export function coalesce(prev: EditOp, next: EditOp): EditOp | undefined {
 
 /** Apply a batch atomically. The result passes SceneRecipeSchema and presentPreview; issue paths name
  * the op that caused them (ops.3...). `inverse` restores the input exactly (deep-equal). */
-export function applyEdits(recipe: unknown, ops: unknown): EditResult {
+/** validation "motion" checks only MotionSchema (for in-gesture previews whose result the preview session
+ * validates again); the default "full" check is required before anything is committed or written. */
+export type ApplyOptions = { validation?: "full" | "motion" };
+export function applyEdits(recipe: unknown, ops: unknown, options: ApplyOptions = {}): EditResult {
   const batch = z.array(z.unknown()).max(2000).safeParse(ops);
   if (!batch.success) return { ok: false, issues: [{ code: "ERR_EDIT_INVALID", path: "ops", message: "Supply an array of at most 2000 edit ops." }] };
   const parsed: EditOp[] = [];
@@ -631,7 +634,7 @@ export function applyEdits(recipe: unknown, ops: unknown): EditResult {
     if (!(error instanceof EditFault)) throw error;
     return { ok: false, issues: [{ code: fault.code, path: `ops.${fault.index}`, message: fault.message }] };
   }
-  const problems = validate(draft.doc);
+  const problems = options.validation === "motion" ? validateMotion(draft.doc) : validate(draft.doc);
   if (problems.length) {
     // Attribute to the op after which the batch stays invalid (scan back for the last valid prefix).
     let culprit = parsed.length - 1;
@@ -644,6 +647,12 @@ export function applyEdits(recipe: unknown, ops: unknown): EditResult {
       ...(/exceeds scene duration/.test(problem.message) ? { hint: "Extend the scene in the same batch with motion.set {durationMs}." } : {}) })) };
   }
   return { ok: true, recipe: draft.doc, inverse: draft.inverse.reverse().flatMap(group => [...group].reverse()), touched: [...draft.touched] };
+}
+function validateMotion(doc: Doc): { path: string; message: string }[] {
+  const motion = doc?.definition?.motion;
+  if (motion === undefined) return [];
+  const parsed = MotionSchema.safeParse(motion);
+  return parsed.success ? [] : parsed.error.issues.map(issue => ({ path: `definition.motion.${issue.path.join(".")}`, message: issue.message }));
 }
 function validate(doc: Doc): { path: string; message: string }[] {
   const recipe = SceneRecipeSchema.safeParse(doc);

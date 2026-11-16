@@ -36,13 +36,16 @@ const owners = new Map([
   // v2.1 Phase 02 owners: cascade clips, rigs and constraint resolution inside the spatial owner.
   ['createCascadeClip','src/core/choreography.ts'], ['buildOrbitRig','src/core/shots.ts'], ['resolveConstraints','src/core/spatial.ts'],
   // v2.1 Phase 03 owners: the edit vocabulary and reducer, the formatting-preserving writer and the edit command.
+  // v2.1 Phase 04 owners: the editor store, intents, command registry and the Scene inspector hook.
+  ['createEditorStore','src/editor/store.ts'], ['intentToOps','src/editor/intents.ts'], ['EDITOR_COMMANDS','src/editor/commands.ts'], ['useSceneInspector','src/react/inspector.ts'],
   ['EditOpSchema','src/core/edit.ts'], ['applyEdits','src/core/edit.ts'], ['formatJsonDocument','src/core/json.ts'], ['executeEditCommand','src/project/edit.ts'],
   ['NoiseSchema','src/core/noise.ts'], ['sampleNoise','src/core/noise.ts'],
   ...['perspectiveForFocalLength','focalLengthForPerspective','lensFor'].map(name=>[name,'src/core/lens.ts']),
   ['evaluateScene', 'src/core/spatial.ts'], ['transformToCss', 'src/core/spatial.ts'],
 ]);
 // Inert identity records are frozen object literals rather than schemas or functions.
-const frozenMetadata = new Set(['VELORA_BRAND', 'VELORA_PACKAGE']);
+// Frozen catalogs (an array literal, possibly under `satisfies`/`as`) count the same way.
+const frozenMetadata = new Set(['VELORA_BRAND', 'VELORA_PACKAGE', 'EDITOR_COMMANDS']);
 const layers = {
   core: { local: ['core'], external: ['zod'] },
   runtime: { local: ['core', 'runtime'], external: ['zod'] },
@@ -184,7 +187,9 @@ export function checkArchitecture(input, { compilerOptions = {} } = {}) {
         let implemented = false;
         if (frozenMetadata.has(symbol) && ts.isVariableDeclaration(node) && node.initializer) {
           const value=node.initializer;
-          implemented=ts.isCallExpression(value) && value.expression.getText(file)==='Object.freeze' && value.arguments.length===1 && ts.isObjectLiteralExpression(value.arguments[0]);
+          let frozen=ts.isCallExpression(value) && value.arguments.length===1 ? value.arguments[0] : undefined;
+          while (frozen && (ts.isSatisfiesExpression(frozen) || ts.isAsExpression(frozen) || ts.isParenthesizedExpression(frozen))) frozen=frozen.expression;
+          implemented=ts.isCallExpression(value) && value.expression.getText(file)==='Object.freeze' && !!frozen && (ts.isObjectLiteralExpression(frozen) || ts.isArrayLiteralExpression(frozen));
         } else if (symbol.endsWith('Schema') && ts.isVariableDeclaration(node) && node.initializer) {
           // A real schema constructor, including chained refinements, must be rooted in the Zod import.
           let expression = node.initializer;

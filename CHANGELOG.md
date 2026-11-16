@@ -22,6 +22,16 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
   for an `<id>.reveal` override.
 - **Recipe `editor` block:** optional labels, colors, locks and markers that the renderer ignores.
 
+### Added — Studio editor (v2.1 Phases 04–05)
+- **Edit mode** (`velora-edit=1`, the scene's Edit button or `npx velora edit --scene <id>`): layers, an inspector
+  with stopwatches and drag-scrub fields, history, advisories and a command palette around the live scene,
+  saving each gesture through the edit bridge (read-only with copyable commands when no bridge runs).
+- **Timeline:** dope sheet with snapping to frames, playhead, markers and keys; Alt-drag retime; clip bars;
+  markers and an editor-only work area; keyboard grid; copy and paste (`velora edit paste`).
+- **Graph editor** with exact cubicBezier handles, continuous/auto/hold modes, spring and steps panels, and an
+  easing library (F9 Easy Ease).
+- `ScenePreview` `layout="editor"` slots, `useSceneInspector` and `createSceneInspector` for editor-grade consumers.
+
 ### Added — Edit operations and the edit bridge (v2.1 Phase 03)
 - **`velora edit ls|apply|key|ease`:** surgical recipe edits through one typed `EditOp` vocabulary
   (`EditOpSchema`, `applyEdits`): dry run by default with a diff, labels and the exact inverse batch;

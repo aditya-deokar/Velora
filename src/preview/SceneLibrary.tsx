@@ -9,6 +9,7 @@ import {libraryTheme} from './library-theme';
 import {TemplateGallery} from './TemplateGallery';
 import {QuickShot} from './QuickShot';
 import {CompositionPlayer} from './CompositionPlayer';
+import {EditMode,editModeRequested} from './EditMode';
 
 /** SOURCE OF TRUTH: SceneLibrary.
  * WHAT: list and navigate the host's validated source recipes through one catalog.
@@ -71,7 +72,9 @@ export function SceneLibrary({sources=EMPTY_SOURCES,bindings=EMPTY_BINDINGS,hot,
  const content=useMemo(()=>Component?<Component/>:null,[Component]);
  useEffect(()=>{const pop=()=>{setSceneId(selection());setRoute(studioView())};window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop)},[]);
  useEffect(()=>{if(selected&&Component)return;const element=scroller.current;if(!element)return;const measure=()=>setSize({width:element.clientWidth,height:element.clientHeight});const observer=new ResizeObserver(measure);observer.observe(element);measure();element.scrollTop=savedScroll.current;return()=>observer.disconnect()},[selected?.id,Component]);
- const destination=(id?:string)=>{const url=new URL(location.href);if(id)url.searchParams.set('velora-scene',id);else url.searchParams.delete('velora-scene');return url.pathname+url.search+url.hash;};
+ const destination=(id?:string)=>{const url=new URL(location.href);url.searchParams.delete('velora-edit');if(id)url.searchParams.set('velora-scene',id);else url.searchParams.delete('velora-scene');return url.pathname+url.search+url.hash;};
+ const editing=typeof location!=='undefined'&&editModeRequested(location.href);
+ const editHref=(id:string)=>{const url=new URL(location.href);url.searchParams.set('velora-scene',id);url.searchParams.set('velora-edit','1');url.hash='';return url.pathname+url.search;};
  const navigate=(event:MouseEvent<HTMLAnchorElement>,id?:string)=>{if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;event.preventDefault();history.pushState({},'',destination(id));setSceneId(id);setRoute(studioView());};
  // One URL builder for tabs, quick shots and compositions; unrelated host params are preserved.
  const studioHref=(next:{tab?:Tab;composition?:string})=>{const url=new URL(location.href);for(const key of ['velora-scene','velora-quick','velora-route','velora-params','velora-composition','velora-tab'])url.searchParams.delete(key);
@@ -95,7 +98,9 @@ export function SceneLibrary({sources=EMPTY_SOURCES,bindings=EMPTY_BINDINGS,hot,
    {compositionList.length===0?<div className="velora-compositions"><p style={{color:'#aaa'}}>No compositions yet. Create one with <code>npx velora new video --blueprint product-reel-20s --id reel --route / --json</code>. Files named <code>*.composition.json</code> at the project root appear here.</p></div>:
    <div className="velora-compositions">{compositionList.map(entry=>{const href=studioHref({composition:entry.path});return <a key={entry.path} href={href} data-composition={entry.id} onClick={event=>follow(event,href)}><strong>{entry.title}</strong><span>{(entry.durationMs/1000).toFixed(1)}s · {entry.path.replace(/^\//,'')}</span></a>;})}</div>}
   </section></main>;
- if(selected&&Component)return <ScenePreview key={selected.id} definition={selected.definition} title={selected.title} backHref={destination()} onBack={()=>{history.pushState({},'',destination());setSceneId(undefined)}} hot={hot}>{content}</ScenePreview>;
+ // Edit mode receives the recipe exactly as authored, so edits keep the file minimal.
+ if(selected&&Component&&editing)return <EditMode key={selected.id} sceneId={selected.id} title={selected.title} recipe={sources[selected.source]??selected} hot={hot} backHref={destination()} onBack={()=>{history.pushState({},'',destination());setSceneId(undefined)}}>{content}</EditMode>;
+ if(selected&&Component)return <ScenePreview key={selected.id} definition={selected.definition} title={selected.title} backHref={destination()} onBack={()=>{history.pushState({},'',destination());setSceneId(undefined)}} hot={hot} editHref={editHref(selected.id)}>{content}</ScenePreview>;
  const planeWidth=Math.min(940,Math.max(320,width-64));
  const {start,end}=visibleRows(scroll,height,catalog.scenes.length);
  return <main data-velora-library=""><style>{libraryTheme}</style>

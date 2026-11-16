@@ -129,6 +129,17 @@ Expected: three branded scenes that share fonts, colors and motion personality, 
 - **Paths.** A `"property": "position"` track with `[x, y, z]` keyframes moves along a curve (automatic handles, or `inTangent`/`outTangent` offsets); easing maps time to distance along each segment. `rove: true` gives constant speed, and `orient` turns the layer along the path. A path replaces x/y/z tracks on that target.
 - **Links (no expressions).** `motion.links: [{ "to": { "target": { "kind": "surface", "id": "bg" }, "property": "x" }, "from": { "target": { "kind": "camera" }, "property": "x" }, "scale": -0.2 }]` creates parallax; `delayMs` makes echoes and trails; `{ "channel": "scroll" }` drives counters. Links are acyclic, at most 8 deep.
 
+## Shaping Easing in the Graph Editor (Velora 1.1)
+
+In the studio's Edit mode (`velora edit --scene <id>`), press G for the graph editor: value and speed graphs
+drawn by the real evaluator. Dragging a segment's handles writes `{ "cubicBezier": [x1, y1, x2, y2] }` on the
+segment's start keyframe (out-handle = x1, y1; in-handle = x2, y2, in segment-normalized space; x stays in 0..1,
+y in −5..5). Handle modes: linear, ease (Easy Ease `[0.333, 0, 0.667, 1]`), continuous (matches velocity on both
+sides of a keyframe), auto (`"auto"`) and hold. Springs and steps get a parameter panel with settle time and
+overshoot. The easing library (E) offers Velora, After Effects, CSS, Penner, spring and steps presets. Prefer an
+ease-out with a little overshoot for UI arrivals, and keep overshoot off camera tracks (the camera-overshoot
+advisory flags it).
+
 ## Related Skills
 
 - `velora-brand`: tokens and motion personality.

@@ -1,6 +1,6 @@
 # Product
 
-Velora turns a product's real interface into cinematic launch video. A developer's own coding agent works in source with the Velora CLI and skills: it picks a shot or a whole film from certified templates, refines it with real components, previews it live, and renders every file a launch needs. Velora runs locally, owns no AI provider login or account, and offers no visual builder.
+Velora turns a product's real interface into cinematic launch video. A developer's own coding agent works in source with the Velora CLI and skills: it picks a shot or a whole film from certified templates, refines it with real components, previews it live, and renders every file a launch needs. Velora runs locally and owns no AI provider login or account. Its studio adds a hand-editing mode (keyframes, easing, graph editor) over the same recipe files the agent writes.
 
 ## Who it serves
 
@@ -32,7 +32,9 @@ The studio opens at `?velora-preview=1` in the developer's running app (or at `/
 - **Templates:** a gallery with one live quick shot at a time and a param panel that copies the scaffold command, the export command and an agent prompt.
 - **Compositions:** a player with J/K/L transport, frame stepping, safe-area guides and synced audio and captions.
 
-The studio writes no files; agents and the CLI own the source.
+**Edit mode** (`velora-edit=1`, from a scene's Edit button or `npx velora edit --scene <id>`) turns the studio into a keyframe editor on the live app: layers, an inspector with stopwatches and the evaluated value at the playhead, a dope sheet with clip bars and snapping, a graph editor with bezier handles, an easing library, history and a command palette. Every gesture is one typed edit op, so the editor and coding agents make identical, reviewable edits to one recipe file.
+
+The Scenes, Templates and Compositions tabs stay read-only. The studio writes project files **only** in Edit mode, and only through the local bridge that `velora edit` starts: loopback only, a per-session token, an origin allowlist, compare-and-swap writes and undo history. Without the bridge, Edit mode keeps changes in memory and copies the exact `velora edit apply` command or an agent prompt. Editor-only state (panel sizes, solo and hide) never enters project files.
 
 ## Launch delivery
 
@@ -49,7 +51,7 @@ The studio writes no files; agents and the CLI own the source.
 
 ## Boundaries
 
-- Local only: no hosted rendering, accounts, licensing or telemetry. FFmpeg and Chromium are local prerequisites.
+- Local only: no hosted rendering, accounts, licensing or telemetry. FFmpeg and Chromium are local prerequisites. The edit bridge is a local process the developer starts; it serves only loopback.
 - React DOM only for component-level shots; React Native without DOM is out of scope; non-React sites get route-level shots.
 - No text-to-speech or transcription; music is the creator's licensed file; sound effects are synthesized.
 - No universal quality or performance promises: evidence is device- and scene-specific.

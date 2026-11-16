@@ -3,6 +3,7 @@ import { applyEdits, describeOp, lineDiff, parseTrackShorthand, type EditOp, typ
 import { formatJsonDocument, parseJsonDocument } from "../core/json";
 import { SceneRecipeIdSchema, SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 import { evaluateMotion } from "../core/motion";
+import { parseClipboard, pasteOps } from "../core/clipboard";
 import { normalizeIssue, nextForIssues, type CliIssue } from "../core/cli-schema";
 import * as services from "./services";
 import { startEditBridge, createBridgeToken, watchProjectFiles, BridgeStartError, BRIDGE_MAX_BODY_BYTES, type BridgeServer, type BridgeReply } from "./services/bridge";
@@ -17,7 +18,7 @@ import { executeProjectCommand } from "./commands";
  * WHERE: cli/index parses flags; core/edit and core/json own the reducer and writer; services own file I/O
  * (scoped paths, atomic writes); services/bridge owns the loopback transport and watcher.
  */
-export type EditOperation = "ls" | "apply" | "key" | "ease" | "bridge";
+export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "bridge";
 export type EditCommandResult =
   | { success: true; command: "edit"; data: Record<string, unknown>; warnings?: CliIssue[]; next?: string[]; server?: BridgeServer }
   | { success: false; command: "edit"; issues: CliIssue[]; next: string[] };
@@ -37,6 +38,8 @@ const EditInputSchema = z.strictObject({
   value: z.string().optional(),
   ease: z.string().optional(),
   label: z.string().max(200).optional(),
+  from: z.string().optional(),
+  onto: z.string().min(1).max(128).optional(),
   // Bridge
   port: z.number().int().min(0).max(65535).optional(),
   readOnly: z.boolean().optional(),
@@ -209,6 +212,16 @@ export async function executeEditCommand(operation: EditOperation, input: EditIn
       // Accept either an op array or the inverse/ops envelope another command printed.
       if (ops && typeof ops === "object" && !Array.isArray(ops)) ops = (ops as Doc).ops ?? (ops as Doc).inverse ?? (ops as Doc).data?.inverse;
       return await editScene(root, options.scene, ops, write);
+    }
+    if (operation === "paste") {
+      if (!options.from || options.at === undefined) return failure([{ code: "ERR_MISSING_VALUE", path: options.from ? "at" : "from", message: "edit paste needs --from <clipboard file> and --at <ms>." }]);
+      const text = await services.readText(root, services.relativeTarget(options.from.replace(/^\.\//, "")), BRIDGE_MAX_BODY_BYTES);
+      if (text === undefined) return failure([{ code: "ERR_EDIT_TARGET", path: "from", message: `No clipboard file ${options.from}.` }]);
+      const payload = parseClipboard(text.replace(/^\uFEFF/, ""));
+      if (!payload) return failure([{ code: "ERR_EDIT_INVALID", path: "from", message: "Not a Velora keyframe clipboard (application/x-velora-keyframes+json, version 1)." }]);
+      const pasted = pasteOps(payload, options.at, options.onto ? { kind: "surface", id: options.onto } : undefined);
+      if (!pasted.ok) return failure([{ code: "ERR_EDIT_INVALID", path: "from", message: pasted.message }]);
+      return await editScene(root, options.scene, pasted.ops, write);
     }
     if (!options.track || options.at === undefined) return failure([{ code: "ERR_MISSING_VALUE", path: options.track ? "at" : "track", message: `edit ${operation} needs --track <ref> and --at <ms>.` }]);
     const track = parseTrackShorthand(options.track);

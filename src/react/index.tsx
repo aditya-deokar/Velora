@@ -35,6 +35,7 @@ import {
 import { SURFACE_VISUAL_PROPERTIES, motionFingerprint, type MotionInput, type MotionState, type SurfaceVisualProperty } from "../core/motion";
 import { FocusFilter } from "./FocusFilter";
 import { createRegistry, type Registry } from "./registry";
+import type { SceneInspector } from "./inspector";
 
 /** SOURCE OF TRUTH: Scene / Surface / Motion live DOM adapter.
  * WHAT: bind existing React subtrees to the canonical core spatial operation.
@@ -94,6 +95,8 @@ export type SceneProps = {
   focus?: FocusInput;
   /** Scene constraints (lookAt, focusFollow) resolved by the spatial owner from live layout. */
   constraints?: SceneConstraintInput[];
+  /** Publish read-only snapshots for editor consumers (see useSceneInspector). */
+  inspector?: SceneInspector;
   className?: string;
   style?: CSSProperties;
   onDiagnostics?: (issues: SceneIssue[]) => void;
@@ -112,6 +115,7 @@ export function Scene({
   camera,
   focus,
   constraints,
+  inspector,
   motion,
   timeMs = 0,
   className,
@@ -212,6 +216,23 @@ export function Scene({
     }),
     [registry, result, timeMs, motion],
   );
+  // Editor consumers observe the committed evaluation; no instances, elements or callbacks leave the Scene.
+  useLayout(() => {
+    if (!inspector) return;
+    const nodes = result.evaluation.nodes;
+    inspector.publish({
+      timeMs: context.timeMs,
+      bindings: Array.from(registry.entries.values()).map(binding => {
+        const measurement = registry.measurements.get(binding.token);
+        const parentId = binding.parent ? registry.entries.get(binding.parent)?.id : undefined;
+        return { id: binding.id, ...(parentId ? { parentId } : {}), ...(binding.transform ? { transform: { ...binding.transform } } : {}), ...(measurement ? { measurement: { ...measurement } } : {}), mounted: true as const };
+      }),
+      nodes: nodes.map(node => ({ id: node.id, world: [...node.world], blur: node.blur, depth: node.worldPosition.z, width: node.width, height: node.height })),
+      animatables: [...registry.animatables.values()],
+      motion: result.state,
+      issues: result.evaluation.issues,
+    });
+  });
   // Callback identity can change when the host stores diagnostics in state. Only
   // issue changes notify it, including a single empty report after correction.
   const callback = useRef(onDiagnostics);
@@ -471,3 +492,5 @@ export { useSceneCapture, useCaptureSettle } from "./capture";
 export { KineticText, kineticStyle, kineticWordIds, type KineticTextProps } from "./kinetic-text";
 export { WebGLSurface, type WebGLSurfaceProps, type WebGLTime } from "./three-bridge";
 export { useAnimatable, useAnimatableState, type AnimatableOptions } from "./animatable";
+export { createSceneInspector, useSceneInspector, type SceneInspector, type SceneSnapshot, type InspectedBinding, type InspectedNode } from "./inspector";
+export type { AnimatableEntry } from "./registry";

@@ -98,6 +98,10 @@ import {z} from 'zod'; export const CascadeSchema=z.strictObject({}); export fun
   'src/core/color.ts': '/** SOURCE OF TRUTH: parseCssColor, mixColors.\n * WHAT: parse and blend CSS colors.\n * WHY: deterministic perceptual color frames.\n * WHERE: consumed by core motion.\n */\nexport function parseCssColor(){return 0;} export function mixColors(){return 0;}',
   'src/core/animatable.ts': '/** SOURCE OF TRUTH: AnimatableSpecSchema.\n * WHAT: typed animatable prop specs.\n * WHY: one contract for keyframeable props.\n * WHERE: consumed by the React hook.\n */\nimport { z } from "zod"; export const AnimatableSpecSchema=z.record(z.string(), z.number());',
   'src/react/animatable.ts': '/** SOURCE OF TRUTH: useAnimatable.\n * WHAT: read typed props at scene time.\n * WHY: components share the motion clock.\n * WHERE: consumed by kit components.\n */\nexport function useAnimatable(){return {};}',
+  'src/editor/store.ts': '/** SOURCE OF TRUTH: createEditorStore.\n * WHAT: editor fixture behavior.\n * WHY: one owner for editor policy.\n * WHERE: consumed by editor panels.\n */\nexport function createEditorStore(){return {};}',
+  'src/editor/intents.ts': '/** SOURCE OF TRUTH: intentToOps.\n * WHAT: editor fixture behavior.\n * WHY: one owner for editor policy.\n * WHERE: consumed by editor panels.\n */\nexport function intentToOps(){return [];}',
+  'src/editor/commands.ts': '/** SOURCE OF TRUTH: EDITOR_COMMANDS.\n * WHAT: editor fixture behavior.\n * WHY: one owner for editor policy.\n * WHERE: consumed by editor panels.\n */\nexport const EDITOR_COMMANDS=Object.freeze([]);',
+  'src/react/inspector.ts': '/** SOURCE OF TRUTH: useSceneInspector.\n * WHAT: editor fixture behavior.\n * WHY: one owner for editor policy.\n * WHERE: consumed by editor panels.\n */\nexport function useSceneInspector(){return undefined;}',
   'src/core/edit.ts': '/** SOURCE OF TRUTH: EditOpSchema, applyEdits.\n * WHAT: typed edit operations and reducer.\n * WHY: one vocabulary for every author.\n * WHERE: consumed by the edit command.\n */\nimport { z } from \'zod\'; export const EditOpSchema=z.discriminatedUnion(\'op\', [z.strictObject({}), z.strictObject({})]); export function applyEdits(){return {};}',
   'src/core/json.ts': '/** SOURCE OF TRUTH: formatJsonDocument.\n * WHAT: write JSON preserving formatting.\n * WHY: minimal diffs for author files.\n * WHERE: consumed by the edit command.\n */\nexport function formatJsonDocument(){return \'\';}',
   'src/project/edit.ts': '/** SOURCE OF TRUTH: executeEditCommand.\n * WHAT: apply edit batches to recipes.\n * WHY: one write policy for agents and editors.\n * WHERE: CLI calls this owner.\n */\nexport async function executeEditCommand(){return {};}',
@@ -430,4 +434,12 @@ test('v2.1 Phase 03 owners cannot be reimplemented elsewhere', () => {
   for (const text of ['export function applyEdits(){return {};}', 'export function formatJsonDocument(){return "";}', 'export async function executeEditCommand(){return {};}'])
     rejects('src/cli/copied.ts', text, 'canonical-owner');
   rejects('src/preview/copied.ts', "import {z} from 'zod'; export const EditOpSchema=z.discriminatedUnion('op', [z.strictObject({}), z.strictObject({})]);", 'canonical-owner');
+});
+
+test('v2.1 Phase 04 owners cannot be reimplemented elsewhere', () => {
+  for (const text of ['export function createEditorStore(){return {};}', 'export function intentToOps(){return [];}', 'export const EDITOR_COMMANDS=Object.freeze([]);', 'export function useSceneInspector(){return undefined;}'])
+    rejects('src/preview/copied.ts', text, 'canonical-owner');
+});
+test('frozen catalogs must be frozen literals', () => {
+  assert.ok(fixture('src/editor/commands.ts', '/** SOURCE OF TRUTH: EDITOR_COMMANDS.\n * WHAT: editor fixture behavior.\n * WHY: one owner for editor policy.\n * WHERE: consumed by editor panels.\n */\nexport const EDITOR_COMMANDS=[];').some(issue => issue.rule === 'canonical-presence'));
 });
