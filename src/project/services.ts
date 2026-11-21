@@ -6,6 +6,8 @@ import path from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { VELORA_PACKAGE } from "../core/branding";
+import { MAX_ASSET_BYTES, sniffAssetType } from "../core/assets";
+import type { MediaPeaks } from "../core/audio";
 import { fault } from "./errors";
 
 /** SOURCE OF TRUTH: scoped project effects.
@@ -104,7 +106,15 @@ export async function isRegularFile(root: string, target: string): Promise<boole
     throw error;
   }
 }
+const activeWrites = new Map<string, Promise<void>>();
 export async function atomicWrite(root: string, target: string, content: string, expected: string | undefined) {
+  const key = path.join(root, target);
+  const write = (activeWrites.get(key) ?? Promise.resolve()).catch(() => {}).then(() => replaceText(root, target, content, expected));
+  activeWrites.set(key, write);
+  try { await write; }
+  finally { if (activeWrites.get(key) === write) activeWrites.delete(key); }
+}
+async function replaceText(root: string, target: string, content: string, expected: string | undefined) {
   const filename = await scopedPath(root, target);
   if (await readText(root, target) !== expected) throw fault("conflict", "Project file changed during setup; retry after reviewing it.", target);
   await mkdir(path.dirname(filename), { recursive: true });
@@ -126,7 +136,19 @@ export async function atomicWrite(root: string, target: string, content: string,
           throw fault("conflict", "Project file appeared during setup; review it before retrying.", target);
         throw error;
       }
-    } else await rename(temporaryPath, destination);
+    } else {
+      // Windows dev servers and capture workers can briefly keep the old file open.
+      // Retry the rename with the same CAS check before each attempt.
+      for (let attempt = 0;; attempt++) {
+        try { await rename(temporaryPath, destination); break; }
+        catch (error) {
+          if (process.platform !== "win32" || attempt >= 5 || !["EPERM", "EBUSY", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+          await pause(25 * (attempt + 1));
+          if (await readText(root, target) !== expected) throw fault("conflict", "Project file changed during setup.", target);
+          await scopedPath(root, target);
+        }
+      }
+    }
   } finally {
     await handle.close();
     await unlink(temporaryPath).catch(error => { if (error.code !== "ENOENT") throw error; });
@@ -353,7 +375,7 @@ export async function decodePcm(absolutePath: string, sampleRate: number, maxSec
   const bytes = await new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let child;
-    try { child = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-i", absolutePath, "-t", String(maxSeconds), "-ac", "1", "-ar", String(sampleRate), "-f", "f32le", "pipe:1"], { shell: false, stdio: ["ignore", "pipe", "ignore"] }); }
+    try { child = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file,pipe", "-format_whitelist", "wav,mp3,ogg,flac,aac,mov,matroska,webm,aiff", "-i", absolutePath, "-t", String(maxSeconds), "-ac", "1", "-ar", String(sampleRate), "-f", "f32le", "pipe:1"], { shell: false, stdio: ["ignore", "pipe", "ignore"] }); }
     catch { reject(fault("missing-ffmpeg", "Install FFmpeg and ensure ffmpeg is available on PATH.")); return; }
     const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
     child.stdout?.on("data", chunk => chunks.push(chunk));
@@ -363,6 +385,46 @@ export async function decodePcm(absolutePath: string, sampleRate: number, maxSec
   const samples = new Float32Array(Math.floor(bytes.length / 4));
   for (let i = 0; i < samples.length; i++) samples[i] = bytes.readFloatLE(i * 4);
   return samples;
+}
+
+export async function waveformSource(root: string, target: string) {
+  const absolute = await scopedPath(root, target);
+  const handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > MAX_ASSET_BYTES) throw fault("ERR_ASSET_TOO_LARGE", "Use a regular audio asset up to 50 MB.", target);
+    const block = Buffer.alloc(64 * 1024);
+    const hash = createHash("sha256");
+    for (let remaining = stat.size; remaining > 0;) {
+      const { bytesRead } = await handle.read(block, 0, Math.min(block.length, remaining), null);
+      if (!bytesRead) break;
+      if (remaining === stat.size && sniffAssetType(target, block.subarray(0, bytesRead)) !== "audio")
+        throw fault("ERR_ASSET_UNSUPPORTED", "Waveforms require an audio asset.", target);
+      hash.update(block.subarray(0, bytesRead));
+      remaining -= bytesRead;
+    }
+    return { absolute, sha256: hash.digest("hex") };
+  } finally { await handle.close(); }
+}
+
+export async function decodeMediaPeaks(absolute: string, sha256: string): Promise<MediaPeaks> {
+  const sampleRate = 8000, samplesPerBucket = sampleRate / 100;
+  // A composition can use up to 240 seconds, with up to 120 seconds of source offset.
+  const samples = await decodePcm(absolute, sampleRate, 360);
+  const bytes = Buffer.alloc(2 * Math.ceil(samples.length / samplesPerBucket));
+  for (let start = 0; start < samples.length; start += samplesPerBucket) {
+    let low = 1, high = -1;
+    for (let i = start; i < Math.min(samples.length, start + samplesPerBucket); i++) {
+      const sample = Number.isFinite(samples[i]) ? samples[i] : 0;
+      low = Math.min(low, sample);
+      high = Math.max(high, sample);
+    }
+    const encode = (value: number) => Math.round(Math.max(-1, Math.min(1, value)) * 127) + 128;
+    const index = 2 * start / samplesPerBucket;
+    bytes[index] = encode(low);
+    bytes[index + 1] = encode(high);
+  }
+  return { sha256, bucketMs: 10, durationMs: samples.length * 1000 / sampleRate, peaks: bytes.toString("base64") };
 }
 export async function probeAudioFile(absolutePath: string, timeoutMs = 30_000): Promise<AudioProbe> {
   const stderr = await new Promise<string>((resolve) => {

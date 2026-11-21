@@ -31,7 +31,7 @@ import type { SourceHint } from "./source/pick";
 /** The studio editor (Edit mode, Phase 04/05): ScenePreview in editor layout with Layers, Inspector and the
  * timeline in its slots, one store, one session cursor, and the edit bridge for saving. Every editor element
  * is chrome-marked; the capture viewport only ever contains the scene. */
-export type EditorProps = { sceneId: string; title: string; recipe: unknown; children?: ReactNode; hot?: PreviewHot; backHref?: string; onBack?: () => void };
+export type EditorProps = { sceneId: string; title: string; recipe: unknown; children?: ReactNode; hot?: PreviewHot; backHref?: string; onBack?: () => void; backLabel?: string; initialTimeMs?: number };
 type Shared = {
   store: EditorStore; sceneId: string; hello?: BridgeHello; client?: ReturnType<typeof createBridgeClient>; panel?: EditorPanel; setPanel(panel?: EditorPanel): void;
   focused: { current: EditorController["focused"] }; clipboard: { current?: ClipboardPayload };
@@ -48,7 +48,7 @@ function saveUi(key: string, ui: EditorUi) {
 }
 const SharedContext = createContext<Shared | null>(null);
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack }: EditorProps) {
+export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack, backLabel, initialTimeMs }: EditorProps) {
   const [address] = useState(takeBridgeFragment);
   const [client] = useState(() => address ? createBridgeClient(address) : undefined);
   const uiKey = `velora-editor:${typeof location === "undefined" ? "" : location.pathname}:${sceneId}`;
@@ -112,7 +112,7 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
     if (!selectedThree?.startsWith("three:") || sourcePicking || tool === "camera" || tool === "focus" || tool === "pivot") return;
     return { id: selectedThree, mode: tool === "rotate" ? "rotate" : tool === "scale" ? "scale" : "translate" };
   }, [selectedThree, sourcePicking, tool]);
-  return <ScenePreview definition={definition} title={title} backHref={backHref} onBack={onBack} hot={hot} revision={state.revision} layout="editor" threeSelection={threeSelection}
+  return <ScenePreview definition={definition} title={title} backHref={backHref} onBack={onBack} backLabel={backLabel} initialTimeMs={initialTimeMs} hot={hot} revision={state.revision} layout="editor" threeSelection={threeSelection}
     {...(state.ui.director ? { viewCamera: state.ui.director } : {})} peaking={state.ui.tool === "focus"}
     slots={{
       overlay: <WithEditor shared={shared}><Overlay/></WithEditor>,

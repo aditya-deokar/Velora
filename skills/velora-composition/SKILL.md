@@ -13,6 +13,7 @@ commands:
 - inspect
 - assets
 - validate
+- compose
 related-skills:
 - velora
 - velora-init
@@ -41,6 +42,7 @@ Use this skill when planning a whole video from one JSON file, auditing what exi
 - `velora assets ls --json`: discovered assets with IDs and paths.
 - `velora assets check --json`: oversize, unsupported, and dangling-alias diagnostics.
 - `velora validate --composition teaser.composition.json --json`: full gate including audio, captions, and transitions.
+- `velora compose edit --composition teaser.composition.json --ops ops.json --json` previews a typed edit batch. Use `--write` with `--expect-sha` to save the reviewed diff.
 
 ## Prerequisites
 
@@ -56,6 +58,8 @@ Use this skill when planning a whole video from one JSON file, auditing what exi
 4. Declare `assets`, `audio`, and `captions` by ID, never by bytes.
 5. Run `velora inspect --composition teaser.composition.json --json` to review resolution and totals.
 6. Run `velora validate --composition teaser.composition.json --json` and fix every issue before rendering.
+
+`scenes[].inMs` is an optional presentation-time source offset. A shot placed at 3000 ms with `inMs: 500` samples its recipe at 500 ms when the composition cursor is at 3000 ms. Splitting a shot preserves that source clock on both pieces. `audio[].offsetMs` skips source audio and optional `audio[].durationMs` sets an explicit playback span.
 
 ## Worked Example
 

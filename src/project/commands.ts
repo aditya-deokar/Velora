@@ -6,7 +6,7 @@ import { VELORA_BRAND, VELORA_PACKAGE } from "../core/branding";
 import { OpenPreviewSchema, ProjectResultSchema, ProjectStateSchema, type ProjectResult, type ProjectState } from "../core/project";
 import { normalizeIssue, nextForIssues, type CliIssue, type DoctorCheck, type DoctorResult } from "../core/cli-schema";
 import { ASSETS_DIRECTORY, AssetIdSchema, MAX_ASSET_BYTES, resolveAssetId, sniffAssetType, type DiscoveredAsset } from "../core/assets";
-import { compositionTotals, resolveCompositionSpec, type Composition } from "../core/composition";
+import { compositionSourceRanges, compositionTotals, resolveCompositionSpec, CompositionSchema, type Composition } from "../core/composition";
 import { AUDIO_DRIFT_BUDGET_MS, audioPlacement } from "../core/audio";
 import { checkCaptions, formatSrt, parseCaptions } from "../core/captions";
 import { TRANSITION_CATALOG } from "../core/transitions";
@@ -27,7 +27,9 @@ import { ASPECT_FRAMES, AspectSchema, type Aspect } from "../core/shots";
 import { SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 import { BRAND_FILE, BrandSchema, brandTokensFromCss, completeBrandColors, contrastRatio } from "../core/brand";
 import { parseJsonDocument } from "../core/json";
-import { RHYTHM_SAMPLE_RATE, analyzeRhythm, snapToBeats } from "../core/rhythm";
+import { RHYTHM_SAMPLE_RATE, analyzeRhythm } from "../core/rhythm";
+import { planCompositionSnap } from "../core/composition-edit";
+import { executeCompositionEdit, readCompositionEdit } from "./composition-edit";
 import { reviewComposition } from "../core/editorial";
 import { isOverlapTransition } from "../core/transitions";
 
@@ -943,6 +945,7 @@ async function validate(root: string, input: { composition?: string }): Promise<
   }
   const full = await checkCompositionFull(root, input.composition);
   const issues = [...full.issues];
+  if (full.composition) issues.push(...compositionSourceRanges(full.composition, full.catalog).map(normalizeIssue));
   const clocks = await checkSceneClocks(root, full.catalog);
   issues.push(...clocks.issues);
   if (issues.length) return { success: false, issues, next: nextForIssues(issues) };
@@ -999,7 +1002,10 @@ async function checkCompositionAudio(
       issues.push(normalizeIssue({ code: "ERR_AUDIO_CODEC", path: `${at}.assetId`, message: `Audio ${resolved} could not be probed. Install FFmpeg and use a supported file.` }));
     else if (!(["aac", "mp3", "opus", "vorbis", "flac", "pcm_s16le", "pcm_s24le", "pcm_f32le", "wav", "m4a"] as readonly string[]).includes(probe.codec))
       issues.push(normalizeIssue({ code: "ERR_AUDIO_CODEC", path: `${at}.assetId`, message: `Audio ${resolved} uses codec ${probe.codec}. Use AAC, MP3, Opus, Vorbis, FLAC or WAV.` }));
-    if (probe.durationMs !== null && track.fadeInMs + track.fadeOutMs > probe.durationMs)
+    if (track.durationMs !== undefined && (track.fadeInMs + track.fadeOutMs > track.durationMs ||
+      (probe.durationMs !== null && track.offsetMs + track.durationMs > probe.durationMs + 10)))
+      issues.push(normalizeIssue({ code: "ERR_AUDIO_INVALID", path: at, message: `Track "${track.id}" must fit its source, and its fades must fit the trimmed duration.` }));
+    else if (probe.durationMs !== null && track.fadeInMs + track.fadeOutMs > probe.durationMs)
       issues.push(normalizeIssue({ code: "ERR_AUDIO_INVALID", path: at, message: `Track "${track.id}" fades (${track.fadeInMs + track.fadeOutMs}ms) exceed the audio length (${probe.durationMs}ms).` }));
     if (track.duckUnder && !composition.audio.some((other) => other.id === track.duckUnder!.trackId))
       issues.push(normalizeIssue({ code: "ERR_AUDIO_INVALID", path: `${at}.duckUnder.trackId`, message: `Track "${track.id}" ducks under unknown track "${track.duckUnder.trackId}".` }));
@@ -1038,8 +1044,6 @@ function checkCompositionTransitions(
     const transition = segment.transition;
     if (!transition) continue;
     const at = `composition.scenes.${index}.transition`;
-    if (transition.durationMs > segment.durationMs)
-      issues.push(normalizeIssue({ code: "ERR_TRANSITION_INVALID", path: `${at}.durationMs`, message: `Transition lasts ${transition.durationMs}ms but segment "${segment.id}" spans ${segment.durationMs}ms.` }));
     const entry = TRANSITION_CATALOG.find((item) => item.type === transition.type);
     if (entry?.needsLeaves) {
       const recipe = scenes.find((scene) => scene.id === segment.recipe);
@@ -1733,27 +1737,19 @@ export async function executeEditorialCommand(operation: "audio-beats" | "compos
       return { success: true, command, data: { file: target, bpm: report.bpm, confidence: Math.round(report.confidence * 1000) / 1000, beats: report.beats, downbeats: report.downbeats, onsets: report.onsets.length, durationMs: Math.round(report.durationMs), ...(markers !== undefined ? { markersWritten: markers } : {}) },
         ...(warnings.length ? { warnings } : {}), next: compositionFile ? [`velora compose snap --composition ${compositionFile} --to beats --json`] : [] };
     }
-    const { composition } = await load();
-    const to = input.to === "downbeats" ? "downbeat" : "beat";
-    const grid = composition.markers.filter(marker => to === "beat" ? marker.kind === "beat" || marker.kind === "downbeat" : marker.kind === "downbeat").map(marker => marker.atMs);
-    if (!grid.length) return editorialFault("ERR_MARKERS_MISSING", `The composition has no ${to} markers. Run velora audio beats --composition ${compositionFile} --write-markers first.`, "markers");
+    if (!compositionFile) return editorialFault("ERR_MISSING_VALUE", "compose snap needs --composition.", "composition");
+    const read = await readCompositionEdit(root, compositionFile);
+    const parsed = CompositionSchema.safeParse(read.document);
+    if (!parsed.success) return editorialFault("ERR_COMPOSITION_INVALID", parsed.error.issues[0].message, compositionFile);
+    const to = input.to === "downbeats" ? "downbeats" : "beats";
     const tolerance = typeof input.tolerance === "number" ? input.tolerance : 120;
-    const plan = snapToBeats(composition.scenes.map(scene => ({ id: scene.id, startMs: scene.startMs, durationMs: scene.durationMs,
-      overlapMs: scene.transition && isOverlapTransition(scene.transition.type) ? scene.transition.durationMs : 0 })), grid, tolerance);
-    let written = false;
-    if (input.write && plan.changes.length) {
-      const text = await services.readText(root, compositionFile!, 256_000);
-      if (text === undefined) return editorialFault("source-changed", "Composition source disappeared.", "composition");
-      const document = parseJsonDocument(text) as { scenes: Record<string, unknown>[] };
-      for (const change of plan.changes) {
-        const scene = document.scenes.find(entry => entry.id === change.id);
-        if (scene) scene[change.field] = change.to;
-      }
-      await services.atomicWrite(root, compositionFile!, JSON.stringify(document, null, 2) + "\n", text);
-      written = true;
-    }
-    return { success: true, command, data: { composition: compositionFile, to: `${to}s`, toleranceMs: tolerance, changes: plan.changes, unsnapped: plan.unsnapped, written },
-      next: written ? [`velora validate --composition ${compositionFile} --json`] : plan.changes.length ? [`velora compose snap --composition ${compositionFile} --to ${to}s --write --json`] : [] };
+    const plan = planCompositionSnap(parsed.data, to, tolerance);
+    if (!plan.beatCount) return editorialFault("ERR_MARKERS_MISSING", `The composition has no ${to}. Run velora audio beats --composition ${compositionFile} --write-markers first.`, "markers");
+    const result = await executeCompositionEdit({ composition: compositionFile, ops: plan.ops, expectSha: read.sha, write: input.write === true }, { root });
+    if (!result.success) return result;
+    const { written } = result.data;
+    return { success: true, command, data: { composition: compositionFile, to, toleranceMs: tolerance, changes: plan.changes, unsnapped: plan.unsnapped, written },
+      next: written ? [`velora validate --composition ${compositionFile} --json`] : plan.ops.length ? [`velora compose snap --composition ${compositionFile} --to ${to} --write --json`] : [] };
   } catch (error) {
     const known = error instanceof Error && "code" in error;
     const nested = known && "issues" in error && Array.isArray(error.issues) ? (error.issues as CliIssue[]) : undefined;

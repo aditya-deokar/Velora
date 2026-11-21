@@ -26,19 +26,22 @@ export function readCaptionsRequest(search: string): CaptionsRequest | undefined
     ...(query.get("velora-caption-words") ? { wordsFile: query.get("velora-caption-words")! } : {}) };
 }
 type WordsDocument = { words?: { text: string; startMs: number; endMs: number }[] };
-export function CaptionsScene({ request }: { request: CaptionsRequest }) {
-  const brand = useProjectBrand();
+export function useCaptionCues(file?: string, wordsFile?: string, urls?: Record<string, string>) {
   const [cues, setCues] = useState<CaptionCueInput[]>();
   const [error, setError] = useState("");
   useEffect(() => {
+    setCues(undefined);
+    setError("");
+    if (!file) return;
     let active = true;
+    const url = (file: string) => urls?.["/" + file.replace(/^\.?\//, "")] ?? urls?.[file] ?? projectFileUrl(file);
     const load = async () => {
-      const text = await fetch(projectFileUrl(request.file)).then(response => { if (!response.ok) throw new Error(`Caption file ${request.file} is not served by the dev server.`); return response.text(); });
-      const parsed = parseCaptions(text, request.file.toLowerCase().endsWith(".vtt") ? "vtt" : "srt");
+      const text = await fetch(url(file)).then(response => { if (response.ok === false) throw new Error(`Caption file ${file} is not served by the dev server.`); return response.text(); });
+      const parsed = parseCaptions(text, file.toLowerCase().endsWith(".vtt") ? "vtt" : "srt");
       if ("issues" in parsed) throw new Error(parsed.issues[0].message);
       let words: CaptionWord[] = [];
-      if (request.wordsFile) {
-        const document = await fetch(projectFileUrl(request.wordsFile)).then(response => response.json() as Promise<WordsDocument>);
+      if (wordsFile) {
+        const document = await fetch(url(wordsFile)).then(response => response.json() as Promise<WordsDocument>);
         words = document.words ?? [];
       }
       // Words belong to the cue whose span holds their start.
@@ -47,11 +50,23 @@ export function CaptionsScene({ request }: { request: CaptionsRequest }) {
     };
     load().catch(failure => { if (active) setError(failure instanceof Error ? failure.message : String(failure)); });
     return () => { active = false; };
-  }, [request.file, request.wordsFile]);
-  const portrait = request.height > request.width;
+  }, [file, wordsFile, urls]);
+  return { cues, error };
+}
+export function CaptionPicture({ cues, style, width, height }: { cues: CaptionCueInput[]; style: CaptionStyle; width: number; height: number }) {
+  const portrait = height > width;
   // Clear of approximate platform UI: the bottom fifth (caption block, buttons) on vertical video.
-  const bottom = portrait ? request.height * 0.26 : request.height * (request.style === "lower" ? 0.1 : 0.08);
-  const size = Math.round((portrait ? request.width : request.height) * (request.style === "bold-pop" ? 0.052 : 0.04));
+  const bottom = portrait ? height * 0.26 : height * (style === "lower" ? 0.1 : 0.08);
+  const size = Math.round((portrait ? width : height) * (style === "bold-pop" ? 0.052 : 0.04));
+  return <div style={{ position: "relative", width, height }}>
+    <div style={{ position: "absolute", left: width * 0.08, right: width * (portrait ? 0.18 : 0.08), bottom, display: "flex", justifyContent: style === "lower" ? "flex-start" : "center" }}>
+      <CaptionTrack cues={cues} variant={style} size={size}/>
+    </div>
+  </div>;
+}
+export function CaptionsScene({ request }: { request: CaptionsRequest }) {
+  const brand = useProjectBrand();
+  const { cues, error } = useCaptionCues(request.file, request.wordsFile);
   const definition = useMemo<PreviewDefinitionInput | undefined>(() => cues && {
     width: request.width, height: request.height, scene: { nodes: [{ id: "captions" }] }, motion: { durationMs: request.durationMs, speed: 1, tracks: [] },
   }, [cues, request.width, request.height, request.durationMs]);
@@ -60,11 +75,7 @@ export function CaptionsScene({ request }: { request: CaptionsRequest }) {
     <BrandProvider brand={brand}>
       <Surface id="captions" style={{ position: "absolute", left: 0, top: 0, width: request.width, height: request.height }}>
         {/* Surface content sits in a zero-height leaf: position against a full-frame box, not the leaf. */}
-        <div style={{ position: "relative", width: request.width, height: request.height }}>
-          <div style={{ position: "absolute", left: request.width * 0.08, right: request.width * (portrait ? 0.18 : 0.08), bottom, display: "flex", justifyContent: request.style === "lower" ? "flex-start" : "center" }}>
-            {cues && <CaptionTrack cues={cues} variant={request.style} size={size}/>}
-          </div>
-        </div>
+        {cues && <CaptionPicture cues={cues} style={request.style} width={request.width} height={request.height}/>}
       </Surface>
     </BrandProvider>
   </ScenePreview>;

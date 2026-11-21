@@ -29,6 +29,8 @@ export type ScenePreviewProps = {
   backHref?: string;
   /** Intercept ordinary back navigation; modified link clicks keep backHref. */
   onBack?: () => void;
+  backLabel?: string;
+  initialTimeMs?: number;
   revision?: unknown;
   hot?: PreviewHot;
   /** Optional timeline descriptor: rescales the single cursor's span and adds
@@ -67,7 +69,7 @@ export function usePreviewHost(): PreviewHost | null { return useContext(Preview
 export function exportUrl(href: string): string {
   const url = new URL(href);
   if (!url.searchParams.has("velora-edit")) return href;
-  url.searchParams.delete("velora-edit");
+  for (const key of ["velora-edit", "velora-from-composition", "velora-cut-time", "velora-local-time"]) url.searchParams.delete(key);
   url.hash = "";
   return url.href;
 }
@@ -130,10 +132,10 @@ function ExportMenu({disabled, panelHost, size}: {disabled: boolean; panelHost: 
     </details>;
 }
 
-export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, revision, hot, timeline, fps = 60, exportSize, aside, layout, slots, editHref, viewCamera, threeSelection, peaking}: ScenePreviewProps) {
+export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, backLabel, initialTimeMs, revision, hot, timeline, fps = 60, exportSize, aside, layout, slots, editHref, viewCamera, threeSelection, peaking}: ScenePreviewProps) {
   const editor = layout === "editor";
   const [inspector] = useState(() => editor ? createSceneInspector() : undefined);
-  const session = usePreviewSession(input, revision, timeline);
+  const session = usePreviewSession(input, revision, timeline, initialTimeMs);
   const [overlays, setOverlays] = useOverlays();
   const frame = useRef<HTMLDivElement>(null);
   const connection = usePreviewConnection(hot, session.pause);
@@ -202,7 +204,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
           <div className="velora-heading">
             {backHref ? <a className="velora-control" href={backHref} onClick={event => {
               if (onBack && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); onBack(); }
-            }}>{onBack ? "Scenes" : "Back to app"}</a> : onBack && <button className="velora-control" onClick={onBack}>Scenes</button>}
+            }}>{backLabel ?? (onBack ? "Scenes" : "Back to app")}</a> : onBack && <button className="velora-control" onClick={onBack}>Scenes</button>}
             <h1 className="velora-title">{title}</h1>
           </div>
           <div className="velora-editor-toolbar">{slots?.toolbar}</div>

@@ -15,15 +15,17 @@ export function playerFrame(timeline: Pick<Timeline, "segments" | "durationMs">,
   const last = ordered[ordered.length - 1];
   const segment = segmentAt(timeline, timeMs) ?? (last && timeMs >= last.startMs + last.durationMs && timeMs <= timeline.durationMs && timeMs - (last.startMs + last.durationMs) < 1e-6 ? last : undefined);
   const next = ordered.find(candidate => candidate.startMs >= (segment ? segment.startMs + segment.durationMs : timeMs) && candidate !== segment);
-  return { ...(segment ? { segment } : {}), localMs: segment ? Math.min(segment.durationMs, localTime(segment, timeMs)) : 0, ...(next ? { next } : {}) };
+  return { ...(segment ? { segment } : {}), localMs: segment ? localTime(segment, Math.min(segment.startMs + segment.durationMs, timeMs)) : 0, ...(next ? { next } : {}) };
 }
 export type AudioState = { active: boolean; mediaMs: number; gain: number };
 /** Track placement, linear fades and gain at a cursor; endMs is where the mix ends (composition end). */
-export function audioStateAt(track: Pick<AudioTrack, "startMs" | "offsetMs" | "gain" | "fadeInMs" | "fadeOutMs">, timeMs: number, endMs: number): AudioState {
+export function audioStateAt(track: Pick<AudioTrack, "startMs" | "offsetMs" | "gain" | "fadeInMs" | "fadeOutMs" | "durationMs">, timeMs: number, endMs: number): AudioState {
+  const clipEnd = track.durationMs === undefined ? endMs : Math.min(endMs, track.startMs + track.durationMs);
   const elapsed = timeMs - track.startMs;
-  if (elapsed < 0 || timeMs >= endMs) return { active: false, mediaMs: track.offsetMs, gain: 0 };
+  if (elapsed < 0 || timeMs >= clipEnd) return { active: false, mediaMs: track.offsetMs, gain: 0 };
   const fadeIn = track.fadeInMs > 0 ? Math.min(1, elapsed / track.fadeInMs) : 1;
-  const fadeOut = track.fadeOutMs > 0 ? Math.min(1, (endMs - timeMs) / track.fadeOutMs) : 1;
+  const fadeEnd = track.durationMs === undefined ? endMs : track.startMs + track.durationMs;
+  const fadeOut = track.fadeOutMs > 0 ? Math.min(1, (fadeEnd - timeMs) / track.fadeOutMs) : 1;
   return { active: true, mediaMs: track.offsetMs + elapsed, gain: Math.max(0, Math.min(1, track.gain * fadeIn * fadeOut)) };
 }
 export type MediaLike = { currentTime: number; volume: number; paused: boolean; playbackRate: number; play(): Promise<void> | void; pause(): void };

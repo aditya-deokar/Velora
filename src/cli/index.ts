@@ -17,6 +17,7 @@ import { executeDeliver, executeFrameRender, executeVideoRender, executeFramesRe
 import { executeCreateCommand, executeStudioCommand, executeDoctorCommand, executeProjectCommand, executeAudioCommand, executeCaptionsCommand, executeSkillsCommand, executeInspectCommand, executeAssetsCommand, executeTemplateCommand, executeBrandCommand, executeEditorialCommand, type TemplateCommandResult, type BrandCommandResult, type EditorialCommandResult } from "../project/commands";
 import { executeRecipeCommand, type RecipeCommandResult } from "../project/recipes";
 import { executeEditCommand, type EditOperation } from "../project/edit";
+import { executeCompositionEdit } from "../project/composition-edit";
 import type { ProjectResult } from "../core/project";
 
 /** SOURCE OF TRUTH: runCli adapter.
@@ -79,6 +80,7 @@ velora check --video FILE [--manifest FILE] [--budget-ms MS] [--project DIR] [--
 velora audio ls --composition FILE [--project DIR] [--json]
 velora audio beats (--file AUDIO | --composition FILE) [--write-markers] [--project DIR] [--json]
 velora compose snap --composition FILE [--to beats|downbeats] [--tolerance MS] [--write] [--project DIR] [--json]
+velora compose edit --composition FILE --ops FILE|- [--expect-sha SHA] [--write] [--project DIR] [--json]
 velora review --composition FILE [--platform ID] [--project DIR] [--json]
 velora audio check --composition FILE [--project DIR] [--json]
 velora captions validate --file FILE [--project DIR] [--json]
@@ -102,7 +104,7 @@ velora edit apply --scene ID --ops FILE|- [--expect-sha SHA] [--write] [--projec
 velora edit key --scene ID --track REF --at MS --value V [--ease E] [--expect-sha SHA] [--write] [--project DIR] [--json]
 velora edit ease --scene ID --track REF --at MS --ease E [--expect-sha SHA] [--write] [--project DIR] [--json]
 velora edit paste --scene ID --from FILE --at MS [--onto SURFACE] [--expect-sha SHA] [--write] [--project DIR] [--json]
-velora edit [--scene ID] [--port P] [--read-only] [--no-open] [--url ORIGIN] [--project DIR] [--json]
+velora edit [--scene ID | --composition FILE] [--port P] [--read-only] [--no-open] [--url ORIGIN] [--project DIR] [--json]
 velora skills install (--dir PATH | --agent claude|generic) [--agent claude|codex|cursor|generic] [--source PATH] [--json]
 velora skills ls [--dir PATH] [--source PATH] [--json]
 velora skills check [--dir PATH] [--source PATH] [--json]
@@ -137,7 +139,7 @@ const commandUsage: Record<string, string> = {
   check: "velora check --frames DIR [--budget-ms MS] [--project DIR] [--json]\nvelora check --video FILE [--manifest FILE] [--budget-ms MS] [--project DIR] [--json]\n\nRun automated visual checks over rendered evidence (technical checks only, never artistic scores).\nExactly one of --frames or --video is required; --manifest cross-checks video records.",
   audio: "velora audio ls --composition FILE [--project DIR] [--json]\nvelora audio check --composition FILE [--project DIR] [--json]\nvelora audio beats (--file AUDIO | --composition FILE) [--write-markers] [--project DIR] [--json]\n\nbeats detects tempo, beats and 4/4 downbeats in a music bed; --write-markers stores them on the composition for compose snap.\nList composition audio tracks with frame-snapped placement, or validate them\nagainst discovered assets (existence, type, size, codec, fades, ducking).",
   captions: "velora captions validate --file FILE [--project DIR] [--json]\nvelora captions check --composition FILE [--project DIR] [--json]\n\nValidate a .srt/.vtt file, or check a composition's captions against its timeline span.",
-  compose: "velora compose snap --composition FILE [--to beats|downbeats] [--tolerance MS] [--write] [--project DIR] [--json]\n\nMove each cut onto the nearest beat (or downbeat) marker within the tolerance (default 120 ms), keeping segments joined.\nPrints a dry-run diff; --write applies it. Add markers first with velora audio beats --composition FILE --write-markers.",
+  compose: "velora compose edit --composition FILE --ops FILE|-\nvelora compose trim --composition FILE --id ID --edge in|out --delta MS [--ripple]\nvelora compose move --composition FILE --id ID (--at MS | --before ID | --last)\nvelora compose split --composition FILE --id ID --at MS\nvelora compose transition --composition FILE --id ID (--type TYPE --duration MS [--direction DIR] | --remove)\nvelora compose snap --composition FILE [--to beats|downbeats] [--tolerance MS]\n\nAll commands accept --write, --project DIR and --json. Edits print a dry-run diff and accept --expect-sha SHA.\nAdd beat markers with velora audio beats --composition FILE --write-markers.",
   review: "velora review --composition FILE [--platform ID] [--project DIR] [--json]\n\nAdvisory editorial review: hook in the first 2 s, shot length for the platform's pacing, reading time, end-card hold,\neye-trace and match-cut continuity, camera direction, loop seams and off-beat cuts. Findings are advice for a human, never errors.",
   brand: "velora brand init [--from-css FILE] [--name NAME] [--project DIR] [--json]\nvelora brand check [--project DIR] [--json]\n\nScaffold velora.brand.json (colors, gradients, fonts, radius, voice, motion personality calm|crisp|playful|bold), optionally seeded from a stylesheet's CSS custom properties, or validate it.\nEvery kit component and motion-graphics template reads these tokens at render time.",
   templates: "velora templates ls [--category C] [--tag T] [--aspect A] [--json]\nvelora templates show --id ID [--json]\nvelora templates check [--id ID] [--json]\n\nBrowse the shipped camera templates and blueprints, show one with its params and craft notes, or certify framing for every aspect and intensity.\nTemplates are starting points: velora new copies plain, editable source into your project.",
@@ -145,7 +147,7 @@ const commandUsage: Record<string, string> = {
   transitions: "velora transitions ls [--json]\nvelora transitions describe --type TYPE [--json]\n\nList the entering-side transition catalog, or show one transition with example tracks.\nTransitions declare segment entrances; builders emit tracks to paste into recipe motion.",
   deliver: "velora deliver --composition FILE --targets LIST [--out DIR] [--quality draft|standard|master] [--parallel N] [--no-cache] [--no-stream] [--url ORIGIN] [--project DIR] [--json]\n\nRender every launch asset from one composition into a fresh directory (default deliverables/<id>).\nTargets: youtube, x, x-square, linkedin, reels, instagram-feed, tiktok, shorts, website-hero, readme-gif, og-image, product-hunt (or any delivery preset id).\nEach video uses its preset (size, codec, quality, loudness) and steps rate control until it fits the preset's size budget; website-hero adds an MP4 fallback,\na JPEG poster, embed.html and HeroVideo.tsx; og-image and product-hunt add exact-size stills. deliverables.json records files, SHAs, sizes and warnings.",
   studio: "velora studio --site URL [--port P] [--check] [--project DIR] [--json]\nvelora studio init --site URL [--project DIR] [--json]\n\nAny-site mode for non-React sites (Astro, SvelteKit, Rails, Django, static HTML): a managed studio in your user cache\n(React and Vite never enter your project) served at <origin>/__velora/, with every other path proxied to your site's\nloopback dev server so routes frame same-origin. Scenes, compositions and assets stay in this project.\nRuns in the foreground until Ctrl-C; --check starts it, verifies studio, proxy and framing, then stops.\nRoute-level shots only: the site's own animations are frozen; drive states through routes or query params.",
-  edit: "velora edit ls --scene ID [--at MS] [--project DIR] [--json]\nvelora edit apply --scene ID --ops FILE|- [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit key --scene ID --track REF --at MS --value V [--ease E] [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit ease --scene ID --track REF --at MS --ease E [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit paste --scene ID --from FILE --at MS [--onto SURFACE] [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit source outline [--scene ID] [--file FILE] [--json]\nvelora edit source wrap --file FILE --node PATH --id ID [--scene ID] [--content] [--write]\nvelora edit source group --file FILE --nodes PATH,PATH --id ID [--scene ID] [--write]\nvelora edit source expose --file FILE --node PATH --id ID --prop NAME [--options A,B] [--scene ID] [--write]\nvelora edit [--scene ID] [--port P] [--read-only] [--no-open] [--url ORIGIN] [--project DIR] [--json]\n\nSurgical, diffable scene edits with exact undo, through the same EditOp vocabulary the studio editor uses.\nls lists tracks, clips, links, constraints and keyframes (--at adds evaluated values). apply, key and ease are dry runs:\nthey print the diff, labels and the inverse batch; --write writes once, compare-and-swap guarded (--expect-sha fails fast if the file changed).\nTrack refs: camera.z, focus.distance, <surface>.<prop>, style:<surface>.--name, channel:<id>, each with an optional @<clip>.\npaste applies a keyframe clipboard copied in the studio editor (application/x-velora-keyframes+json) at --at, optionally onto another surface.\nSource mutations show diffs by default. On --write, --expect-sha and --expect-recipe-sha can pin the reviewed revisions.\n--ops - reads the batch from stdin; an envelope's inverse can be applied directly to undo.\nWithout a subcommand, edit verifies the dev server, starts the loopback edit bridge (token in the URL fragment) and opens the editor; Ctrl-C stops it.",
+  edit: "velora edit ls --scene ID [--at MS] [--project DIR] [--json]\nvelora edit apply --scene ID --ops FILE|- [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit key --scene ID --track REF --at MS --value V [--ease E] [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit ease --scene ID --track REF --at MS --ease E [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit paste --scene ID --from FILE --at MS [--onto SURFACE] [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit source outline [--scene ID] [--file FILE] [--json]\nvelora edit source wrap --file FILE --node PATH --id ID [--scene ID] [--content] [--write]\nvelora edit source group --file FILE --nodes PATH,PATH --id ID [--scene ID] [--write]\nvelora edit source expose --file FILE --node PATH --id ID --prop NAME [--options A,B] [--scene ID] [--write]\nvelora edit [--scene ID | --composition FILE] [--port P] [--read-only] [--no-open] [--url ORIGIN] [--project DIR] [--json]\n\nSurgical, diffable scene edits with exact undo, through the same EditOp vocabulary the studio editor uses.\nls lists tracks, clips, links, constraints and keyframes (--at adds evaluated values). apply, key and ease are dry runs:\nthey print the diff, labels and the inverse batch; --write writes once, compare-and-swap guarded (--expect-sha fails fast if the file changed).\nTrack refs: camera.z, focus.distance, <surface>.<prop>, style:<surface>.--name, channel:<id>, each with an optional @<clip>.\npaste applies a keyframe clipboard copied in the studio editor (application/x-velora-keyframes+json) at --at, optionally onto another surface.\nSource mutations show diffs by default. On --write, --expect-sha and --expect-recipe-sha can pin the reviewed revisions.\n--ops - reads the batch from stdin; an envelope's inverse can be applied directly to undo.\nWithout a subcommand, edit verifies the dev server, starts the loopback edit bridge (token in the URL fragment) and opens the editor; Ctrl-C stops it.",
   create: "velora create DIR [--name NAME] [--blueprint ID] [--json]\n\nWrite a starter launch studio into a new directory: a blank Vite React host with a branded landing page, velora.brand.json,\nand npm scripts (velora:setup runs init, installs the skills and scaffolds the blueprint, default launch-film-30s).\nFor teams without a React app; film an existing non-React site with velora studio --site.",
   prompts: "velora prompts ls [--json]\nvelora prompts show --id ID [--json]\n\nList the agent prompt library (launch film, feature drop, website hero loop, vertical teaser, cinematic dashboard, changelog, Product Hunt kit),\nor print one prompt to paste into your coding agent. Replace each <placeholder> before sending it.",
   skills: "velora skills install --dir PATH [--agent claude|codex|cursor|generic] [--source PATH] [--json]\nvelora skills ls [--dir PATH] [--source PATH] [--json]\nvelora skills check [--dir PATH] [--source PATH] [--json]\n\nInstall the Velora skills library (idempotent; differing files are ERR_SKILL_CONFLICT), list available/installed skills with version drift, or check front-matter and cross-links.\n--agent prints the registration snippet for that agent without writing config files.",
@@ -530,7 +532,7 @@ async function runEditCommand(args: string[], environment: Environment, manager:
     key: { values: ["--scene", "--track", "--at", "--value", "--ease", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
     ease: { values: ["--scene", "--track", "--at", "--ease", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
     paste: { values: ["--scene", "--from", "--at", "--onto", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
-    bridge: { values: ["--scene", "--port", "--url", "--project"], booleans: ["--read-only", "--no-open", "--json"] },
+    bridge: { values: ["--scene", "--composition", "--port", "--url", "--project"], booleans: ["--read-only", "--no-open", "--json"] },
     preset: { values: ["--scene", "--preset", "--to", "--layer", "--title", "--values", "--at", "--expect-sha", "--label", "--project"], booleans: ["--write", "--json"] },
     source: { values: ["--scene", "--file", "--node", "--nodes", "--id", "--prop", "--options", "--expect-sha", "--expect-recipe-sha", "--project"], booleans: ["--write", "--content", "--json"] },
   };
@@ -563,6 +565,7 @@ async function runEditCommand(args: string[], environment: Environment, manager:
     opsText = await environment.readStdin();
   }
   const input = {
+    ...(text("--composition") ? { composition: text("--composition") } : {}),
     ...(text("--scene") ? { scene: text("--scene") } : {}), ...(flags.has("--at") ? { at: Number(text("--at")) } : {}),
     ...(text("--ops") && text("--ops") !== "-" ? { ops: text("--ops") } : {}), ...(opsText !== undefined ? { opsText } : {}),
     ...(text("--expect-sha") ? { expectSha: text("--expect-sha") } : {}), ...(flags.has("--write") ? { write: true } : {}),
@@ -605,6 +608,56 @@ async function runEditCommand(args: string[], environment: Environment, manager:
   const labels = (data.labels as string[]).map(label => "  " + label).join("\n");
   const status = data.written ? `Wrote ${data.path} (sha ${String(data.nextSha).slice(0, 12)}…).` : `Dry run: ${data.path} is unchanged. Add --write to apply (--expect-sha ${data.sha}).`;
   return { code: 0, stdout: `${labels}\n${data.diff || "(no change)"}\n${status}\n`, stderr: "" };
+}
+
+async function runCompositionEdit(args: string[], environment: Environment, fail: (message: string, code?: string, name?: string) => CliResult): Promise<CliResult> {
+  const commands: Record<string, string[]> = { edit: ["--ops"], trim: ["--id", "--edge", "--delta", "--ripple"], move: ["--id", "--at", "--before", "--last"],
+    split: ["--id", "--at", "--new-id"], transition: ["--id", "--type", "--duration", "--direction", "--ease", "--seed", "--sfx", "--remove"] };
+  const [sub, ...rest] = args;
+  if (!Object.hasOwn(commands, sub)) return fail("Choose compose edit, trim, move, split, transition or snap.", "ERR_UNKNOWN_COMMAND", "compose");
+  const allowed = new Set([...commands[sub], "--composition", "--expect-sha", "--project", "--write", "--json"]);
+  const switches = new Set(["--write", "--json", "--ripple", "--last", "--remove"]);
+  const flags = new Map<string, string>();
+  for (let i = 0; i < rest.length; i++) {
+    const key = rest[i];
+    if (!allowed.has(key)) return fail(`Unknown option: ${key}`, "ERR_UNKNOWN_OPTION", "compose");
+    if (flags.has(key)) return fail(`Duplicate option: ${key}`, "ERR_DUPLICATE_OPTION", "compose");
+    const value = switches.has(key) ? "true" : rest[++i];
+    if (!value || value.startsWith("--")) return fail(`Missing value for ${key}`, "ERR_MISSING_VALUE", "compose");
+    flags.set(key, value);
+  }
+  const composition = flags.get("--composition"), id = flags.get("--id"), opsFile = flags.get("--ops");
+  const missing = !composition ? "--composition" : sub === "edit" ? !opsFile && "--ops" : !id && "--id";
+  if (missing) return fail(`compose ${sub} needs ${missing}.`, "ERR_MISSING_VALUE", "compose");
+  const number = (flag: string) => Number(flags.get(flag));
+  let ops: unknown;
+  if (sub === "trim") ops = [{ op: "segment.trim", id, edge: flags.get("--edge"), deltaMs: number("--delta"), mode: flags.has("--ripple") ? "ripple" : "plain" }];
+  if (sub === "move") {
+    if (["--at", "--before", "--last"].filter(flag => flags.has(flag)).length !== 1)
+      return fail("Choose one of --at, --before or --last.", "ERR_INVALID_FLAG_COMBINATION", "compose");
+    ops = [flags.has("--at") ? { op: "segment.move", id, atMs: number("--at") } : { op: "segment.reorder", id, beforeId: flags.get("--before") ?? null }];
+  }
+  if (sub === "split") ops = [{ op: "segment.split", id, atMs: number("--at"), newId: flags.get("--new-id") }];
+  if (sub === "transition") {
+    const type = flags.get("--type");
+    if (flags.has("--remove") && commands.transition.slice(1, -1).some(flag => flags.has(flag)))
+      return fail("--remove takes only a segment ID.", "ERR_INVALID_FLAG_COMBINATION", "compose");
+    let ease: unknown = flags.get("--ease");
+    if (typeof ease === "string" && ease.startsWith("{")) {
+      try { ease = JSON.parse(ease); }
+      catch { return fail("--ease must be an easing name or JSON object.", "ERR_EDIT_INVALID", "compose"); }
+    }
+    ops = [flags.has("--remove") ? { op: "transition.remove", segmentId: id } : { op: "transition.set", segmentId: id,
+      type, durationMs: number("--duration"), direction: flags.get("--direction"), ease,
+      seed: flags.has("--seed") ? number("--seed") : undefined, sfx: flags.get("--sfx") }];
+  }
+  if (opsFile === "-" && !environment.readStdin) return fail("--ops - needs standard input.", "ERR_MISSING_VALUE", "compose");
+  const result = await executeCompositionEdit({ composition: composition!, ops, opsFile: opsFile === "-" ? undefined : opsFile,
+    opsText: opsFile === "-" ? await environment.readStdin!() : undefined, expectSha: flags.get("--expect-sha"), write: flags.has("--write") },
+  { root: flags.get("--project") ?? environment.root });
+  if (!result.success) return { code: 1, stdout: "", stderr: (flags.has("--json") ? JSON.stringify(result) : result.issues.map(humanIssue).join("\n")) + "\n" };
+  const { data } = result;
+  return { code: 0, stderr: "", stdout: (flags.has("--json") ? JSON.stringify(result) : `${data.written ? "Wrote" : flags.has("--write") ? "No changes to" : "Dry run for"} ${data.path} (base SHA ${data.sha})\n${data.diff || "(no change)"}`) + "\n" };
 }
 // Any-site mode: `studio init` records the site project; `studio` provisions and runs the managed studio in the
 // foreground (Ctrl-C stops it); `--check` starts it, verifies studio, proxy and framing, then stops.
@@ -899,6 +952,7 @@ export async function runCli(argv: string[], environment: Environment, execute: 
   if (command === "studio") return runStudioCommand(args, environment, studioManager ?? executeStudioCommand, fail);
   if (command === "edit") return runEditCommand(args, environment, editManager ?? executeEditCommand, fail);
   if (command === "create") return runCreateCommand(args, environment, creator ?? executeCreateCommand, fail);
+  if (command === "compose" && args[0] !== "snap") return runCompositionEdit(args, environment, fail);
   if (command === "compose" || command === "review" || (command === "audio" && args[0] === "beats")) return runEditorialCommand(command, args, environment, editorialManager ?? executeEditorialCommand, fail);
   if (command === "brand") return runBrandCommand(args, environment, brandManager ?? executeBrandCommand, fail);
   if (command === "templates") return runTemplatesCommand(args, environment, templateManager ?? executeTemplateCommand, fail);

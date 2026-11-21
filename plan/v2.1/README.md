@@ -317,4 +317,5 @@ on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 | 07 | implemented, CI gate open | Clip grouping and timing, stagger drag, behavior and camera libraries, project presets, and keyframeable text, paths, and shapes ([exit report](artifacts/phase-07-exit.md)). |
 | 08 | implemented, dashboard validation open | JSX picking, reviewed source edits, channel exposure, and guarded undo. Vite and Next fixture workflows passed ([exit report](artifacts/phase-08-exit.md)). |
 | 09 | done | Optional Three.js entry, deterministic glTF capture, shared camera and studio gizmos. Product-orbit exports and the installed React 18 fixture passed byte comparisons ([exit report](artifacts/phase-09-exit.md)). |
-| 10–16 | not started | — |
+| 10 | implemented | Composition lanes, editing operations, scoped waveforms, beat snapping, scene handoff, and CLI parity. The 30-second recut and crossfade comparison passed ([exit report](artifacts/phase-10-exit.md)). |
+| 11–16 | not started | — |

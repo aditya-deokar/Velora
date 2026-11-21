@@ -22,6 +22,9 @@ export type BridgeHandlers = {
   hello(): unknown;
   readScene(id: string): Promise<BridgeReply>;
   applySceneEdits(id: string, body: unknown): Promise<BridgeReply>;
+  readComposition?(file: string): Promise<BridgeReply>;
+  applyCompositionEdits?(file: string, body: unknown): Promise<BridgeReply>;
+  mediaPeaks?(composition: string, asset: string): Promise<BridgeReply>;
   /** Project presets (07.6): list, read and create/update with compare-and-swap. */
   listPresets?(): Promise<BridgeReply>;
   readPreset?(id: string): Promise<BridgeReply>;
@@ -106,6 +109,13 @@ export async function startEditBridge(options: BridgeOptions): Promise<BridgeSer
     }
     if (!tokenMatches(options.token, request.headers.authorization)) return json(response, 401, { error: "Missing or invalid bridge token." }, origin);
     const url = new URL(request.url ?? "/", `http://${hostHeader}`);
+    if (request.method === "GET" && url.pathname === "/v1/media/peaks" && options.handlers.mediaPeaks) {
+      const files = url.searchParams.getAll("composition"), assets = url.searchParams.getAll("asset");
+      if (files.length !== 1 || assets.length !== 1 || [...url.searchParams.keys()].length !== 2)
+        return json(response, 400, { error: "Send one composition and one asset ID." }, origin);
+      const reply = await options.handlers.mediaPeaks(files[0], assets[0]);
+      return json(response, reply.status, reply.body, origin);
+    }
     if (request.method === "GET" && url.pathname === "/v1/source/outline" && options.handlers.sourceOutline) {
       if ([...url.searchParams.keys()].some(key => key !== "file" && key !== "scene") || ["file", "scene"].some(key => url.searchParams.getAll(key).length > 1))
         return json(response, 400, { error: "Use one file and/or one scene parameter." }, origin);
@@ -127,6 +137,12 @@ export async function startEditBridge(options: BridgeOptions): Promise<BridgeSer
       return json(response, reply.status, reply.body, origin);
     }
     const scene = /^\/v1\/scenes\/([a-z0-9]+(?:-[a-z0-9]+)*)(\/edits)?$/.exec(url.pathname);
+    const composition = /^\/v1\/compositions\/([^/]+)(\/edits)?$/.exec(url.pathname);
+    let compositionFile: string | undefined;
+    if (composition) {
+      try { compositionFile = decodeURIComponent(composition[1]); }
+      catch { return json(response, 400, { error: "Invalid composition path." }, origin); }
+    }
     if (request.method === "GET" && url.pathname === "/v1/hello") return json(response, 200, options.handlers.hello(), origin);
     if (request.method === "GET" && url.pathname === "/v1/events") {
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive", "access-control-allow-origin": origin, vary: "Origin" });
@@ -150,7 +166,12 @@ export async function startEditBridge(options: BridgeOptions): Promise<BridgeSer
       return json(response, reply.status, reply.body, origin);
     }
     if (scene && !scene[2] && request.method === "GET") { const reply = await options.handlers.readScene(scene[1]); return json(response, reply.status, reply.body, origin); }
-    if (scene && scene[2] && request.method === "POST") {
+    if (compositionFile && !composition?.[2] && request.method === "GET" && options.handlers.readComposition) {
+      const reply = await options.handlers.readComposition(compositionFile);
+      return json(response, reply.status, reply.body, origin);
+    }
+    const edit = scene?.[2] ? options.handlers.applySceneEdits : composition?.[2] ? options.handlers.applyCompositionEdits : undefined;
+    if (edit && request.method === "POST") {
       if (options.readOnly) return json(response, 405, { error: "This bridge is read-only." }, origin);
       if (!/^application\/json(?:;\s*charset=utf-8)?$/i.test(request.headers["content-type"] ?? "")) return json(response, 415, { error: "Send application/json." }, origin);
       let body: unknown;
@@ -158,7 +179,7 @@ export async function startEditBridge(options: BridgeOptions): Promise<BridgeSer
       catch (error) {
         return json(response, (error as { status?: number }).status === 413 ? 413 : 400, { error: (error as { status?: number }).status === 413 ? "Body exceeds 1 MB." : "Body is not JSON." }, origin);
       }
-      const reply = await options.handlers.applySceneEdits(scene[1], body);
+      const reply = await edit(scene?.[1] ?? compositionFile!, body);
       return json(response, reply.status, reply.body, origin);
     }
     return json(response, 404, { error: "Unknown endpoint." }, origin);

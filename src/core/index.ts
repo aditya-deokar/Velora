@@ -45,6 +45,7 @@ export * from "./schemas";
 
 export * from "./json";
 export * from "./edit";
+export { planCompositionSnap } from "./composition-edit";
 export * from "./clipboard";
 
 export * from "./branding";

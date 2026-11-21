@@ -24,6 +24,7 @@ function canonical(value: unknown): string {
     return `{${Object.keys(value).filter(key => (value as Record<string, unknown>)[key] !== undefined).sort().map(key => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(",")}}`;
   return JSON.stringify(value) ?? "null";
 }
+export const sameJsonValue = (left: unknown, right: unknown) => left === right || canonical(left) === canonical(right);
 function parseTree(text: string, offset: number): { node: JsonNode; end: number } {
   let i = offset;
   const space = () => { while (i < text.length && /[\s]/.test(text[i])) i++; };

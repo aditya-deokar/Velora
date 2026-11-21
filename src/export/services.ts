@@ -617,7 +617,7 @@ export async function probeChromium(): Promise<{ available: boolean; detail: str
 // belongs to shared services so project validation can use it too.
 export { probeAudioFile };
 export type { AudioProbe };
-export type MuxTrack = { id: string; file: string; startMs: number; offsetMs: number; gain: number; fadeInMs: number; fadeOutMs: number; duckUnderTrackId?: string; audioMs: number };
+export type MuxTrack = { id: string; file: string; startMs: number; offsetMs: number; gain: number; fadeInMs: number; fadeOutMs: number; duckUnderTrackId?: string; audioMs: number; durationMs?: number };
 export type MuxRequest = { video: string; tracks: MuxTrack[]; captionsFile?: string; fontsDir?: string; output: string };
 // Escape a file path for the subtitles filter: forward slashes, escaped
 // metacharacters, wrapped in single quotes. The quotes are required: without
@@ -635,6 +635,14 @@ export function escapeSubtitlesPath(absolutePath: string): string {
 // Ducking beyond one declarer is rejected at validation, never silently dropped.
 export function buildMuxFilter(tracks: MuxTrack[], captionsFile?: string, fontsDir?: string): { audioFilter: string | null; videoFilter: string | null } {
   const chainOf = (t: MuxTrack): string => {
+    if (t.durationMs !== undefined) {
+      const seconds = (ms: number) => (ms / 1000).toFixed(6);
+      const chain = [`atrim=duration=${seconds(t.durationMs)}`, "asetpts=PTS-STARTPTS", `volume=${t.gain}`];
+      if (t.fadeInMs > 0) chain.push(`afade=t=in:st=0:d=${seconds(t.fadeInMs)}`);
+      if (t.fadeOutMs > 0) chain.push(`afade=t=out:st=${seconds(Math.max(0, t.durationMs - t.fadeOutMs))}:d=${seconds(t.fadeOutMs)}`);
+      chain.push(`adelay=${Math.round(t.startMs)}:all=1`);
+      return chain.join(",");
+    }
     const chain = [`adelay=${Math.round(t.startMs)}|${Math.round(t.startMs)}`, `volume=${t.gain}`];
     if (t.fadeInMs > 0) chain.push(`afade=t=in:st=0:d=${(t.fadeInMs / 1000).toFixed(3)}`);
     if (t.fadeOutMs > 0) chain.push(`afade=t=out:st=${Math.max(0, (t.audioMs - t.fadeOutMs) / 1000).toFixed(3)}:d=${(t.fadeOutMs / 1000).toFixed(3)}`);

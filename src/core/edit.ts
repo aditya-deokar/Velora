@@ -4,6 +4,7 @@ import { KeyframeEasingSchema, TrackRefSchema, STAGGER_ORDERS, evaluateMotion, M
 import { SceneConstraintSchema } from "./scene";
 import { SceneRecipeSchema, EDITOR_LABEL_COLORS } from "./recipes";
 import { presentPreview } from "./preview";
+import { applyCompositionOps, compositionEditVariants, isCompositionOp, type CompositionEditResult } from "./composition-edit";
 
 /** SOURCE OF TRUTH: EditOpSchema, applyEdits.
  * WHAT: the one typed edit vocabulary (keyframes, tracks, scene base, clips, staggers, links, constraints,
@@ -84,11 +85,12 @@ export const EditOpSchema = z.discriminatedUnion("op", [
     z.strictObject({ track: TrackAddressSchema }), z.strictObject({ node: z.string().min(1) }), z.strictObject({ clip: z.string().min(1) }),
     z.strictObject({ link: TrackRefSchema }), z.strictObject({ field: z.enum(FIELD_PATHS) }),
   ]), value: z.unknown(), index: z.number().int().nonnegative().optional() }),
+  ...compositionEditVariants,
   ...DEFERRED_EDIT_OPS.map(name => z.looseObject({ op: z.literal(name) })),
 ]);
 export type EditOp = z.output<typeof EditOpSchema>;
 export type EditOpInput = z.input<typeof EditOpSchema>;
-export type EditIssue = { code: "ERR_EDIT_INVALID" | "ERR_EDIT_TARGET" | "ERR_EDIT_UNSUPPORTED"; path: string; message: string; hint?: string };
+export type EditIssue = { code: "ERR_EDIT_INVALID" | "ERR_EDIT_TARGET" | "ERR_EDIT_UNSUPPORTED" | "ERR_COMPOSITION_INVALID" | "ERR_TIMELINE_INVALID" | "ERR_TIMELINE_OVERLAP" | "ERR_TRANSITION_INVALID"; path: string; message: string; hint?: string };
 export type EditResult = { ok: true; recipe: Record<string, unknown>; inverse: EditOp[]; touched: string[] } | { ok: false; issues: EditIssue[] };
 
 type Doc = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -654,6 +656,11 @@ const describeOps: Record<string, (op: any) => string> = { // eslint-disable-lin
 };
 /** A human label for history and logs, for example "Move headline x keyframe 1.20 s → 1.35 s". */
 export function describeOp(op: EditOp): string {
+  if (isCompositionOp(op)) {
+    const [group, action] = op.op.split(".");
+    const target = "id" in op ? op.id : "segmentId" in op ? op.segmentId : "recipe" in op ? op.recipe : undefined;
+    return `${action[0].toUpperCase()}${action.slice(1)} ${group}${target ? ` ${target}` : ""}`;
+  }
   return (describeOps[op.op] ?? (() => `${op.op} (not yet available)`))(op);
 }
 const sameAddress = (a: TrackAddress, b: TrackAddress) => trackKey(a) === trackKey(b);
@@ -674,7 +681,9 @@ export function coalesce(prev: EditOp, next: EditOp): EditOp | undefined {
 /** validation "motion" checks only MotionSchema (for in-gesture previews whose result the preview session
  * validates again); the default "full" check is required before anything is committed or written. */
 export type ApplyOptions = { validation?: "full" | "motion" };
-export function applyEdits(recipe: unknown, ops: unknown, options: ApplyOptions = {}): EditResult {
+export function applyEdits(composition: unknown, ops: unknown, options: { target: "composition" }): CompositionEditResult;
+export function applyEdits(recipe: unknown, ops: unknown, options?: ApplyOptions): EditResult;
+export function applyEdits(recipe: unknown, ops: unknown, options: ApplyOptions & { target?: "composition" } = {}): EditResult | CompositionEditResult {
   const batch = z.array(z.unknown()).max(2000).safeParse(ops);
   if (!batch.success) return { ok: false, issues: [{ code: "ERR_EDIT_INVALID", path: "ops", message: "Supply an array of at most 2000 edit ops." }] };
   const parsed: EditOp[] = [];
@@ -687,6 +696,9 @@ export function applyEdits(recipe: unknown, ops: unknown, options: ApplyOptions 
     else parsed.push(result.data);
   }
   if (issues.length) return { ok: false, issues };
+  if (options.target === "composition") return applyCompositionOps(recipe, parsed);
+  const wrongTarget = parsed.findIndex(isCompositionOp);
+  if (wrongTarget >= 0) return { ok: false, issues: [{ code: "ERR_EDIT_TARGET", path: `ops.${wrongTarget}.op`, message: `${parsed[wrongTarget].op} needs a composition target.` }] };
   if (!recipe || typeof recipe !== "object" || Array.isArray(recipe)) return { ok: false, issues: [{ code: "ERR_EDIT_TARGET", path: "recipe", message: "The recipe must be a JSON object." }] };
   const run = (count: number) => {
     const draft = new Draft(clone(recipe as Doc));

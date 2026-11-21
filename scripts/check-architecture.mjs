@@ -90,7 +90,7 @@ const normalize = name => path.posix.normalize(name.replaceAll('\\', '/').replac
 const sourcePattern = /\.(?:[cm]?[jt]sx?)$/;
 const layerOf = name => {
   if (/^src\/project\/errors(?:\.[cm]?[jt]s)?$/.test(name)) return 'projectErrors';
-  if (/^src\/project\/(?:commands|recipes|discovery|edit|source-edit)(?:\.[cm]?[jt]s)?$/.test(name)) return 'commands';
+  if (/^src\/project\/(?:commands|recipes|discovery|edit|source-edit|composition-edit)(?:\.[cm]?[jt]s)?$/.test(name)) return 'commands';
   if (/^src\/project\/services\//.test(name)) return 'bridgeServices';
   if (/^src\/project\/services(?:\.[cm]?[jt]s)?$/.test(name)) return 'services';
   if (/^src\/project\/source(?:\.[cm]?[jt]s)?$/.test(name)) return 'sourceAdapter';
@@ -217,6 +217,8 @@ export function checkArchitecture(input, { compilerOptions = {} } = {}) {
           const body = ts.isFunctionDeclaration(node) ? node.body : ts.isVariableDeclaration(node) && node.initializer && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) ? node.initializer.body : undefined;
           implemented = !!body && (!ts.isBlock(body) || body.statements.length > 0);
         }
+        if (exported && !ambient && ts.isFunctionDeclaration(node) && !node.body && statement.parent === file
+          && file.statements.some(other => ts.isFunctionDeclaration(other) && other.name?.text === symbol && other.body)) continue;
         if (exported && !ambient && implemented && statement.parent === file) implementations.get(symbol).push(node);
         else add(file, identifier, 'canonical-implementation', `${symbol} needs an exported runtime ${frozenMetadata.has(symbol) ? 'frozen metadata object' : symbol.endsWith('Schema') ? 'Zod object schema' : 'function body'} in its owner.`);
       }

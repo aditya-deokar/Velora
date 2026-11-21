@@ -3,7 +3,7 @@ import { z } from "zod";
 import { AssetIdSchema, AssetTypeSchema, resolveAssetId, type DiscoveredAsset } from "./assets";
 import { AudioTrackSchema } from "./audio";
 import { ExportFrameRateSchema } from "./export";
-import { SceneRecipeIdSchema, type SceneCatalog } from "./recipes";
+import { SceneRecipeIdSchema, sceneMetadata, type BoundRecipe, type SceneCatalog } from "./recipes";
 import { SegmentTransitionSchema } from "./transitions";
 import { LoudnessSchema, SfxEntrySchema } from "./sound";
 import { timelineFromComposition, validateTimeline } from "./timeline";
@@ -23,6 +23,7 @@ export const CompositionSceneSchema = z.strictObject({
   recipe: SceneRecipeIdSchema,
   startMs: z.number().finite().nonnegative().max(120_000),
   durationMs: z.number().finite().positive().max(120_000),
+  inMs: z.number().finite().nonnegative().max(120_000).optional(),
   transition: SegmentTransitionSchema.optional(),
 });
 export type CompositionScene = z.output<typeof CompositionSceneSchema>;
@@ -119,6 +120,17 @@ export function compositionTotals(composition: Composition): { durationMs: numbe
 export type ResolvedCompositionScene = CompositionScene & { title: string; nodeCount: number };
 export type ResolvedCompositionAsset = CompositionAsset & { bytes: number };
 export type CompositionIssue = { code: string; path: string; message: string };
+export function compositionSourceRanges(composition: Pick<Composition, "scenes" | "overlays">, catalog: { scenes: readonly BoundRecipe[] }): CompositionIssue[] {
+  const durations = new Map(catalog.scenes.map(scene => [scene.id, sceneMetadata(scene).durationMs]));
+  return (["scenes", "overlays"] as const).flatMap(lane => composition[lane].flatMap((clip, index) => {
+    const duration = durations.get(clip.recipe);
+    const end = (clip.inMs ?? 0) + clip.durationMs;
+    // Untimed recipes are stills and can fill stretches of any length.
+    return duration !== undefined && duration > 0 && end > duration + 0.000001
+      ? [{ code: "ERR_COMPOSITION_SOURCE_RANGE", path: `composition.${lane}.${index}`, message: `“${clip.id}” uses ${Number(end.toFixed(3))} ms of “${clip.recipe}”, which lasts ${Number(duration.toFixed(3))} ms.` }]
+      : [];
+  }));
+}
 // Pure resolution: match every segment recipe against the validated catalog
 // and every asset declaration against discovered assets plus manifest aliases.
 // Never reads files or executes components.

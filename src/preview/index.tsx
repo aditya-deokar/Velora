@@ -38,7 +38,7 @@ export function ProjectPreview({children, projectId, enabled, active, hot, scene
     url.searchParams.delete("velora-preview");
     const quick = url.searchParams.has("velora-quick");
     const captions = readCaptionsRequest(url.search);
-    for (const key of ["velora-scene", "velora-tab", "velora-quick", "velora-route", "velora-params", "velora-composition", "velora-edit"]) url.searchParams.delete(key);
+    for (const key of ["velora-scene", "velora-tab", "velora-quick", "velora-route", "velora-params", "velora-composition", "velora-edit", "velora-from-composition", "velora-cut-time", "velora-local-time"]) url.searchParams.delete(key);
     url.hash = url.hash.startsWith("#velora-bridge=") ? "" : url.hash;
     return {requested, quick, captions, back: url.pathname + url.search + url.hash};
   }, [location]);

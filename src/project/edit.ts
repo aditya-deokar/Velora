@@ -12,6 +12,7 @@ import { executeProjectCommand } from "./commands";
 import { discoverPresets, PRESET_DIRECTORY } from "./discovery";
 import { PresetSchema, applyPreset, presetFromTracks, presetTargetKind, type Preset } from "../core/presets";
 import { loadSourceOutlines, prepareSourceEdit, recoverSourceTransaction, sourceBridgeHandlers, writeSourceTransaction } from "./source-edit";
+import { compositionBridgeHandlers, readCompositionEdit } from "./composition-edit";
 
 /** SOURCE OF TRUTH: executeEditCommand.
  * WHAT: velora edit (ls, apply, key, ease and the edit bridge): read a scene recipe, apply EditOp batches
@@ -42,6 +43,7 @@ const EditInputSchema = z.strictObject({
   enumOptions: z.array(z.string()).optional(),
   expectRecipeSha: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   scene: z.string().optional(),
+  composition: z.string().max(1200).optional(),
   at: z.number().finite().nonnegative().optional(),
   ops: z.string().optional(),
   opsText: z.string().max(BRIDGE_MAX_BODY_BYTES).optional(),
@@ -175,10 +177,15 @@ async function writePresetFile(root: string, preset: Preset, expectSha: string |
   await services.atomicWrite(root, presetPath(preset.id), text, current);
   return { ok: true, sha: services.textSha256(text), text };
 }
-export function editorUrl(previewUrl: string, scene: string | undefined, port: number, token: string): string {
+export function editorUrl(previewUrl: string, scene: string | undefined, port: number, token: string, composition?: string): string {
   const url = new URL(previewUrl);
   if (scene) url.searchParams.set("velora-scene", scene);
-  url.searchParams.set("velora-edit", "1");
+  if (composition) {
+    url.searchParams.delete("velora-scene");
+    url.searchParams.set("velora-tab", "compositions");
+    url.searchParams.set("velora-composition", composition);
+  }
+  url.searchParams.set("velora-edit", composition ? "composition" : "1");
   return `${url.href}#velora-bridge=${port}.${token}`;
 }
 /** Start the bridge for an allowed origin with the scene policy; used by velora edit and velora studio --edit. */
@@ -196,7 +203,7 @@ export async function startSceneBridge(root: string, options: { origin: string; 
   const sameValue = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   const handlers = {
     hello: () => ({ protocol: 1, version: options.version, ...(options.projectId ? { projectId: options.projectId } : {}), readOnly: options.readOnly,
-      capabilities: ["scenes", "edits", "events", "presets", ...(options.source === false ? [] : ["source"])], fileKinds: ["scene", "preset", ...(options.source === false ? [] : ["source"]) ] }),
+      capabilities: ["scenes", "edits", "events", "presets", "compositions", "media-peaks", ...(options.source === false ? [] : ["source"])], fileKinds: ["scene", "preset", "composition", ...(options.source === false ? [] : ["source"]) ] }),
     async listPresets(): Promise<BridgeReply> {
       return { status: 200, body: { presets: await discoverPresets(root) } };
     },
@@ -254,7 +261,7 @@ export async function startSceneBridge(root: string, options: { origin: string; 
     catch (error) { if ((error as { code?: string }).code === "denied-path") return { status: 403, body: { error: "That project path is not allowed." } }; throw error; }
   };
   const safe = { hello: handlers.hello, readScene: guarded(handlers.readScene), applySceneEdits: guarded(handlers.applySceneEdits),
-    listPresets: guarded(handlers.listPresets), readPreset: guarded(handlers.readPreset), writePreset: guarded(handlers.writePreset), ...sourceHandlers };
+    listPresets: guarded(handlers.listPresets), readPreset: guarded(handlers.readPreset), writePreset: guarded(handlers.writePreset), ...sourceHandlers, ...compositionBridgeHandlers(root, options.log) };
   const server = await startEditBridge({ token, origins: [options.origin], readOnly: options.readOnly, handlers: safe, ...(options.port !== undefined ? { port: options.port } : {}), ...(options.log ? { log: options.log } : {}) });
   broadcast = server.broadcast;
   const watcher = watchProjectFiles(root, change => server.broadcast("file-changed", change));
@@ -286,15 +293,17 @@ export async function executeEditCommand(operation: EditOperation, input: EditIn
     }
     if (operation === "bridge") {
       if (!options.url) return failure([{ code: "ERR_MISSING_VALUE", path: "url", message: "Pass the running dev server with --url (or set APP_PORT / PORT)." }]);
+      if (options.scene && options.composition) return failure([{ code: "ERR_INVALID_FLAG_COMBINATION", message: "Choose either --scene or --composition." }]);
       if (options.scene) { const read = await readScene(root, options.scene); if ("success" in read) return read; }
+      const composition = options.composition ? (await readCompositionEdit(root, options.composition)).target : undefined;
       const verified = await executeProjectCommand("open-preview", { url: options.url, launch: false }, { root });
       if (!verified.success) return { success: false, command: "edit", issues: verified.issues.map(normalizeIssue), next: verified.next ?? nextForIssues(verified.issues.map(normalizeIssue)) };
       const previewUrl = verified.data.url!;
       const { token, server } = await startSceneBridge(root, { origin: new URL(previewUrl).origin, ...(options.port !== undefined ? { port: options.port } : {}), readOnly: options.readOnly ?? false,
         version: context.version ?? "development", projectId: verified.data.project?.projectId, ...(context.log ? { log: context.log } : {}) });
-      const url = editorUrl(previewUrl, options.scene, server.port, token);
+      const url = editorUrl(previewUrl, options.scene, server.port, token, composition);
       if (options.launch) await services.openBrowser(root, url);
-      return { success: true, command: "edit", server, data: { bridge: server.origin, url, readOnly: options.readOnly ?? false, ...(options.scene ? { scene: options.scene } : {}) } };
+      return { success: true, command: "edit", server, data: { bridge: server.origin, url, readOnly: options.readOnly ?? false, ...(options.scene ? { scene: options.scene } : {}), ...(composition ? { composition } : {}) } };
     }
     const write = { write: options.write ?? false, ...(options.expectSha ? { expectSha: options.expectSha } : {}), ...(options.label ? { label: options.label } : {}) };
     if (operation === "preset") {

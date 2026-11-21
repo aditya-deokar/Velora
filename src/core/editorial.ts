@@ -87,7 +87,7 @@ export function reviewComposition(composition: Composition, scenes: readonly Sce
       if (needed && needed > segment.durationMs) add("ADV_READING_TIME", path, `Shot "${segment.id}" shows copy that needs about ${needed}ms to read but is on screen ${segment.durationMs}ms.`, segment.startMs);
       if (scene.definition.motion?.loop) {
         const seam = loopSeam(scene.definition.motion);
-        if (Number.isFinite(seam) && seam > 0.5) add("ADV_LOOP_SEAM", path, `Scene "${scene.id}" loops with a ${seam.toFixed(2)} jump at the seam; match its first and last keyframes.`);
+        if (Number.isFinite(seam) && seam > 0.5) add("ADV_LOOP_SEAM", path, `Scene "${scene.id}" loops with a ${seam.toFixed(2)} jump at the seam; match its first and last keyframes.`, segment.startMs);
       }
     }
   }
@@ -107,7 +107,7 @@ export function reviewComposition(composition: Composition, scenes: readonly Sce
     const cutMs = b.segment.startMs + (transition && isOverlapTransition(transition.type) ? transition.durationMs : 0);
     const path = `composition.scenes.${b.index}`;
     if (a.scene && b.scene) {
-      const out = subjectOnScreen(a.scene, a.segment.durationMs), into = subjectOnScreen(b.scene, 0);
+      const out = subjectOnScreen(a.scene, (a.segment.inMs ?? 0) + a.segment.durationMs), into = subjectOnScreen(b.scene, b.segment.inMs ?? 0);
       if (out && into) {
         const jump = Math.hypot((out.x - into.x) * 16, (out.y - into.y) * 9) / Math.hypot(16, 9);
         const matchMarked = composition.markers.some(marker => marker.kind === "cue" && /match/i.test(marker.label) && Math.abs(marker.atMs - cutMs) <= 250);

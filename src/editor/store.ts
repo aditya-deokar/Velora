@@ -1,4 +1,5 @@
 import { applyEdits, coalesce, describeOp, type EditOp, type EditIssue, type TrackAddress } from "../core";
+import { sameJsonValue } from "../core/json";
 
 /** SOURCE OF TRUTH: createEditorStore.
  * WHAT: the editor's one external store: the last recipe known on disk (base + sha), committed ops not
@@ -42,6 +43,7 @@ export type EditorState = {
 /** Transport for writes: the bridge client in connected mode. */
 export type EditorWriter = (baseSha: string, ops: EditOp[], label: string) => Promise<
   { status: "ok"; sha: string } | { status: "conflict"; sha: string; text: string; doc: Doc } | { status: "invalid"; issues: EditIssue[] } | { status: "offline" }>;
+export type EditorCheckpoint = Pick<EditorState, "base" | "sha" | "pending" | "undo" | "redo">;
 export const HISTORY_LIMIT = 200;
 export const COALESCE_MS = 1000;
 const EMPTY_SELECTION: Selection = { layers: [], tracks: [], keys: [], clips: [] };
@@ -57,8 +59,8 @@ function deepFreeze<T>(value: T): T {
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 export type EditorStore = ReturnType<typeof createEditorStore>;
-export function createEditorStore(options: { sceneId: string; base: Doc; sha?: string; readOnly: boolean; writer?: EditorWriter; ui?: Partial<EditorUi>;
-  now?: () => number; persistUi?: (ui: EditorUi) => void; retryMs?: (attempt: number) => number; schedule?: (run: () => void, ms: number) => void }) {
+export function createEditorStore(options: { sceneId: string; base: Doc; sha?: string; readOnly: boolean; writer?: EditorWriter; ui?: Partial<EditorUi>; target?: "composition";
+  checkpoint?: EditorCheckpoint; now?: () => number; persistUi?: (ui: EditorUi) => void; retryMs?: (attempt: number) => number; schedule?: (run: () => void, ms: number) => void }) {
   const listeners = new Set<() => void>();
   const now = options.now ?? (() => Date.now());
   const schedule = options.schedule ?? ((run: () => void, ms: number) => { setTimeout(run, ms); });
@@ -67,6 +69,12 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
     selection: EMPTY_SELECTION, ui: { ...DEFAULT_UI, ...options.ui }, save: options.readOnly ? "unsaved" : "saved", readOnly: options.readOnly, revision: 0,
   };
   let inFlight = false, attempt = 0;
+  let deferredRead: Parameters<typeof receiveExternal> | undefined;
+  const apply = (base: Doc, ops: EditOp[], validation?: "motion") => {
+    if (options.target !== "composition") return applyEdits(base, ops, { validation });
+    const result = applyEdits(base, ops, { target: "composition" });
+    return result.ok ? { ...result, recipe: result.composition } : result;
+  };
   const set = (patch: Partial<EditorState>) => {
     state = { ...state, ...patch, revision: state.revision + 1 };
     if (patch.ui) options.persistUi?.(state.ui);
@@ -79,9 +87,13 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
   const committedDoc = (pending: EditOp[][], base: Doc): Doc | undefined => {
     if (committedCache && committedCache.base === base && committedCache.pending === pending) return committedCache.doc;
     if (!pending.length) return base;
-    const result = applyEdits(base, pending.flat());
-    if (!result.ok) return undefined;
-    committedCache = { base, pending, doc: result.recipe as Doc };
+    let doc = base;
+    for (const batch of options.target === "composition" ? pending : [pending.flat()]) {
+      const result = apply(doc, batch);
+      if (!result.ok) return undefined;
+      doc = result.recipe;
+    }
+    committedCache = { base, pending, doc };
     return committedCache.doc;
   };
   const derive = (pending: EditOp[][], transient: EditOp[], base = state.base): { draft: Doc; issues: EditIssue[] } | undefined => {
@@ -90,7 +102,7 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
     if (!start) return undefined;
     if (!transient.length) return { draft: development ? deepFreeze(start) : start, issues: [] };
     // In-gesture previews check motion only; the commit re-validates the whole recipe.
-    const result = applyEdits(start, transient, { validation: "motion" });
+    const result = apply(start, transient, "motion");
     if (!result.ok) return undefined;
     return { draft: development ? deepFreeze(result.recipe as Doc) : result.recipe as Doc, issues: [] };
   };
@@ -104,11 +116,12 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
       inFlight = false;
       if (reply.status === "ok") {
         attempt = 0;
-        const applied = applyEdits(state.base, batch);
+        const applied = apply(state.base, batch);
         const pending = state.pending.slice(1);
         set({ base: applied.ok ? applied.recipe as Doc : state.base, sha: reply.sha, pending, save: pending.length ? "saving" : "saved" });
+        if (deferredRead) { const read = deferredRead; deferredRead = undefined; receiveExternal(...read); }
         pump();
-      } else if (reply.status === "conflict") rebase(reply.doc, reply.sha, reply.text, "The file changed on disk while saving.");
+      } else if (reply.status === "conflict") { deferredRead = undefined; receiveExternal(reply.doc, reply.sha, reply.text); }
       else if (reply.status === "invalid") {
         // The bridge refused this batch: roll it back (and its history entry) and show why.
         const pending = state.pending.slice(1);
@@ -130,8 +143,9 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
   };
   const commitOps = (ops: EditOp[], label?: string, merge = false): EditIssue[] => {
     if (!ops.length) return [];
-    const result = applyEdits(committed(), ops);
+    const result = apply(committed(), ops);
     if (!result.ok) { set({ transient: [], ...(derive(state.pending, []) ?? {}), issues: result.issues }); return result.issues; }
+    if (options.target === "composition" && !result.touched.length) { set({ transient: [], ...(derive(state.pending, []) ?? {}) }); return []; }
     const restored = result.inverse.filter(op => op.op === "restore" && "clip" in op.at);
     const after = new Map<string, Doc>();
     const collect = (clips?: Doc[]) => (clips ?? []).forEach(clip => { after.set(clip.id, clip); collect(clip.clips); });
@@ -151,6 +165,35 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
     pump();
     return [];
   };
+  function receiveExternal(doc: Doc, sha: string | undefined, text: string) {
+    if (sha && sha === state.sha) return;
+    if (options.target === "composition" && sha) {
+      // The dev server can reload the page before acknowledging a successful save.
+      // Discard only the prefix already on disk, and leave any later edits queued.
+      if (inFlight) { deferredRead = [doc, sha, text]; return; }
+      let applied = state.base;
+      for (const [index, batch] of state.pending.entries()) {
+        const result = apply(applied, batch);
+        if (!result.ok) break;
+        applied = result.recipe;
+        if (!sameJsonValue(doc, applied)) continue;
+        const pending = state.pending.slice(index + 1);
+        const derived = derive(pending, state.transient, doc) ?? derive(pending, [], doc);
+        if (!derived) break;
+        set({ base: doc, sha, pending, ...derived, conflict: undefined, save: state.readOnly ? "unsaved" : pending.length ? "saving" : "saved" });
+        pump();
+        return;
+      }
+    }
+    if (options.target !== "composition" && (same(doc, committed()) || (!state.pending.length && same(doc, state.base)))) { if (sha) set({ sha }); return; }
+    if (!state.pending.length && !state.transient.length) { set({ base: doc, sha, draft: development ? deepFreeze(doc) : doc, issues: [], conflict: undefined, save: state.readOnly ? "unsaved" : "saved" }); return; }
+    rebase(doc, sha, text, "The file changed outside the editor.");
+  }
+  if (options.checkpoint) {
+    const { base, pending } = options.checkpoint;
+    const derived = derive(pending, [], base);
+    if (derived) state = { ...state, ...options.checkpoint, ...derived };
+  }
   return {
     getState: () => state,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
@@ -168,7 +211,7 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
     undo() {
       const entry = state.undo[state.undo.length - 1];
       if (!entry) return;
-      const result = applyEdits(committed(), entry.inverse);
+      const result = apply(committed(), entry.inverse);
       if (!result.ok) { set({ issues: result.issues }); return; }
       const pending = [...state.pending, entry.inverse];
       set({ undo: state.undo.slice(0, -1), redo: [...state.redo, { ...entry, inverse: result.inverse }], pending, transient: [], ...(derive(pending, []) ?? {}), save: state.readOnly ? "unsaved" : "saving" });
@@ -177,7 +220,7 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
     redo() {
       const entry = state.redo[state.redo.length - 1];
       if (!entry) return;
-      const result = applyEdits(committed(), entry.ops);
+      const result = apply(committed(), entry.ops);
       if (!result.ok) { set({ issues: result.issues }); return; }
       const pending = [...state.pending, entry.ops];
       set({ redo: state.redo.slice(0, -1), undo: [...state.undo, { ...entry, inverse: result.inverse }], pending, transient: [], ...(derive(pending, []) ?? {}), save: state.readOnly ? "unsaved" : "saving" });
@@ -186,12 +229,8 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
     /** Undo back to (and including) a history entry. */
     jump(index: number) { while (state.undo.length > index) { const before = state.undo.length; this.undo(); if (state.undo.length === before) break; } },
     /** An external revision of the file (watcher event or HMR): ignore our own echo, adopt, rebase or conflict. */
-    external(doc: Doc, sha: string | undefined, text: string) {
-      if (sha && sha === state.sha) return;
-      if (same(doc, committed()) || (!state.pending.length && same(doc, state.base))) { if (sha) set({ sha }); return; }
-      if (!state.pending.length && !state.transient.length) { set({ base: doc, sha, draft: development ? deepFreeze(doc) : doc, issues: [], conflict: undefined, save: state.readOnly ? "unsaved" : "saved" }); return; }
-      rebase(doc, sha, text, "The file changed outside the editor.");
-    },
+    external: receiveExternal,
+    checkpoint(): EditorCheckpoint { const { base, sha, pending, undo, redo } = state; return { base, sha, pending, undo, redo }; },
     /** Resolve a conflict: keep mine (re-apply on the disk version) or take the disk version. */
     resolve(choice: "mine" | "disk") {
       const conflict = state.conflict;
@@ -201,7 +240,7 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
       let doc = conflict.doc;
       const kept: EditOp[][] = [];
       for (const batch of state.pending) {
-        const result = applyEdits(doc, batch);
+        const result = apply(doc, batch);
         if (result.ok) { doc = result.recipe as Doc; kept.push(batch); }
       }
       set({ base: conflict.doc, sha: conflict.sha, pending: kept, transient: [], ...(derive(kept, [], conflict.doc) ?? { draft: conflict.doc, issues: [] }), conflict: undefined, save: kept.length ? "saving" : "saved" });
@@ -212,6 +251,6 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
     /** Every committed op batch (for Copy as command in read-only mode). */
     unsavedOps(): EditOp[] { return state.pending.flat(); },
     retry() { attempt = 0; pump(); },
-    setReadOnly(readOnly: boolean, sha?: string) { set({ readOnly, ...(sha ? { sha } : {}), save: readOnly ? "unsaved" : state.pending.length ? "saving" : "saved" }); pump(); },
+    setReadOnly(readOnly: boolean, sha?: string) { set({ readOnly, ...(sha && !state.conflict ? { sha } : {}), save: state.conflict ? "conflict" : readOnly ? "unsaved" : state.pending.length ? "saving" : "saved" }); pump(); },
   };
 }

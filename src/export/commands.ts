@@ -6,7 +6,7 @@ import { formatSrt, parseCaptions } from "../core/captions";
 import { findDeliveryPreset, deliveryWarnings } from "../core/delivery";
 import { ASPECT_FRAMES } from "../core/shots";
 import { ALPHA_CODECS, CODEC_CONTAINERS, CaptureManifestSchema, RenderManifestSchema, resolveFinishing, shutterSamples, type ResolvedFinishing, type CheckRenderResult, type ExportVideoResult, type FrameRenderResult, type FramesRenderResult, type ShotRenderResult, type VideoRenderResult, type VisualCheck, type VideoCodec } from "../core/export";
-import { frameAt, layersAt, localTime, segmentAt, timeAtFrame, timelineDuration, timelineFromComposition, validateTimeline, TimelineSchema, type Timeline, type TimelineSegment } from "../core/timeline";
+import { frameAt, layersAt, localTime, segmentAt, timeAtFrame, timelineDuration, timelineFromComposition, validateTimeline, type Timeline, type TimelineSegment } from "../core/timeline";
 import { SceneRecipeSchema, SceneSnapshotSchema, type SceneCatalog } from "../core/recipes";
 import {executeRecipeCommand} from "../project/recipes";
 import {discoverRecipes, loadComposition} from "../project/discovery";
@@ -458,11 +458,7 @@ export async function executeVideoRender(
       throw fault("invalid-input", "Burned-in captions re-encode H.264; render with --codec h264, or set captions.burnIn to false.", "render.composition");
     const warnings: { code: string; message: string }[] = [];
     await requireEncoder(finishing.codec);
-    const timeline = TimelineSchema.parse({
-      version: 1 as const, fps,
-      durationMs: timelineDuration(composition.scenes),
-      segments: composition.scenes.map((s) => ({ id: s.id, recipe: s.recipe, startMs: s.startMs, durationMs: s.durationMs, ...(s.transition ? { transition: s.transition } : {}) })),
-    });
+    const timeline = timelineFromComposition(composition, fps);
     const checked = validateTimeline(timeline);
     if (!checked.valid) return { success: false, issues: checked.issues.map((i) => ({ code: i.code, path: i.path, message: i.message })) };
     const total = Math.ceil((timeline.durationMs * fps) / 1000);
@@ -520,7 +516,8 @@ export async function executeVideoRender(
         const probe = await services.probeAudioFile(absolute);
         if (!probe.codec) throw fault("ERR_AUDIO_CODEC", `Audio ${resolved} could not be probed.`, "render.composition");
         const placed = audioPlacement(track, fps);
-        tracks.push({ id: track.id, file: absolute, startMs: placed.startMs, offsetMs: track.offsetMs, gain: track.gain, fadeInMs: track.fadeInMs, fadeOutMs: track.fadeOutMs, audioMs: probe.durationMs ?? 0, ...(track.duckUnder ? { duckUnderTrackId: track.duckUnder.trackId } : {}) });
+        tracks.push({ id: track.id, file: absolute, startMs: placed.startMs, offsetMs: track.offsetMs, gain: track.gain, fadeInMs: track.fadeInMs, fadeOutMs: track.fadeOutMs, audioMs: probe.durationMs ?? 0,
+          ...(track.durationMs !== undefined ? { durationMs: track.durationMs } : {}), ...(track.duckUnder ? { duckUnderTrackId: track.duckUnder.trackId } : {}) });
       }
       for (const entry of sfxEntries) {
         const file = `${tmpDir}/sfx/${entry.id.replace(/[^a-zA-Z0-9_-]/g, "_")}.wav`;
