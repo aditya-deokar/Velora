@@ -9,6 +9,7 @@ import { executeEditCommand } from "../../src/project/edit";
 import { executeTemplateCommand } from "../../src/project/commands";
 import { parsePng } from "../../src/export/compositor";
 import { CompositionSchema, frameAt, isOverlapTransition, type Composition } from "../../src/core";
+import { audit, loadAudit } from "./audit";
 
 const repository = process.cwd();
 const compositionFile = "launch.composition.json";
@@ -83,6 +84,20 @@ test("ripple, crossfade, slip, scene breadcrumb and beat-snap undo persist throu
     markers: [{ atMs: 870, kind: "downbeat" }, { atMs: 1460, kind: "beat" }] };
   await project(async (root, url) => edit(page, root, url, async () => {
     const shot = page.locator('[data-cut-clip="a"]');
+    await loadAudit(page);
+    for (const [name, selector] of [["composition toolbar", ".vc-header"], ["composition inspector", ".vc-inspector"],
+      ["composition timeline", ".vc-timeline"]]) await audit(page, selector, name);
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: url });
+    await shot.getByRole("button", { name: /^Shot a,/ }).click();
+    await page.getByRole("button", { name: "Ask agent", exact: true }).click();
+    await audit(page, '[aria-label="Ask agent"]', "composition handoff");
+    await page.getByLabel("What should the agent change?").fill("Trim the opening cut.");
+    await page.getByRole("button", { name: "Copy agent prompt" }).click();
+    await expect(page.getByRole("dialog", { name: "Ask agent" }).getByRole("status")).toHaveText("Prompt copied.");
+    const prompt = await page.evaluate(() => navigator.clipboard.readText());
+    for (const text of [compositionFile, "segment a", "0 ms to 1000 ms", "Trim the opening cut.", "--expect-sha"])
+      expect(prompt).toContain(text);
+    await page.keyboard.press("Escape");
     const width = (await shot.boundingBox())!.width;
     await page.keyboard.press("b");
     await drag(page, page.getByRole("button", { name: "Trim a out", exact: true }), -width / 10);
@@ -113,7 +128,7 @@ test("ripple, crossfade, slip, scene breadcrumb and beat-snap undo persist throu
     }
     const beforeSlip = (await read(root)).scenes[1];
     await page.keyboard.press("y");
-    const target = page.getByRole("button", { name: "Shot b", exact: true });
+    const target = page.getByRole("button", { name: /^Shot b,/ });
     await drag(page, target, (await target.boundingBox())!.width / 8);
     await expect.poll(async () => (await read(root)).scenes[1].inMs ?? 0).toBeGreaterThan(0);
     const slipped = (await read(root)).scenes[1];
@@ -157,7 +172,7 @@ test("recuts the 30 second launch blueprint and edits its music bed on the timel
   await project(async (root, url) => edit(page, root, url, async () => {
     await expect(page.locator("[data-waveform]")).toBeVisible();
     await expect(page.getByRole("rowheader", { name: "Captions · karaoke" })).toBeVisible();
-    await page.getByRole("button", { name: "Shot shot-2", exact: true }).click();
+    await page.getByRole("button", { name: /^Shot shot-2,/ }).click();
     await page.getByRole("button", { name: "Move later" }).click();
     await expect.poll(async () => (await read(root)).scenes.find(clip => clip.id === "shot-2")!.startMs).toBeGreaterThan(5000);
     const tweaks = [["shot-3", "crossfade"], ["shot-5", "dip-to-white"]];
@@ -167,7 +182,7 @@ test("recuts the 30 second launch blueprint and edits its music bed on the timel
       await page.getByRole("button", { name: type, exact: true }).dragTo(handle);
       await expect.poll(async () => (await read(root)).scenes.find(clip => clip.id === id)?.transition?.type).toBe(type);
     }
-    await page.getByRole("button", { name: "Audio music", exact: true }).click();
+    await page.getByRole("button", { name: /^Audio music,/ }).click();
     for (const [name, value] of [["Gain", "0.65"], ["Fade in (ms)", "800"], ["Fade out (ms)", "1200"]]) {
       const field = page.getByRole("spinbutton", { name, exact: true });
       await field.fill(value); await field.press("Enter");

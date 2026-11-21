@@ -38,6 +38,53 @@ test("200 rows x 1000 keyframes: scroll, zoom and drag without long tasks over 5
   console.log("[budget] large timeline", JSON.stringify(report));
   expect(report.scrollMaxMs).toBeLessThanOrEqual(50);
   expect(report.zoomMaxMs).toBeLessThanOrEqual(50);
+  expect(report.dragMaxMs).toBeLessThanOrEqual(50);
+});
+
+test("scrub 60 Surfaces with 300 tracks at 55 fps and load the editor within one second", async ({ page }, info) => {
+  await page.addInitScript(() => {
+    new MutationObserver((_, observer) => {
+      if (!document.querySelector("[data-velora-editor-timeline]")) return;
+      performance.mark("velora-editor-ready");
+      observer.disconnect();
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.goto("/tests/preview/fixture.html?mode=perf&velora-scene=sixty-scrub&velora-edit=1");
+  await expect(page.locator(".ve-lanes")).toBeVisible();
+  await expect(page.locator("[data-velora-id]")).toHaveCount(60);
+  const metrics = await page.evaluate(async () => {
+    const lanes = document.querySelector<HTMLElement>(".ve-lanes")!;
+    const rect = lanes.getBoundingClientRect();
+    const timecode = document.querySelector('[data-testid="editor-timecode"]')!;
+    const before = timecode.textContent;
+    lanes.setPointerCapture = () => undefined;
+    const fire = (type: string, progress: number) => lanes.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, clientX: rect.left + 16 + progress * (rect.width - 32), clientY: rect.top + 8, pointerId: 1, button: 0,
+    }));
+    const frame = () => new Promise<number>(resolve => requestAnimationFrame(resolve));
+    fire("pointerdown", 0);
+    let last = await frame();
+    const samples = [];
+    for (let index = 1; index <= 120; index++) {
+      fire("pointermove", index / 120);
+      const now = await frame();
+      samples.push(now - last);
+      last = now;
+    }
+    fire("pointerup", 1);
+    samples.sort((a, b) => a - b);
+    const chunk = getResourceTiming("Editor-");
+    function getResourceTiming(prefix: string) {
+      return performance.getEntriesByType("resource").find(entry => new URL(entry.name).pathname.split("/").pop()?.startsWith(prefix));
+    }
+    return { changesTimecode: timecode.textContent !== before, medianFps: 1000 / samples[60],
+      editorLoadMs: performance.getEntriesByName("velora-editor-ready")[0].startTime - (chunk?.startTime ?? 0) };
+  });
+  await info.attach("editor-scrub", { body: JSON.stringify(metrics, null, 2), contentType: "application/json" });
+  console.log("[budget] editor scrub", JSON.stringify(metrics));
+  expect(metrics.changesTimecode).toBe(true);
+  expect(metrics.medianFps).toBeGreaterThanOrEqual(55);
+  expect(metrics.editorLoadMs).toBeLessThanOrEqual(1000);
 });
 test("single-track drag in a 60-Surface scene repaints within 16 ms p95; graph redraw for 5 curves", async ({ page }, info) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
@@ -70,7 +117,7 @@ test("single-track drag in a 60-Surface scene repaints within 16 ms p95; graph r
     return labels.length;
   });
   await page.keyboard.press("g");
-  await expect(page.locator('svg[role="img"]')).toBeVisible();
+  await expect(page.getByRole("group", { name: /^value graph/ })).toBeVisible();
   const graph = await page.evaluate(async () => {
     const samples: number[] = [];
     for (let i = 0; i < 20; i++) {

@@ -24,7 +24,7 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `check` | `--frames`, `--video`, `--manifest`, `--budget-ms`, `--project`, `--json` | `velora check --frames stills --json` |
 | `audio` | `--composition`, `--file`, `--write-markers`, `--project`, `--json` | `velora audio check --composition teaser.composition.json --json` |
 | `captions` | `--file`, `--composition`, `--project`, `--json` | `velora captions validate --file subs.srt --json` |
-| `compose` | `--composition`, `--to`, `--tolerance`, `--write`, `--project`, `--json` | `velora compose snap --composition launch.composition.json --to beats --json` |
+| `compose` | `--composition`, `--ops`, `--expect-sha`, `--id`, `--at`, `--before`, `--last`, `--edge`, `--delta`, `--ripple`, `--new-id`, `--type`, `--duration`, `--direction`, `--ease`, `--seed`, `--sfx`, `--remove`, `--to`, `--tolerance`, `--write`, `--project`, `--json` | `velora compose edit --composition launch.composition.json --ops ops.json --json` |
 | `review` | `--composition`, `--platform`, `--project`, `--json` | `velora review --composition launch.composition.json --platform youtube-1080p --json` |
 | `brand` | `--from-css`, `--name`, `--project`, `--json` | `velora brand init --from-css src/index.css --json` |
 | `templates` | `--category`, `--tag`, `--aspect`, `--id`, `--json` | `velora templates ls --json` |
@@ -32,12 +32,12 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `transitions` | `--type`, `--json` | `velora transitions ls --json` |
 | `deliver` | `--composition`, `--targets`, `--out`, `--quality`, `--parallel`, `--no-cache`, `--no-stream`, `--url`, `--project`, `--json` | `velora deliver --composition launch.composition.json --targets youtube,reels,website-hero --json` |
 | `studio` | `--site`, `--port`, `--check`, `--edit`, `--scene`, `--read-only`, `--project`, `--json` | `velora studio --site http://127.0.0.1:4321 --json` |
-| `edit` | `--scene`, `--at`, `--ops`, `--expect-sha`, `--write`, `--track`, `--value`, `--ease`, `--label`, `--from`, `--onto`, `--preset`, `--to`, `--layer`, `--title`, `--values`, `--file`, `--node`, `--nodes`, `--id`, `--content`, `--prop`, `--options`, `--expect-recipe-sha`, `--port`, `--url`, `--read-only`, `--no-open`, `--project`, `--json` | `velora edit source outline --scene home-hero --json` |
+| `edit` | `--scene`, `--composition`, `--at`, `--ops`, `--expect-sha`, `--write`, `--track`, `--value`, `--ease`, `--label`, `--from`, `--onto`, `--preset`, `--to`, `--layer`, `--title`, `--values`, `--file`, `--node`, `--nodes`, `--id`, `--content`, `--prop`, `--options`, `--expect-recipe-sha`, `--port`, `--url`, `--read-only`, `--no-open`, `--project`, `--json` | `velora edit source outline --scene home-hero --json` |
 | `create` | `--name`, `--blueprint`, `--json` | `velora create my-launch --name Fieldnote --json` |
 | `prompts` | `--id`, `--json` | `velora prompts show --id launch-film --json` |
 | `skills` | `--dir`, `--agent`, `--source`, `--json` | `velora skills install --dir <path> --json` |
 
-Subcommands: `audio ls|check|beats`, `captions validate|check`, `transitions ls|describe`, `prompts ls|show`, `studio init`, `templates ls|show|check`, `new scene|video`, `brand init|check`, `compose snap`, `skills install|ls|check`, `assets ls|check|add|rm`, `edit ls|apply|key|ease|paste` (bare `velora edit` starts the edit bridge). Every command supports `--help`; exit `0` ok, `1` operational failure, `2` usage error.
+Subcommands include `audio ls|check|beats`, `captions validate|check`, `transitions ls|describe`, `prompts ls|show`, `studio init`, `templates ls|show|check`, `new scene|video`, `brand init|check`, `compose edit|trim|move|split|transition|snap`, `skills install|ls|check`, `assets ls|check|add|rm` and `edit ls|apply|key|ease|paste`. Bare `velora edit` starts the edit bridge. Every command supports `--help` and exits with `0` on success, `1` on operational failure or `2` on a usage error.
 
 ## Envelope and ERR_* catalog
 
@@ -50,6 +50,8 @@ Success: `{ success: true, command, data, warnings?, next? }`. Failure: `{ succe
 | `ERR_FOCUS_INVALID`, `ERR_DURATION_INVALID`, `ERR_FPS_UNSUPPORTED` | Scene and export shape | `velora guide --json`, `velora <command> --help` |
 | `ERR_SERVER_UNREACHABLE`, `ERR_CAPTURE_NO_BRIDGE`, `ERR_FFMPEG_MISSING`, `ERR_CHROMIUM_MISSING` | Environment and bridge | `velora doctor --json` |
 | `ERR_COMPOSITION_INVALID`, `ERR_TIMELINE_INVALID`, `ERR_TIMELINE_OVERLAP`, `ERR_FRAME_OUT_OF_RANGE` | Composition and timeline | `velora inspect --composition <file> --json` |
+| `ERR_COMPOSITION_NOT_FOUND` | The composition file is missing | Check the project-relative path and run `velora compose --help` |
+| `ERR_COMPOSITION_SOURCE_RANGE` | A clip runs beyond its animated source | Trim or slip the clip, or extend the source and run `velora validate --composition <file> --json` |
 | `ERR_ASSET_NOT_FOUND`, `ERR_ASSET_UNSUPPORTED`, `ERR_ASSET_TOO_LARGE` | Assets | `velora assets ls --json`, `velora assets check --json` |
 | `ERR_AUDIO_INVALID`, `ERR_AUDIO_CODEC`, `ERR_AUDIO_DRIFT` | Audio | `velora audio check --composition <file> --json` |
 | `ERR_CAPTION_INVALID`, `ERR_CAPTION_OVERLAP`, `ERR_CAPTION_TIMING` | Captions | `velora captions validate --file <file> --json` |

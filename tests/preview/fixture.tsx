@@ -68,7 +68,14 @@ const largeRecipe={version:1,id:'large',title:'Large timeline',definition:{width
 const sixty=Array.from({length:60},(_,i)=>`s-${i}`);
 const sixtyRecipe={version:1,id:'sixty',title:'Sixty surfaces',definition:{width:1400,height:980,scene:{focus:{maxBlur:0},nodes:sixty.map(id=>({id}))},motion:{durationMs:4000,speed:1,tracks:[
  ...sixty.slice(0,5).map(id=>({target:{kind:'surface',id},property:'y',keyframes:[{timeMs:0,value:0},{timeMs:1000,value:40},{timeMs:2000,value:-20},{timeMs:3000,value:10}]}))]}}};
+const scrubRecipe = {
+  ...sixtyRecipe, id: "sixty-scrub", title: "Sixty animated surfaces",
+  definition: { ...sixtyRecipe.definition, motion: { ...sixtyRecipe.definition.motion,
+    tracks: sixty.flatMap(id => Object.entries({ x: [0, 8, -4], y: [0, 16, 4], scale: [1, 0.92, 1], opacity: [1, 0.7, 1], rotateZ: [0, 5, -2] })
+      .map(([property, values]) => ({ target: { kind: "surface", id }, property, keyframes: values.map((value, index) => ({ timeMs: index * 1500, value })) }))),
+  } },
+};
 function SixtyScene(){return <>{sixty.map((id,i)=><Surface key={id} id={id} style={{position:'absolute',left:(i%10)*130+20,top:Math.floor(i/10)*150+20,width:120,height:120}} content={<div style={{width:120,height:120,background:'#7cc4ff'}}/>}/>)}</>;}
-const perfSources:Record<string,unknown>={'src/velora/scenes/large.scene.json':largeRecipe,'src/velora/scenes/sixty.scene.json':sixtyRecipe};
-const perfBindings={'src/velora/scenes/large.tsx':EditableScene,'src/velora/scenes/sixty.tsx':SixtyScene};
+const perfSources:Record<string,unknown>={'src/velora/scenes/large.scene.json':largeRecipe,'src/velora/scenes/sixty.scene.json':sixtyRecipe,'src/velora/scenes/sixty-scrub.scene.json':scrubRecipe};
+const perfBindings={'src/velora/scenes/large.tsx':EditableScene,'src/velora/scenes/sixty.tsx':SixtyScene,'src/velora/scenes/sixty-scrub.tsx':SixtyScene};
 createRoot(document.getElementById('root')!).render(mode==='library'?<SceneLibrary sources={sources} bindings={bindings} backHref="/"/>:mode==='editor'?<SceneLibrary sources={editSources} bindings={editBindings}/>:mode==='perf'?<SceneLibrary sources={perfSources} bindings={perfBindings}/>:mode==='motion-design'?<SceneLibrary sources={designSources} bindings={designBindings}/>:mode==='motion-capture'?<ScenePreview title="Motion" definition={captured ? JSON.parse(captured) : designDefinition}><MotionDesignScene/></ScenePreview>:<Fixture/>);

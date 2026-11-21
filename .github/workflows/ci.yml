@@ -1,7 +1,6 @@
 name: CI
-# Fast gates on every OS and supported Node; browser, export and installed-app proof on every OS (1.0).
-# Hardware timing (test:performance), agent-demo replay and any-site mode (they need registry access for
-# disposable hosts) and verify:release remain local maintainer gates.
+# Fast gates on every OS and supported Node; browser, export and installed hosts on every OS.
+# Hardware timing and agent-demo replay remain local maintainer gates.
 on:
   push:
   pull_request:
@@ -71,3 +70,7 @@ jobs:
       - run: npm run test:launch
       - run: npm run test:export
       - run: npm run test:installed
+      - run: npm run test:portable:app
+      - run: npm run test:portable:pages
+      - run: npm run test:portable:react
+      - run: npm run test:site

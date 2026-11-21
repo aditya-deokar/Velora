@@ -46,27 +46,50 @@ function sameObject(a: object | undefined, b: object | undefined) {
   );
 }
 
-// offset geometry excludes CSS transforms. Both origins use the same offset chain;
-// ancestor borders and scroll are accounted for before converting to local centers.
-function origin(element: HTMLElement) {
-  let x = 0,
-    y = 0;
-  for (
-    let node: HTMLElement | null = element;
-    node;
-    node = node.offsetParent as HTMLElement | null
-  ) {
-    x += node.offsetLeft;
-    y += node.offsetTop;
-    const parent = node.offsetParent as HTMLElement | null;
-    x += parent?.clientLeft ?? 0;
-    y += parent?.clientTop ?? 0;
-  }
-  for (let node = element.parentElement; node; node = node.parentElement) {
-    x -= node.scrollLeft;
-    y -= node.scrollTop;
-  }
-  return { x, y };
+type Point = { x: number; y: number };
+const ZERO = { x: 0, y: 0 };
+
+// Offset geometry excludes transforms. Share offset and scroll ancestors within
+// one measurement so every layer does not query the same layout geometry.
+function layoutReader() {
+  const offsets = new Map<HTMLElement, Point>();
+  const scrolls = new Map<HTMLElement, Point>();
+  const boxes = new Map<HTMLElement, { width: number; height: number }>();
+  const offset = (element: HTMLElement | null): Point => {
+    if (!element) return ZERO;
+    const known = offsets.get(element);
+    if (known) return known;
+    const parent = element.offsetParent as HTMLElement | null;
+    const base = offset(parent);
+    const point = {
+      x: base.x + element.offsetLeft + (parent?.clientLeft ?? 0),
+      y: base.y + element.offsetTop + (parent?.clientTop ?? 0),
+    };
+    offsets.set(element, point);
+    return point;
+  };
+  const scroll = (element: HTMLElement | null): Point => {
+    if (!element) return ZERO;
+    const known = scrolls.get(element);
+    if (known) return known;
+    const outer = scroll(element.parentElement);
+    const point = { x: outer.x + element.scrollLeft, y: outer.y + element.scrollTop };
+    scrolls.set(element, point);
+    return point;
+  };
+  return {
+    origin(element: HTMLElement) {
+      const point = offset(element), ancestor = scroll(element.parentElement);
+      return { x: point.x - ancestor.x, y: point.y - ancestor.y };
+    },
+    size(element: HTMLElement) {
+      const known = boxes.get(element);
+      if (known) return known;
+      const box = { width: element.offsetWidth, height: element.offsetHeight };
+      boxes.set(element, box);
+      return box;
+    },
+  };
 }
 
 
@@ -128,19 +151,19 @@ export function createRegistry() {
   };
   const measure = () => {
     if (!stage) return false;
+    const layout = layoutReader();
     let changed = false;
     for (const [token, entry] of entries) {
       const parent =
         (entry.parent && entries.get(entry.parent)?.element) || stage;
-      const p = origin(parent),
-        e = origin(entry.element);
-      const width = entry.element.offsetWidth,
-        height = entry.element.offsetHeight;
+      const p = layout.origin(parent), e = layout.origin(entry.element);
+      const { width, height } = layout.size(entry.element);
+      const parentSize = layout.size(parent);
       const next = {
         width,
         height,
-        offsetX: e.x + width / 2 - p.x - parent.offsetWidth / 2,
-        offsetY: e.y + height / 2 - p.y - parent.offsetHeight / 2,
+        offsetX: e.x + width / 2 - p.x - parentSize.width / 2,
+        offsetY: e.y + height / 2 - p.y - parentSize.height / 2,
       };
       if (!sameObject(measurements.get(token), next)) {
         measurements.set(token, next);

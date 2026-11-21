@@ -69,15 +69,19 @@ export function GraphEditor() {
       : points.map((point, i) => i === 0 ? 0 : (point.value - points[i - 1].value) / Math.max(1e-9, point.time - points[i - 1].time) * 1000);
     return { row, track, points, values, color: COLORS[index % COLORS.length] };
   }), [doc, shownKey, width, duration, mode]); // eslint-disable-line react-hooks/exhaustive-deps
-  const all = curves.flatMap(curve => curve.values);
-  const global = { min: Math.min(0, ...all), max: Math.max(1, ...all) };
-  const scaleOf = (values: number[]) => {
-    if (shared) return global;
-    const min = Math.min(...values), max = Math.max(...values);
-    return max - min < 1e-9 ? { min: min - 1, max: max + 1 } : { min, max };
-  };
   const ty = (value: number, scale: { min: number; max: number }) => PAD.top + height - ((value - scale.min) / (scale.max - scale.min)) * height;
   const vy = (y: number, scale: { min: number; max: number }) => scale.min + ((PAD.top + height - y) / height) * (scale.max - scale.min);
+  const { paths, global } = useMemo(() => {
+    const all = curves.flatMap(curve => curve.values);
+    const global = { min: Math.min(0, ...all), max: Math.max(1, ...all) };
+    const paths = curves.map(entry => {
+      const min = Math.min(...entry.values), max = Math.max(...entry.values);
+      const scale = shared ? global : max - min < 1e-9 ? { min: min - 1, max: max + 1 } : { min, max };
+      const d = entry.points.map((point, i) => `${i ? "L" : "M"}${tx(point.time).toFixed(1)} ${ty(entry.values[i], scale).toFixed(1)}`).join("");
+      return { ...entry, scale, d };
+    });
+    return { paths, global };
+  }, [curves, shared, width, height, duration]); // eslint-disable-line react-hooks/exhaustive-deps
   const selectedKey = state.selection.keys[0];
   const keyRow = selectedKey ? shown.find(row => row.id === trackKey(selectedKey.track)) : shown[0];
   const keyTrack = keyRow ? findTrack(doc, keyRow.address) : undefined;
@@ -90,7 +94,7 @@ export function GraphEditor() {
   const ease = (row: PropertyRow, atMs: number, easing: unknown): EditOp => ({ op: "key.ease", track: row.address, atMs, easing } as EditOp);
   // Handles of the selected keyframe's outgoing segment (and the incoming one's in-handle).
   const handles: { which: "out" | "in"; atMs: number; t: number; v: number; anchor: { t: number; v: number }; segment: Segment; bezier: Bezier; named: boolean }[] = [];
-  const curve = curves.find(entry => entry.row.id === keyRow?.id);
+  const curve = paths.find(entry => entry.row.id === keyRow?.id);
   if (keyRow && keyTrack && keyIndex >= 0 && !keyRow.smooth && mode === "value") {
     for (const [index, which] of [[keyIndex, "out"], [keyIndex - 1, "in"]] as const) {
       const segment = segmentOf(keyRow, keyTrack, index);
@@ -102,7 +106,7 @@ export function GraphEditor() {
       handles.push({ which, atMs: frame.timeMs, t: point.t, v: point.v, anchor: which === "out" ? { t: segment.t0, v: segment.v0 } : { t: segment.t1, v: segment.v1 }, segment, bezier, named: !bezierFor(frame.easing) });
     }
   }
-  const scale = curve ? scaleOf(curve.values) : global;
+  const scale = curve?.scale ?? global;
   const startDrag = (event: ReactPointerEvent<SVGCircleElement>, handle: (typeof handles)[number]) => {
     event.stopPropagation();
     (event.target as Element).setPointerCapture(event.pointerId);
@@ -167,21 +171,21 @@ export function GraphEditor() {
       </div>
       <div ref={box} style={{ flex: 1, minHeight: 0, position: "relative" }}>
         {shown.length === 0 ? <p style={{ padding: 12, color: "var(--ve-dim)" }}>Select a numeric property or keyframes in the dope sheet to graph them.</p> :
-          <svg width={size.width} height={size.height} role="img" aria-label={`${mode} graph of ${shown.map(row => row.label).join(", ")}`} onPointerMove={dragTo} onPointerUp={endDrag}>
+          <svg width={size.width} height={size.height} role="group" aria-label={`${mode} graph of ${shown.map(row => row.label).join(", ")}`} onPointerMove={dragTo} onPointerUp={endDrag}>
             <line x1={tx(host.session.timeMs)} x2={tx(host.session.timeMs)} y1={PAD.top} y2={PAD.top + height} stroke="#ff8a3d"/>
-            {curves.map(entry => {
-              const s = scaleOf(entry.values);
-              const d = entry.points.map((point, i) => `${i ? "L" : "M"}${tx(point.time).toFixed(1)} ${ty(entry.values[i], s).toFixed(1)}`).join("");
-              return <g key={entry.row.id}><path d={d} fill="none" stroke={entry.color} strokeWidth={entry.row.id === keyRow?.id ? 2 : 1.25}/>
+            {paths.map((entry, index) => {
+              const s = entry.scale;
+              return <g key={entry.row.id}><path d={entry.d} fill="none" stroke={entry.color} strokeWidth={entry.row.id === keyRow?.id ? 2 : 1.25}/>
                 {mode === "value" && entry.row.keys.map(key => <rect key={key.atMs} x={tx(key.time) - 3} y={ty(key.value as number, s) - 3} width={6} height={6} fill={entry.color}
                   stroke={state.selection.keys.some(ref => ref.atMs === key.atMs && trackKey(ref.track) === entry.row.id) ? "#fff" : "none"}
                   onClick={() => store.select({ keys: [{ track: entry.row.address, atMs: key.atMs }], tracks: [entry.row.address] })}/>)}
-                <text x={4} y={PAD.top + 12 + curves.indexOf(entry) * 12} fill={entry.color} fontSize={10}>{entry.row.layer} {entry.row.label} {shared ? "" : `[${Math.round(s.min * 100) / 100}…${Math.round(s.max * 100) / 100}]`}</text></g>;
+                <text x={4} y={PAD.top + 12 + index * 12} fill={entry.color} fontSize={10}>{entry.row.layer} {entry.row.label} {shared ? "" : `[${Math.round(s.min * 100) / 100}…${Math.round(s.max * 100) / 100}]`}</text></g>;
             })}
             {handles.map(handle => <g key={handle.which}>
               <line x1={tx(handle.anchor.t)} y1={ty(handle.anchor.v, scale)} x2={tx(handle.t)} y2={ty(handle.v, scale)} stroke="#ffffff88"/>
               <circle cx={tx(handle.t)} cy={ty(handle.v, scale)} r={6} fill="#141417" stroke="#fff" strokeWidth={2} tabIndex={0} role="slider"
                 aria-label={`${handle.which === "out" ? "Out" : "In"} handle of ${keyRow?.label} at ${Math.round(handle.atMs)} ms`}
+                aria-valuemin={0} aria-valuemax={1} aria-valuenow={handle.bezier[handle.which === "out" ? 0 : 2]}
                 aria-valuetext={`x ${handle.bezier[handle.which === "out" ? 0 : 2].toFixed(3)}, y ${handle.bezier[handle.which === "out" ? 1 : 3].toFixed(3)}`}
                 onPointerDown={event => startDrag(event, handle)} onKeyDown={event => nudgeHandle(event, handle)} style={{ cursor: "grab" }}/>
             </g>)}

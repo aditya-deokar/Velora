@@ -86,6 +86,8 @@ Kit `Title`, `Counter`, `Typewriter` and `Callout` accept an optional `id`. When
 
 Use `TextAnimator` inside a Surface leaf for per-character, per-word, or per-line motion. Keyframe `<id>.selector.start`, `<id>.selector.end`, and `<id>.selector.offset` as percentages. Use shape, ease, and wrap to weight the range. An opacity amount of `0` and a start moving from `0` to `100` with end at `100` reveal the text.
 
+In Studio, select the owning Surface and find the typed selector channels in the Inspector. Raise the end of the reveal if the type needs more time to read, then check the same frame by scrubbing back and forth.
+
 The editor raises a reading-time advisory when the scene is shorter than 1 second plus 0.3 seconds per word. Check the readable interval in captured frames when copy fades or moves out early.
 
 ## Related Skills

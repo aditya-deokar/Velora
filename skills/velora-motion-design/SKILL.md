@@ -136,9 +136,7 @@ drawn by the real evaluator. Dragging a segment's handles writes `{ "cubicBezier
 segment's start keyframe (out-handle = x1, y1; in-handle = x2, y2, in segment-normalized space; x stays in 0..1,
 y in −5..5). Handle modes: linear, ease (Easy Ease `[0.333, 0, 0.667, 1]`), continuous (matches velocity on both
 sides of a keyframe), auto (`"auto"`) and hold. Springs and steps get a parameter panel with settle time and
-overshoot. The easing library (E) offers Velora, After Effects, CSS, Penner, spring and steps presets. Prefer an
-ease-out with a little overshoot for UI arrivals, and keep overshoot off camera tracks (the camera-overshoot
-advisory flags it).
+overshoot. The easing library (E) offers Velora, After Effects, CSS, Penner, spring and steps presets. Start quiet UI motion with Easy Ease. Use overshoot for an intentional pop, with damping to control the settle and mass to set its weight. Keep camera arrivals restrained and check the camera-overshoot advisory. When animating color, review the intermediate OKLab blend in the real component alongside its endpoints.
 
 ## Behaviors, project presets and graphics
 

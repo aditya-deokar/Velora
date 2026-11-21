@@ -55,12 +55,6 @@ try {
   const originalConfig=await readFile(path.join(host,'vite.config.mjs'),'utf8');
   const originalApp=await readFile(path.join(host,'src/App.tsx'),'utf8');
   const originalPackage=JSON.parse(await readFile(path.join(host,'package.json'),'utf8'));
-  if (!registryPackage) {
-    // Leave the published-release check on its original host. The current artifact
-    // must also open the real studio from a React 18 installation with no Three peers.
-    originalPackage.dependencies.react = originalPackage.dependencies['react-dom'] = '18.3.1';
-    await writeFile(path.join(host,'package.json'),JSON.stringify(originalPackage,null,2)+'\n');
-  }
   let tarball;
   if(!registryPackage) {
   const rawPack = await ok('npm',['pack','--json',...(process.env.VELORA_VERIFY_PREBUILT==='1'?['--ignore-scripts']:[]),'--pack-destination',scratch],root);
@@ -107,7 +101,7 @@ try {
   const installedPkg = packageName;
   assert.ok(existsSync(path.join(host,'node_modules',installedPkg,'package.json')),'Setup installs the published package name');
   if (!registryPackage) {
-    assert.equal(JSON.parse(await readFile(path.join(host,'node_modules/react/package.json'),'utf8')).version,'18.3.1');
+    assert.equal(JSON.parse(await readFile(path.join(host,'node_modules/react/package.json'),'utf8')).version,originalPackage.dependencies.react);
     assert.ok(!existsSync(path.join(host,'node_modules/three')) && !existsSync(path.join(host,'node_modules/@react-three/fiber')));
   }
   const cli=path.join(host,'node_modules',installedPkg,'dist/cli/velora.js');
@@ -116,7 +110,12 @@ try {
   const {cliVersion: _installedCliVersion, command: _installedCommand, ...installedCanonical}=installedGuide;
   const {cliVersion: _publicCliVersion, ...publicCanonical}=publicGuide;
   assert.deepEqual(installedCanonical,publicCanonical,'Installed CLI and browser-compatible package share the exact guide');
-  assert.equal(installedGuide.version,3);
+  if(registryPackage)assert.ok(installedGuide.version>=3);
+  else{
+    assert.equal(installedGuide.version,4);
+    assert.ok(installedGuide.concepts.some(c=>c.id==='editor'));
+    assert.ok(installedGuide.capabilities.prompts.ids.includes('edit-with-agent'));
+  }
   assert.ok(installedGuide.concepts.some(c=>c.id==='focus'));
   assert.ok(installedGuide.concepts.some(c=>c.id==='editing-rhythm'),'Guide v3 ships the director concepts');
   assert.ok(installedGuide.capabilities.prompts.ids.includes('launch-film'),'Guide v3 points at the prompt library');
@@ -177,7 +176,7 @@ try {
   assert.ok(!productionCode.includes('velora-library-scroll')&&!productionCode.includes('data-velora-capture'),'Production host must not ship the unused studio renderer');
   // v2.1 S5: the Edit-mode editor is a lazy chunk the production host never ships.
   assert.ok(!/WebGLRenderer|TransformControls|react-three-fiber/.test(productionCode),'Production host must not ship optional Three.js code');
-  assert.ok(!productionCode.includes('data-velora-editor-timeline')&&!productionCode.includes('velora-editor-grid'),'Production host must not ship the studio editor chunk');
+  assert.ok(!/data-velora-(editor-timeline|composition-editor)|velora-editor-grid/.test(productionCode),'Production host must not ship the studio editor chunk');
   const previewPort=await port();const productionOrigin=`http://127.0.0.1:${previewPort}`;
   const production=logged(spawn(process.execPath,['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port',String(previewPort),'--strictPort'],{cwd:host,stdio:['ignore','pipe','pipe']}));processes.push(production);
   await waitFor(productionOrigin,production);
@@ -188,7 +187,7 @@ try {
 } finally {
   await browser?.close();
   if(unrelated)await new Promise(r=>unrelated.close(r));
-  await Promise.all(processes.map(p=>new Promise(r=>{if(p.exitCode!==null)return r();p.once('exit',r);p.kill('SIGTERM')})));
+  await Promise.all(processes.map(p=>new Promise(r=>{if(p.exitCode!==null || p.signalCode!==null)return r();p.once('exit',r);p.kill('SIGTERM')})));
   // Windows releases a killed process's directory handles late (EBUSY); retry instead of failing a passed run.
   await rm(scratch,{recursive:true,force:true,maxRetries:20,retryDelay:250});
 }

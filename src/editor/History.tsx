@@ -1,14 +1,11 @@
 import { useState } from "react";
 import type { EditOp } from "../core";
 import { useEditor, useEditorState } from "./context";
+import { commandForPlatform, editBatchCommand } from "./handoff";
 
-/** The shell command that applies ops to a scene: a POSIX heredoc, plus a PowerShell file hint. */
-export function opsCommand(sceneId: string, ops: readonly EditOp[]): { posix: string; powershell: string } {
-  const json = JSON.stringify(ops);
-  return {
-    posix: `npx velora edit apply --scene ${sceneId} --ops - --write <<'VELORA_OPS'\n${json}\nVELORA_OPS`,
-    powershell: `Set-Content -Encoding utf8 velora-ops.json '${json.replaceAll("'", "''")}'; npx velora edit apply --scene ${sceneId} --ops velora-ops.json --write`,
-  };
+/** The shell command that applies ops to a scene in the user's terminal. */
+export function opsCommand(sceneId: string, ops: readonly EditOp[], sha?: string): { posix: string; powershell: string } {
+  return editBatchCommand({ scene: sceneId }, ops, sha);
 }
 export async function copyText(text: string): Promise<boolean> {
   try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
@@ -25,7 +22,7 @@ export function History({ onClose }: { onClose(): void }) {
       <ol style={{ margin: 0, padding: "0 0 0 20px" }}>
         {state.undo.map((entry, index) => <li key={index} style={{ margin: "2px 0" }}>
           <button className="ve-btn" style={{ whiteSpace: "normal", textAlign: "left" }} onClick={() => store.jump(index)} title="Undo back to this edit">{entry.label}</button>{" "}
-          <button className="ve-btn" onClick={async () => { if (await copyText(opsCommand(sceneId, entry.ops).posix)) setCopied(index); }}>{copied === index ? "Copied" : "Copy as command"}</button>
+          <button className="ve-btn" onClick={async () => { if (await copyText(commandForPlatform(opsCommand(sceneId, entry.ops)))) setCopied(index); }}>{copied === index ? "Copied" : "Copy as command"}</button>
         </li>)}
         {[...state.redo].reverse().map((entry, index) => <li key={`redo-${index}`} style={{ margin: "2px 0", opacity: 0.5 }}>{entry.label} (undone)</li>)}
       </ol>}

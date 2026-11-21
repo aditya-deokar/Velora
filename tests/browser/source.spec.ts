@@ -8,6 +8,7 @@ import { createServer, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import { VELORA_PACKAGE } from "../../src/core";
 import { startSceneBridge } from "../../src/project/edit";
+import { audit, loadAudit } from "./audit";
 
 const workspace = fileURLToPath(new URL("../../", import.meta.url));
 const require = createRequire(import.meta.url);
@@ -79,8 +80,10 @@ async function seek(page: Page, at: number) {
 test("Vite promotes three JSX siblings, groups and staggers them, and captures motion after HMR", async ({ page, context }) => {
   test.setTimeout(120_000);
   const origin = await open(page);
+  await loadAudit(page);
   for (const [id, label, mapped] of [["headline", "Headline", true], ["benefit", "Benefit", false], ["proof", "Proof", false]] as const) {
     const panel = await pick(page, id);
+    if (mapped) await audit(page, '[aria-label="Source integration"]', "source integration");
     const sourceNode = panel.getByRole("button", { name: new RegExp(`h1 · ${label}`) });
     if (mapped) await expect(sourceNode).toHaveAttribute("aria-pressed", "true");
     else { await expect(sourceNode).toHaveAttribute("data-source-candidate", ""); await sourceNode.click(); }

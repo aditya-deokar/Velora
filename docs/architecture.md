@@ -40,6 +40,34 @@ The default Vite build ships only the product entry. Demo applications, gallerie
 
 Velora 1.0 covers React hosts, the starter, any-site mode, agent handoff, templates, kit, brand and looks, editorial tools, studio, master rendering, and launch delivery. v2.1 adds motion model v3, constraints, typed edit operations, a local edit bridge, and studio tools for editing the timeline, graph, and viewport. Motion design tools compile behavior and camera presets into the same clips and tracks used for preview and capture. The optional `/three` entry uses the same frame clock and registers typed Object3D channels and camera anchors. The editor consumes the registry and invokes its picking and gizmo interface without importing Three.js. The edit bridge and CLI share the project preset file policy. Previous demo and trial evidence remains in Morphite history.
 
+### Motion model v3
+
+`src/core/motion.ts` compiles validated tracks once per source revision and evaluates them by elapsed presentation time. Numeric tracks include monotone auto easing, smooth interpolation and seeded noise. Surface style tracks write explicit CSS variables. Color tracks use premultiplied OKLab. Typed animatables register their channels with the live scene registry.
+
+### Clips, paths and constraints
+
+Clips evaluate in their own timing windows. Trim, speed, easing and stagger map the same clock into those windows, and layers resolve through replace or additive composition. Cubic position paths use arc-length tables. Links resolve in dependency order. Spatial constraints derive aim or focal depth from evaluated points supplied by the scene registry.
+
+### Edit operations and the bridge
+
+`src/core/edit.ts` owns `EditOpSchema` and `applyEdits`. A validated batch produces sparse source JSON, a label and an inverse. Project commands use `formatJsonDocument` to preserve the existing layout, then call scoped filesystem services with the expected revision. The edit bridge accepts a bearer on loopback from the verified dev origin, checks the Host header and bounds requests. Read-only sessions can inspect sources and compute peaks. Bearers stay in the editor tab after the URL fragment is removed.
+
+### Editor
+
+`src/preview/EditMode.tsx` is the dynamic boundary into the scene and composition editors. The preview session owns the cursor and rendering. The editor owns selection, drag drafts, keyboard commands and history. Pointer-up commits one batch. A file change can rebase pending work or open a conflict state. Guide format 4 describes the same commands that **Ask agent** uses to hand off a focused edit.
+
+### Source codemods
+
+JSX outline and edits live in `src/project/source.ts` and `source-edit.ts`. They parse source with TypeScript, resolve the selected JSX node, and show the source and recipe diff before applying a guarded transaction. The journal recovers interrupted writes. Editor links can open source locations in the host's editor. The bridge declines the source-open endpoint.
+
+### Three entry
+
+`src/three/` targets React 19 with R3F 9 and Three.js as optional peers. `ThreeSurface` uses an absolute frame clock and can share the DOM camera. Meshes, lights, materials, camera and glTF animation expose typed channels. Picks and gizmos cross an imperative registry interface. Production React 18 hosts keep the base toolkit without the `/three` entry.
+
+### Composition editing
+
+`src/core/composition-edit.ts` reduces V1, overlay, audio, caption, transition and marker batches. It validates timeline windows through `src/core/timeline.ts`. The composition editor uses `CompositionPlayer` slots and the existing seek, shuttle and boundary transport. Waveform requests resolve declared audio assets in the command layer and cache bounded peaks from FFmpeg. The renderer samples each segment at its source offset. Studio previews an sRGB transition blend, with linear-light compositing in export.
+
 ## Source recipe catalog and library
 
 `src/core/recipes.ts` owns `SceneRecipeSchema` (recipe version 1, containing scene version 3), fixed local naming and `loadSceneRecipes`, registered as `RESOURCES['resolve-recipes']`. The `list-scenes`, `load-scene` and `open-scene` request schemas also live in core/recipes and bind once in RESOURCES. It validates each recipe with the existing preview contract, excludes conflicting IDs, checks binding paths and produces the same ordered catalog/selection diagnostics for every caller. `src/project/recipes.ts` loads through scoped services; it never executes TSX. CLI `scenes`, `load --scene` and `open --scene` call this command boundary. Open delegates existing project identity/dev-server verification before forming the selected URL.

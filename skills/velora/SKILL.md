@@ -50,6 +50,11 @@ Load this skill first for every Velora request. Routing is progressive: read the
 | Website hero loop, landing-page background video | `velora-launch` → `velora-templates` → `velora-export` | `velora prompts show --id website-hero-loop --json` |
 | Vertical or social teaser (Reels, TikTok, Shorts) | `velora-launch` → `velora-templates` → `velora-editing` → `velora-looks` | `velora prompts show --id vertical-teaser --json` |
 | A bespoke shot no template makes | `velora-scenes` → `velora-cinematography` | `velora guide --json` |
+| Edit visually, continue an existing Studio draft | `velora-editor` | `velora edit --scene <id>` |
+| Polish timing or easing | `velora-editor` → `velora-motion-design` | `velora prompts show --id polish-easing --json` |
+| Group tracks or stagger an entrance | `velora-editor` → `velora-motion-design` | `velora prompts show --id stagger-entrances --json` |
+| Animate a 3D model | `velora-threejs` → `velora-editor` | `velora doctor --json` |
+| Recut to the beat | `velora-editing` → `velora-editor` → `velora-audio` | `velora prompts show --id recut-to-beats --json` |
 | Titles, stats, end cards, brand colors and fonts, motion feel | `velora-brand` → `velora-typography` → `velora-motion-design` | `velora brand check --json` |
 | Grade, grain, film look, flash or banding warnings | `velora-looks` | `velora shot --scene <id> --time 0 --finish --out look.png --json` |
 | New project, adapter, `VELORA.md`, `velora sync` | `velora-init` | `velora init --json` |

@@ -18,12 +18,13 @@ export function transitionOp(composition: Composition, id: string, type: Transit
   return { op: "transition.set", segmentId: id, type, durationMs: durationMs ?? Math.max(1, Math.min(400, room / 3)), mode: transitionMode({ type }) };
 }
 
-export function Lanes({ composition, scenes, durationMs, cursor, cues, peaks, advisories, warnings, tool, selected, snap, zoom, select, seek, preview, commit, cancel, openScene }: {
+export function Lanes({ composition, scenes, durationMs, cursor, cues, peaks, advisories, warnings, tool, selected, snap, zoom, select, seek, preview, commit, cancel, openScene, openMenu }: {
   composition: Composition; scenes: readonly BoundRecipe[]; durationMs: number; cursor: number; cues: readonly CaptionCue[];
   peaks: Record<string, PeakResult>; advisories: EditorialAdvisory[]; warnings: CompositionIssue[];
   tool: CutTool; selected?: CutSelection; snap: boolean; zoom: number; select(value?: CutSelection): void; seek(ms: number): void;
   preview(ops: EditOp[]): void; commit(ops: EditOp[], label?: string): void; cancel(): void;
   openScene(recipe: string, localMs: number, globalMs: number): void;
+  openMenu(): void;
 }) {
   const scroller = useRef<HTMLDivElement>(null), grid = useRef<HTMLDivElement>(null), active = useRef<Gesture>(undefined), suppress = useRef(false);
   const [width, setWidth] = useState(800);
@@ -96,11 +97,19 @@ export function Lanes({ composition, scenes, durationMs, cursor, cues, peaks, ad
     const clip = (overlay ? composition.overlays : composition.scenes)[Number(laneIndex)];
     if (!clip) return null;
     const time = advisory.atMs ?? clip.startMs;
-    return <button key={`${advisory.code}-${index}`} className="vc-review-pin" style={{ left: time * px, top: 3 + (index % 3) * 10 }}
-      aria-label={advisory.message} title={advisory.message} onClick={() => onSelect({ lane: overlay ? "overlay" : "segment", id: clip.id }, time)}>!</button>;
+    return <button key={`${advisory.code}-${index}`} className="vc-review-pin" style={{ left: time * px, top: 3 + (index % 3) * 24 }}
+      aria-label={advisory.message} title={advisory.message} onClick={() => onSelect({ lane: overlay ? "overlay" : "segment", id: clip.id }, time)}><span aria-hidden="true">!</span></button>;
   });
   return <div className="vc-scroll" ref={scroller}>
     <div className="vc-grid" ref={grid} role="grid" aria-label="Composition lanes" style={{ width: gridWidth + LABEL_WIDTH, gridTemplateColumns: `${LABEL_WIDTH}px ${gridWidth}px` }}
+      onContextMenu={event => {
+        const target = (event.target as Element).closest<HTMLElement>("[data-cut-clip],[data-audio-clip]");
+        const id = target?.dataset.cutClip ?? target?.dataset.audioClip;
+        if (!id) return;
+        event.preventDefault();
+        select({ lane: target?.dataset.audioClip ? "audio" : composition.overlays.some(clip => clip.id === id) ? "overlay" : "segment", id });
+        openMenu();
+      }}
       onPointerMove={event => move(event)} onPointerUp={event => move(event, true)} onPointerCancel={cancelGesture} onLostPointerCapture={() => { if (active.current) cancelGesture(); }}
       onClickCapture={event => { if (suppress.current && event.detail > 0) { event.stopPropagation(); suppress.current = false; } }}>
       {row("Time", <div className="vc-ruler" data-testid="cut-ruler" onPointerDown={event => {

@@ -296,7 +296,20 @@ Run `npx velora edit --scene <id>` while your dev server is running. It opens th
 - **Timeline** (bottom): drag keyframes (snapping to frames, the playhead, markers and other keys; Shift suspends), Alt-drag to retime a selection, drag clip bars, press G for the graph editor and E for the easing library.
 - **Saving**: every gesture saves to `src/velora/scenes/<id>.scene.json`; Ctrl/⌘+Z undoes exactly. If an agent or your IDE changes the file, the editor rebases or shows **Changed on disk**.
 
-Agents make the same edits with `npx velora edit ls|apply|key|ease|paste` (dry run first, then `--write --expect-sha`).
+1. Select a layer, click **Animate** beside a property, and move the playhead. Enter a new value to add a second keyframe. Select the first key, then press F9 to ease the outgoing segment.
+2. Press G to open the Graph Editor. Drag the outgoing and incoming handles to shape the timing. Use the value graph to check the endpoints and the speed graph to inspect how the move settles.
+3. Select related layer tracks and press Ctrl/⌘+G. In **Stagger layers**, order the members and adjust the spacing between their entrances. Play through the overlap and settle.
+4. Use the camera tool to frame the shot, or the focus tool to select where sharpness lands. Choose **Toggle director view** in the command palette to inspect the spatial setup, and return to camera view to judge the frame.
+5. Open **Source** in a connected React project. Pick an element or select one in the JSX outline. Choose **Promote to layer**, review its JSX and recipe changes, then confirm. Recheck the original app layout.
+6. In a React 19 project using `/three`, select a registered model part in Layers or the canvas. Animate one of its registered channels in the Inspector and scrub backwards to check the same pose returns at the same time.
+
+**Ask agent** sends your coding agent a copyable prompt with the current selection, playhead, work area and recent edits. An agent can read tracks with `npx velora edit ls --scene <id> --json`, preview with `npx velora edit apply --scene <id> --ops ops.json --json`, and write the reviewed batch with `--expect-sha <sha> --write`.
+
+### Recut a composition
+
+Run `npx velora edit --composition launch.composition.json` against your running app. Select or reorder shots with V, ripple with B, roll with N, slip with Y and split with C. M adds a cue at the playhead. Drag an overlap transition onto an incoming cut and adjust its handle. Choose an audio clip to change gain and fades in the Inspector, or drag its lane handles.
+
+Run `npx velora audio beats --composition launch.composition.json --write-markers --json` to store a music bed's beat grid. In Studio, open **Snap all cuts to beats**, review the deltas, and apply them as one undoable edit. Review pins select their shot or overlay. Double-click a shot to open its recipe and use **Back to composition** to return to the same global time.
 
 ---
 

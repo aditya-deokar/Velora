@@ -15,10 +15,11 @@ export function AudioLane({ track, media, error, fps, durationMs, pxPerMs, selec
   const width = Math.max(8, span * pxPerMs);
   const left = Math.min(width, track.fadeInMs * pxPerMs);
   const right = Math.max(0, width - track.fadeOutMs * pxPerMs);
+  const badge = error ? "Waveform unavailable" : `${track.gain.toFixed(2)}×`;
   return <div className="vc-clip vc-audio" data-audio-clip={track.id} data-selected={selected} style={{ left: start * pxPerMs, width }}>
     {media && span > 0 && <Waveform media={media} offsetMs={track.offsetMs} durationMs={span}/>}
-    <button className="vc-clip-body" aria-label={`Audio ${track.id}`} aria-pressed={selected} title={error ?? track.assetId} onPointerDown={event => onDrag(event, "body")} onClick={onSelect}>
-      <strong>{track.id}</strong><small>{error ? "Waveform unavailable" : `${track.gain.toFixed(2)}×`}</small>
+    <button className="vc-clip-body" aria-label={`Audio ${track.id}, ${badge}`} aria-pressed={selected} title={error ?? track.assetId} onPointerDown={event => onDrag(event, "body")} onClick={onSelect}>
+      <strong>{track.id}</strong><small>{badge}</small>
     </button>
     <button className="vc-edge vc-edge-in" aria-label={`Trim ${track.id} in`} onPointerDown={event => onDrag(event, "in")} onClick={onSelect}/>
     <button className="vc-edge vc-edge-out" aria-label={`Trim ${track.id} out`} onPointerDown={event => onDrag(event, "out")} onClick={onSelect}/>

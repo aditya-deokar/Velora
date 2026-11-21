@@ -138,7 +138,7 @@ export function validateSkillContent(
       continue;
     }
     for (const flag of ref.flags) {
-      if (!entry.flags.includes(flag))
+      if (flag !== "--help" && !entry.flags.includes(flag))
         issues.push({ code: "ERR_SKILL_INVALID", path: "SKILL.md", message: `"velora ${ref.command} ${flag}" documents an unknown flag. See velora ${ref.command} --help.` });
     }
   }

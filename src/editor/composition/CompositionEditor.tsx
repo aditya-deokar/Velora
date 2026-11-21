@@ -3,6 +3,8 @@ import { applyEdits, compositionSourceRanges, LOOK_PRESET_NAMES, PACING, planCom
   TRANSITION_CATALOG, type BoundRecipe, type Composition, type CompositionCaptions, type EditOp, type TransitionType } from "../../core";
 import { CompositionPlayer, type CompositionPlayerProps, type CompositionPlayerSlots } from "../../preview/CompositionPlayer";
 import { createBridgeClient, takeBridgeFragment, type BridgeClient } from "../bridge";
+import { AskAgent } from "../AskAgent";
+import { commandForPlatform, editBatchCommand, editorHandoff } from "../handoff";
 import { createEditorStore, type Doc, type EditorStore } from "../store";
 import { Lanes, transitionOp, type PeakResult } from "./Lanes";
 import { TRANSITION_DRAG_TYPE } from "./TransitionHandle";
@@ -111,6 +113,8 @@ function Workspace({ composition, cues, session, transport, viewport, issues, pa
   const [platform, setPlatform] = useState("default");
   const [beatPlan, showBeatPlan] = useState<{ source: Composition; plan: ReturnType<typeof planCompositionSnap> }>();
   const [palette, showPalette] = useState(false);
+  const [askAgent, showAgent] = useState(false);
+  const [cutMenu, showCutMenu] = useState(false);
   const [feedback, setFeedback] = useState("");
   const peaks = usePeaks(client, path, composition);
   const warnings = useMemo(() => composition ? compositionSourceRanges(composition, { scenes }) : [], [composition, scenes]);
@@ -157,12 +161,18 @@ function Workspace({ composition, cues, session, transport, viewport, issues, pa
   const beatCheck = beatPlan && beatPlanCurrent && applyEdits(state.draft, beatPlan.plan.ops, { target: "composition" });
   const ops = store.unsavedOps();
   const file = `'${path.replaceAll("'", "'\\''")}'`;
+  const selectedClip = selected?.lane === "segment" ? composition?.scenes.find(clip => clip.id === selected.id)
+    : selected?.lane === "overlay" ? composition?.overlays.find(clip => clip.id === selected.id)
+    : selected?.lane === "audio" ? composition?.audio.find(clip => clip.id === selected.id) : undefined;
+  const handoff = { target: { composition: path }, timeMs: session.timeMs, sha: state.sha,
+    selection: selected && "id" in selected ? [`${selected.lane} ${selected.id}`]
+      : selected?.lane === "marker" ? [`marker ${selected.index}`] : selected ? [selected.lane] : [],
+    range: selectedClip && { startMs: selectedClip.startMs, endMs: selectedClip.durationMs === undefined ? session.durationMs : selectedClip.startMs + selectedClip.durationMs },
+    history: state.undo.map(entry => entry.label) };
   const clipboard = async (prompt = false) => {
-    const batch = JSON.stringify(ops);
-    const command = `velora compose edit --composition ${file} --ops - --write --json`;
     try {
-      await navigator.clipboard.writeText(prompt ? `Apply these Velora composition EditOps using ${command}. Review the dry run before writing.\n${JSON.stringify(ops, null, 2)}`
-        : `printf '%s' '${batch.replaceAll("'", "'\\''")}' | ${command}`);
+      await navigator.clipboard.writeText(prompt ? editorHandoff({ ...handoff, intent: `Review and apply these pending operations.\n${JSON.stringify(ops, null, 2)}` })
+        : commandForPlatform(editBatchCommand(handoff.target, ops, state.sha)));
       setFeedback("Copied");
     } catch { setFeedback("Clipboard unavailable."); }
   };
@@ -177,6 +187,7 @@ function Workspace({ composition, cues, session, transport, viewport, issues, pa
       </div>
       <button aria-label="Undo" disabled={!state.undo.length} onClick={store.undo}>↶</button><button aria-label="Redo" disabled={!state.redo.length} onClick={store.redo}>↷</button>
       <button title="Commands (Ctrl/⌘+K)" onClick={() => showPalette(open => !open)}>Commands</button>
+      <button onClick={() => showAgent(true)}>Ask agent</button>
       <span className="vc-save" data-testid="composition-save-state" role="status">{SAVE[state.save]}</span>
     </header>
     <section className="vc-view" aria-label="Viewport">{viewport}</section>
@@ -203,7 +214,7 @@ function Workspace({ composition, cues, session, transport, viewport, issues, pa
       </div>
       {composition && <Lanes composition={composition} scenes={scenes} durationMs={session.durationMs} cursor={session.timeMs} cues={cues} peaks={peaks}
         advisories={advisories} warnings={warnings} tool={tool} selected={selected} snap={state.ui.snap} zoom={state.ui.zoom} select={select} seek={session.seek}
-        preview={store.preview} commit={commit} cancel={store.cancel} openScene={openScene}/>}
+        preview={store.preview} commit={commit} cancel={store.cancel} openScene={openScene} openMenu={() => showCutMenu(true)}/>}
     </section>
     {beatPlan && <Popup label="Snap cuts preview" close={() => showBeatPlan(undefined)}>
       {!beatPlan.plan.beatCount ? <p>Add beat markers with <code>velora audio beats --composition {file} --write-markers</code>.</p> : <>
@@ -219,8 +230,14 @@ function Workspace({ composition, cues, session, transport, viewport, issues, pa
       <button onClick={() => { mark(); showPalette(false); }}>Add marker</button> <button onClick={() => { snapAll(); showPalette(false); }}>Snap all cuts to beats</button>
       <button onClick={() => { store.undo(); showPalette(false); }}>Undo</button> <button onClick={() => { store.redo(); showPalette(false); }}>Redo</button>
       <button onClick={() => { remove(); showPalette(false); }}>Delete selected item</button> <button onClick={() => { zoom(0); showPalette(false); }}>Fit timeline</button>
+      <button onClick={() => { showPalette(false); showAgent(true); }}>Ask agent</button>
       <p>Space play · J/K/L shuttle · ←/→ frame · [ ] cut</p>
     </Popup>}
+    {cutMenu && <Popup label="Clip actions" close={() => showCutMenu(false)}>
+      <button onClick={() => { showCutMenu(false); showAgent(true); }}>Ask agent</button>
+      <button onClick={() => { remove(); showCutMenu(false); }}>Delete selected item</button>
+    </Popup>}
+    {askAgent && <AskAgent context={handoff} onClose={() => showAgent(false)}/>}
   </div>;
 }
 

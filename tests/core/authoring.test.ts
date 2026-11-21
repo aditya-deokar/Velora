@@ -16,15 +16,17 @@ describe('canonical authoring system',()=>{
   const tracks=guide.capabilities.tracks as {properties:string[]}[];tracks[0].properties.push('invented');expect(JSON.stringify(getAuthoringGuide().capabilities.tracks)).not.toContain('invented');
   guide.concepts[0].meaning='modified';expect(getAuthoringGuide().concepts[0].meaning).not.toBe('modified');
  });
- it('is guide version 3 with director concepts and pointer capabilities',()=>{
-  const guide=getAuthoringGuide();expect(guide.version).toBe(3);
+ it('is guide version 4 with director and implemented editor concepts',()=>{
+  const guide=getAuthoringGuide();expect(guide.version).toBe(4);
   const ids=guide.concepts.map(c=>c.id);
   for(const id of ['templates','shot-vocabulary','lens','editing-rhythm','brand-and-looks'])expect(ids).toContain(id);
+  for(const id of ['editor','clips-groups','paths-constraints','animatables','style-color','three'])expect(ids).toContain(id);
   expect(new Set(ids).size).toBe(ids.length);
   expect(guide.creativeFreedom).toContain('Templates are starting points; vary shot families across scenes; user direction overrides.');
   expect(guide.creativeFreedom).toContain('User direction overrides artistic defaults.');
   expect((guide.capabilities.prompts as {ids:string[]}).ids).toEqual(PROMPT_LIBRARY.map(p=>p.id));
   expect(guide.capabilities.editorial).toMatchObject({review:expect.stringContaining('velora review')});
+  expect(guide.capabilities.editor).toMatchObject({sceneOps:expect.stringContaining('velora edit apply'),compositionOps:expect.stringContaining('velora compose edit')});
   expect(AuthoringGuideSchema.safeParse({...guide,version:2}).success).toBe(false);
  });
  it('CLI and package return the same guide without project or export effects',async()=>{

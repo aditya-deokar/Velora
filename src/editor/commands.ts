@@ -17,7 +17,7 @@ import { groupOps } from "./group";
  * WHERE: Editor.tsx builds the controller and dispatches keydown through matchShortcut; panels run
  * commands by id. Edits go through intents and the store, never around them.
  */
-export type EditorPanel = "palette" | "easing" | "history" | "advisories" | "stagger" | "behaviors" | "camera-moves" | "presets" | "save-easing" | "timing" | "ungroup" | "source";
+export type EditorPanel = "palette" | "easing" | "history" | "advisories" | "stagger" | "behaviors" | "camera-moves" | "presets" | "save-easing" | "timing" | "ungroup" | "source" | "agent";
 export type EditorController = {
   store: EditorStore;
   state: EditorState;
@@ -34,6 +34,7 @@ export type EditorController = {
 };
 export type EditorCommand = {
   id: string; label: string; group: string; shortcuts: readonly string[];
+  effects: "ui-only" | readonly EditOp["op"][];
   enabled(state: EditorState): boolean; run(controller: EditorController): void;
 };
 const EASY_EASE = { cubicBezier: [0.333, 0, 0.667, 1] as [number, number, number, number] };
@@ -41,7 +42,7 @@ const EASE_IN = { cubicBezier: [0.333, 0, 1, 1] as [number, number, number, numb
 const EASE_OUT = { cubicBezier: [0, 0, 0.667, 1] as [number, number, number, number] };
 const hasKeys = (state: EditorState) => state.selection.keys.length > 0;
 const tool = (id: ViewportTool, key: string, label: string): EditorCommand =>
-  ({ id: `tool.${id}`, label, group: "Viewport", shortcuts: [key], enabled: always, run: c => c.store.setUi({ tool: id }) });
+  ({ id: `tool.${id}`, effects: "ui-only", label, group: "Viewport", shortcuts: [key], enabled: always, run: c => c.store.setUi({ tool: id }) });
 const SPECIAL_LAYERS = new Set(["camera", "focus", "motion", "look"]);
 export const surfaceLayers = (state: EditorState) => state.selection.layers.filter(id => !SPECIAL_LAYERS.has(id) && !id.startsWith("clip:") && !id.startsWith("animatable:"));
 const always = () => true;
@@ -101,93 +102,94 @@ function clipStart(doc: ReturnType<EditorStore["committed"]>, id: string): numbe
   return visit(doc?.definition?.motion?.clips, 0) ?? 0;
 }
 export const EDITOR_COMMANDS: readonly EditorCommand[] = Object.freeze([
-  { id: "palette.open", label: "Command palette", group: "General", shortcuts: ["Mod+K"], enabled: always, run: c => c.open("palette") },
-  { id: "source.open", label: "Open JSX source outline", group: "Source", shortcuts: [], enabled: always, run: c => c.open("source") },
-  { id: "history.undo", label: "Undo", group: "General", shortcuts: ["Mod+Z"], enabled: s => s.undo.length > 0, run: c => c.store.undo() },
-  { id: "history.redo", label: "Redo", group: "General", shortcuts: ["Mod+Shift+Z", "Ctrl+Y"], enabled: s => s.redo.length > 0, run: c => c.store.redo() },
-  { id: "history.open", label: "Show history", group: "General", shortcuts: [], enabled: always, run: c => c.open("history") },
-  { id: "advisories.open", label: "Show advisories", group: "General", shortcuts: [], enabled: always, run: c => c.open("advisories") },
-  { id: "selection.clear", label: "Clear selection / cancel drag", group: "General", shortcuts: ["Escape"], enabled: always, run: c => { c.store.cancel(); c.store.select({ keys: [], clips: [] }); } },
-  { id: "autokey.toggle", label: "Toggle Auto-key", group: "General", shortcuts: [], enabled: always, run: c => c.store.setUi({ autoKey: !c.state.ui.autoKey }) },
-  { id: "snap.toggle", label: "Toggle snapping", group: "General", shortcuts: [], enabled: always, run: c => c.store.setUi({ snap: !c.state.ui.snap }) },
-  { id: "view.graph", label: "Toggle dope sheet / graph editor", group: "Timeline", shortcuts: ["G"], enabled: always, run: c => c.store.setUi({ view: c.state.ui.view === "dope" ? "graph" : "dope" }) },
-  { id: "view.animated", label: "Show only animated properties", group: "Timeline", shortcuts: ["U"], enabled: always, run: c => c.store.setUi({ animatedOnly: !c.state.ui.animatedOnly }) },
-  { id: "keyframe.previous", label: "Previous keyframe", group: "Timeline", shortcuts: [","], enabled: always, run: c => stepKeyframe(c, -1) },
-  { id: "keyframe.next", label: "Next keyframe", group: "Timeline", shortcuts: ["."], enabled: always, run: c => stepKeyframe(c, 1) },
-  { id: "keyframe.toggle", label: "Add or remove keyframe at playhead", group: "Keyframes", shortcuts: ["Alt+K"], enabled: always, run: c => {
+  { id: "agent.ask", effects: "ui-only", label: "Ask agent", group: "General", shortcuts: [], enabled: always, run: c => c.open("agent") },
+  { id: "palette.open", effects: "ui-only", label: "Command palette", group: "General", shortcuts: ["Mod+K"], enabled: always, run: c => c.open("palette") },
+  { id: "source.open", effects: "ui-only", label: "Open JSX source outline", group: "Source", shortcuts: [], enabled: always, run: c => c.open("source") },
+  { id: "history.undo", effects: ["restore"], label: "Undo", group: "General", shortcuts: ["Mod+Z"], enabled: s => s.undo.length > 0, run: c => c.store.undo() },
+  { id: "history.redo", effects: ["restore"], label: "Redo", group: "General", shortcuts: ["Mod+Shift+Z", "Ctrl+Y"], enabled: s => s.redo.length > 0, run: c => c.store.redo() },
+  { id: "history.open", effects: "ui-only", label: "Show history", group: "General", shortcuts: [], enabled: always, run: c => c.open("history") },
+  { id: "advisories.open", effects: "ui-only", label: "Show advisories", group: "General", shortcuts: [], enabled: always, run: c => c.open("advisories") },
+  { id: "selection.clear", effects: "ui-only", label: "Clear selection / cancel drag", group: "General", shortcuts: ["Escape"], enabled: always, run: c => { c.store.cancel(); c.store.select({ keys: [], clips: [] }); } },
+  { id: "autokey.toggle", effects: "ui-only", label: "Toggle Auto-key", group: "General", shortcuts: [], enabled: always, run: c => c.store.setUi({ autoKey: !c.state.ui.autoKey }) },
+  { id: "snap.toggle", effects: "ui-only", label: "Toggle snapping", group: "General", shortcuts: [], enabled: always, run: c => c.store.setUi({ snap: !c.state.ui.snap }) },
+  { id: "view.graph", effects: "ui-only", label: "Toggle dope sheet / graph editor", group: "Timeline", shortcuts: ["G"], enabled: always, run: c => c.store.setUi({ view: c.state.ui.view === "dope" ? "graph" : "dope" }) },
+  { id: "view.animated", effects: "ui-only", label: "Show only animated properties", group: "Timeline", shortcuts: ["U"], enabled: always, run: c => c.store.setUi({ animatedOnly: !c.state.ui.animatedOnly }) },
+  { id: "keyframe.previous", effects: "ui-only", label: "Previous keyframe", group: "Timeline", shortcuts: [","], enabled: always, run: c => stepKeyframe(c, -1) },
+  { id: "keyframe.next", effects: "ui-only", label: "Next keyframe", group: "Timeline", shortcuts: ["."], enabled: always, run: c => stepKeyframe(c, 1) },
+  { id: "keyframe.toggle", effects: ["key.set", "key.remove", "track.add", "track.remove", "node.ensure"], label: "Add or remove keyframe at playhead", group: "Keyframes", shortcuts: ["Alt+K"], enabled: always, run: c => {
     if (!c.focused) { c.notify("Focus a property first."); return; }
     commit(c, intentToOps({ kind: "toggle-key", track: c.focused.track, value: c.focused.value }, c.store.committed(), { timeMs: c.session.timeMs, fps: c.fps, autoKey: c.state.ui.autoKey, armed: c.state.ui.armed }));
   } },
-  { id: "keyframes.nudge-left", label: "Nudge keyframes one frame earlier", group: "Keyframes", shortcuts: ["Alt+ArrowLeft"], enabled: hasKeys, run: c => nudge(c, -1) },
-  { id: "keyframes.nudge-right", label: "Nudge keyframes one frame later", group: "Keyframes", shortcuts: ["Alt+ArrowRight"], enabled: hasKeys, run: c => nudge(c, 1) },
-  { id: "keyframes.nudge-left-10", label: "Nudge keyframes ten frames earlier", group: "Keyframes", shortcuts: ["Alt+Shift+ArrowLeft"], enabled: hasKeys, run: c => nudge(c, -10) },
-  { id: "keyframes.nudge-right-10", label: "Nudge keyframes ten frames later", group: "Keyframes", shortcuts: ["Alt+Shift+ArrowRight"], enabled: hasKeys, run: c => nudge(c, 10) },
-  { id: "ease.easy", label: "Easy Ease", group: "Easing", shortcuts: ["F9"], enabled: hasKeys, run: c => easeSelection(c, EASY_EASE, "Easy Ease") },
-  { id: "ease.in", label: "Easy Ease In", group: "Easing", shortcuts: ["Shift+F9"], enabled: hasKeys, run: c => easeSelection(c, EASE_IN, "Easy Ease In") },
-  { id: "ease.out", label: "Easy Ease Out", group: "Easing", shortcuts: ["Mod+Shift+F9"], enabled: hasKeys, run: c => easeSelection(c, EASE_OUT, "Easy Ease Out") },
-  { id: "ease.hold", label: "Toggle hold", group: "Easing", shortcuts: ["Mod+Alt+H"], enabled: hasKeys, run: c => {
+  { id: "keyframes.nudge-left", effects: ["keys.shift"], label: "Nudge keyframes one frame earlier", group: "Keyframes", shortcuts: ["Alt+ArrowLeft"], enabled: hasKeys, run: c => nudge(c, -1) },
+  { id: "keyframes.nudge-right", effects: ["keys.shift"], label: "Nudge keyframes one frame later", group: "Keyframes", shortcuts: ["Alt+ArrowRight"], enabled: hasKeys, run: c => nudge(c, 1) },
+  { id: "keyframes.nudge-left-10", effects: ["keys.shift"], label: "Nudge keyframes ten frames earlier", group: "Keyframes", shortcuts: ["Alt+Shift+ArrowLeft"], enabled: hasKeys, run: c => nudge(c, -10) },
+  { id: "keyframes.nudge-right-10", effects: ["keys.shift"], label: "Nudge keyframes ten frames later", group: "Keyframes", shortcuts: ["Alt+Shift+ArrowRight"], enabled: hasKeys, run: c => nudge(c, 10) },
+  { id: "ease.easy", effects: ["key.ease"], label: "Easy Ease", group: "Easing", shortcuts: ["F9"], enabled: hasKeys, run: c => easeSelection(c, EASY_EASE, "Easy Ease") },
+  { id: "ease.in", effects: ["key.ease"], label: "Easy Ease In", group: "Easing", shortcuts: ["Shift+F9"], enabled: hasKeys, run: c => easeSelection(c, EASE_IN, "Easy Ease In") },
+  { id: "ease.out", effects: ["key.ease"], label: "Easy Ease Out", group: "Easing", shortcuts: ["Mod+Shift+F9"], enabled: hasKeys, run: c => easeSelection(c, EASE_OUT, "Easy Ease Out") },
+  { id: "ease.hold", effects: ["key.ease"], label: "Toggle hold", group: "Easing", shortcuts: ["Mod+Alt+H"], enabled: hasKeys, run: c => {
     const doc = c.store.committed();
     const allHeld = easable(c).every(ref => findTrack(doc, ref.track)?.keyframes.find((frame: { timeMs: number }) => frame.timeMs === ref.atMs)?.easing === "hold");
     easeSelection(c, allHeld ? "cinematic" : "hold", allHeld ? "Release hold" : "Hold");
   } },
-  { id: "ease.linear", label: "Linear", group: "Easing", shortcuts: [], enabled: hasKeys, run: c => easeSelection(c, "linear", "Linear") },
-  { id: "ease.auto", label: "Auto bezier", group: "Easing", shortcuts: [], enabled: hasKeys, run: c => easeSelection(c, "auto", "Auto bezier") },
-  { id: "ease.library", label: "Easing library", group: "Easing", shortcuts: ["E"], enabled: always, run: c => c.open("easing") },
-  { id: "keyframes.reverse", label: "Reverse keyframes", group: "Keyframes", shortcuts: [], enabled: s => s.selection.keys.length > 1, run: c => commit(c, [{ op: "keys.reverse", refs: c.state.selection.keys }]) },
-  { id: "keyframes.delete", label: "Delete selection", group: "Keyframes", shortcuts: ["Delete", "Backspace"], enabled: hasKeys, run: deleteSelection },
-  { id: "edit.copy", label: "Copy keyframes", group: "Keyframes", shortcuts: ["Mod+C"], enabled: hasKeys, run: c => c.copy() },
-  { id: "edit.cut", label: "Cut keyframes", group: "Keyframes", shortcuts: ["Mod+X"], enabled: hasKeys, run: c => c.cut() },
-  { id: "edit.paste", label: "Paste keyframes at playhead", group: "Keyframes", shortcuts: ["Mod+V"], enabled: always, run: c => c.paste() },
-  { id: "edit.duplicate", label: "Duplicate keyframes", group: "Keyframes", shortcuts: ["Mod+D"], enabled: hasKeys, run: c => c.duplicate() },
-  { id: "clip.group", label: "Group animation into a clip", group: "Structure", shortcuts: ["Mod+G"], enabled: s => !!groupOps(s.draft, s.selection), run: c => {
+  { id: "ease.linear", effects: ["key.ease"], label: "Linear", group: "Easing", shortcuts: [], enabled: hasKeys, run: c => easeSelection(c, "linear", "Linear") },
+  { id: "ease.auto", effects: ["key.ease"], label: "Auto bezier", group: "Easing", shortcuts: [], enabled: hasKeys, run: c => easeSelection(c, "auto", "Auto bezier") },
+  { id: "ease.library", effects: "ui-only", label: "Easing library", group: "Easing", shortcuts: ["E"], enabled: always, run: c => c.open("easing") },
+  { id: "keyframes.reverse", effects: ["keys.reverse"], label: "Reverse keyframes", group: "Keyframes", shortcuts: [], enabled: s => s.selection.keys.length > 1, run: c => commit(c, [{ op: "keys.reverse", refs: c.state.selection.keys }]) },
+  { id: "keyframes.delete", effects: ["key.remove", "track.remove"], label: "Delete selection", group: "Keyframes", shortcuts: ["Delete", "Backspace"], enabled: hasKeys, run: deleteSelection },
+  { id: "edit.copy", effects: "ui-only", label: "Copy keyframes", group: "Keyframes", shortcuts: ["Mod+C"], enabled: hasKeys, run: c => c.copy() },
+  { id: "edit.cut", effects: ["key.remove", "track.remove"], label: "Cut keyframes", group: "Keyframes", shortcuts: ["Mod+X"], enabled: hasKeys, run: c => c.cut() },
+  { id: "edit.paste", effects: ["track.add", "key.set", "node.ensure"], label: "Paste keyframes at playhead", group: "Keyframes", shortcuts: ["Mod+V"], enabled: always, run: c => c.paste() },
+  { id: "edit.duplicate", effects: ["track.add", "key.set", "node.ensure"], label: "Duplicate keyframes", group: "Keyframes", shortcuts: ["Mod+D"], enabled: hasKeys, run: c => c.duplicate() },
+  { id: "clip.group", effects: ["clip.create"], label: "Group animation into a clip", group: "Structure", shortcuts: ["Mod+G"], enabled: s => !!groupOps(s.draft, s.selection), run: c => {
     const group = groupOps(c.store.committed(), c.state.selection);
     if (!group) return;
     const issues = c.store.commit(group.ops, "Group animation");
     if (issues.length) c.notify(issues[0].message);
     else c.store.select({ tracks: [], keys: [], clips: [group.id], layers: [`clip:${group.id}`] });
   } },
-  { id: "clip.ungroup", label: "Ungroup clip", group: "Structure", shortcuts: ["Mod+Shift+G"], enabled: s => s.selection.clips.length > 0, run: c => c.open("ungroup") },
-  { id: "stagger.open", label: "Stagger layers", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length > 1, run: c => c.open("stagger") },
-  { id: "behaviors.open", label: "Apply a behavior", group: "Motion Design", shortcuts: [], enabled: always, run: c => c.open("behaviors") },
-  { id: "shots.open", label: "Apply a camera move", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length === 1, run: c => c.open("camera-moves") },
-  { id: "presets.open", label: "Browse or save project presets", group: "Motion Design", shortcuts: [], enabled: always, run: c => c.open("presets") },
-  { id: "timing.open", label: "Sequence layers, align, distribute or stretch keyframes", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length > 1 || hasKeys(s), run: c => c.open("timing") },
-  { id: "marker.add", label: "Add marker at playhead", group: "Timeline", shortcuts: ["M"], enabled: always, run: c => {
+  { id: "clip.ungroup", effects: ["clip.dissolve"], label: "Ungroup clip", group: "Structure", shortcuts: ["Mod+Shift+G"], enabled: s => s.selection.clips.length > 0, run: c => c.open("ungroup") },
+  { id: "stagger.open", effects: ["clip.create", "stagger.set"], label: "Stagger layers", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length > 1, run: c => c.open("stagger") },
+  { id: "behaviors.open", effects: ["clip.set", "motion.set"], label: "Apply a behavior", group: "Motion Design", shortcuts: [], enabled: always, run: c => c.open("behaviors") },
+  { id: "shots.open", effects: ["clip.set", "motion.set", "constraint.set"], label: "Apply a camera move", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length === 1, run: c => c.open("camera-moves") },
+  { id: "presets.open", effects: "ui-only", label: "Browse or save project presets", group: "Motion Design", shortcuts: [], enabled: always, run: c => c.open("presets") },
+  { id: "timing.open", effects: ["keys.retime", "keys.shift", "keys.scale", "keys.reverse"], label: "Sequence layers, align, distribute or stretch keyframes", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length > 1 || hasKeys(s), run: c => c.open("timing") },
+  { id: "marker.add", effects: ["editor.set"], label: "Add marker at playhead", group: "Timeline", shortcuts: ["M"], enabled: always, run: c => {
     const markers = (c.store.committed().editor?.markers ?? []) as { atMs: number; label: string }[];
     const atMs = snapToFrame(c.session.timeMs, c.fps);
     if (markers.some(marker => marker.atMs === atMs)) return;
     commit(c, [{ op: "editor.set", markers: [...markers, { atMs, label: `Marker ${markers.length + 1}` }].sort((a, b) => a.atMs - b.atMs) }], "Add marker");
   } },
-  { id: "workarea.start", label: "Set work-area start", group: "Timeline", shortcuts: ["B"], enabled: always, run: c => {
+  { id: "workarea.start", effects: "ui-only", label: "Set work-area start", group: "Timeline", shortcuts: ["B"], enabled: always, run: c => {
     const end = c.state.ui.workArea?.endMs ?? c.session.durationMs;
     c.store.setUi({ workArea: { startMs: Math.min(c.session.timeMs, end), endMs: end } });
   } },
-  { id: "workarea.end", label: "Set work-area end", group: "Timeline", shortcuts: ["N"], enabled: always, run: c => {
+  { id: "workarea.end", effects: "ui-only", label: "Set work-area end", group: "Timeline", shortcuts: ["N"], enabled: always, run: c => {
     const start = c.state.ui.workArea?.startMs ?? 0;
     c.store.setUi({ workArea: { startMs: start, endMs: Math.max(c.session.timeMs, start) } });
   } },
-  { id: "workarea.clear", label: "Clear work area", group: "Timeline", shortcuts: [], enabled: s => !!s.ui.workArea, run: c => c.store.setUi({ workArea: undefined }) },
-  { id: "timeline.zoom-in", label: "Zoom timeline in", group: "Timeline", shortcuts: ["="], enabled: always, run: c => c.zoom(1) },
-  { id: "timeline.zoom-out", label: "Zoom timeline out", group: "Timeline", shortcuts: ["-"], enabled: always, run: c => c.zoom(-1) },
-  { id: "timeline.fit", label: "Fit timeline", group: "Timeline", shortcuts: ["\\"], enabled: always, run: c => c.zoom(0) },
+  { id: "workarea.clear", effects: "ui-only", label: "Clear work area", group: "Timeline", shortcuts: [], enabled: s => !!s.ui.workArea, run: c => c.store.setUi({ workArea: undefined }) },
+  { id: "timeline.zoom-in", effects: "ui-only", label: "Zoom timeline in", group: "Timeline", shortcuts: ["="], enabled: always, run: c => c.zoom(1) },
+  { id: "timeline.zoom-out", effects: "ui-only", label: "Zoom timeline out", group: "Timeline", shortcuts: ["-"], enabled: always, run: c => c.zoom(-1) },
+  { id: "timeline.fit", effects: "ui-only", label: "Fit timeline", group: "Timeline", shortcuts: ["\\"], enabled: always, run: c => c.zoom(0) },
   tool("move", "V", "Move tool"), tool("rotate", "R", "Rotate tool"), tool("scale", "S", "Scale tool"),
   tool("camera", "C", "Camera tool"), tool("focus", "F", "Focus tool"), tool("pivot", "P", "Pivot (anchor point) tool"),
-  { id: "view.director", label: "Toggle director view", group: "Viewport", shortcuts: ["Tab"], enabled: always, run: c => {
+  { id: "view.director", effects: "ui-only", label: "Toggle director view", group: "Viewport", shortcuts: ["Tab"], enabled: always, run: c => {
     if (c.state.ui.director) { c.store.setUi({ director: undefined }); return; }
     const doc = c.store.committed();
     const real = c.snapshot?.camera ?? CameraSchema.parse(doc?.definition?.scene?.camera ?? {});
     const focus = c.snapshot?.focus ?? FocusSchema.parse(doc?.definition?.scene?.focus ?? {});
     c.store.setUi({ director: defaultDirector(real, focus.distance) });
   } },
-  { id: "view.onion", label: "Toggle onion skin", group: "Viewport", shortcuts: [], enabled: always, run: c => c.store.setUi({ onion: !c.state.ui.onion }) },
-  { id: "view.paths", label: "Toggle motion paths", group: "Viewport", shortcuts: [], enabled: always, run: c => c.store.setUi({ paths: !c.state.ui.paths }) },
-  { id: "path.convert", label: "Convert to position path", group: "Structure", shortcuts: [], enabled: s => surfaceLayers(s).length > 0 || s.selection.layers.includes("camera"), run: c => {
+  { id: "view.onion", effects: "ui-only", label: "Toggle onion skin", group: "Viewport", shortcuts: [], enabled: always, run: c => c.store.setUi({ onion: !c.state.ui.onion }) },
+  { id: "view.paths", effects: "ui-only", label: "Toggle motion paths", group: "Viewport", shortcuts: [], enabled: always, run: c => c.store.setUi({ paths: !c.state.ui.paths }) },
+  { id: "path.convert", effects: ["path.fromAxes"], label: "Convert to position path", group: "Structure", shortcuts: [], enabled: s => surfaceLayers(s).length > 0 || s.selection.layers.includes("camera"), run: c => {
     const ops = c.state.selection.layers.filter(id => id === "camera" || surfaceLayers(c.state).includes(id))
       .map(id => ({ op: "path.fromAxes", target: id === "camera" ? { kind: "camera" } : { kind: "surface", id } } as EditOp));
     const issues = c.store.commit(ops, "Convert to path");
     if (issues.length) c.notify(issues[0].message);
   } },
-  { id: "focus.rack", label: "Rack focus between two layers", group: "Viewport", shortcuts: [], enabled: s => surfaceLayers(s).length === 2, run: c => {
+  { id: "focus.rack", effects: ["key.set", "track.add"], label: "Rack focus between two layers", group: "Viewport", shortcuts: [], enabled: s => surfaceLayers(s).length === 2, run: c => {
     const [from, to] = surfaceLayers(c.state);
     const doc = c.store.committed();
     if (!c.snapshot) return;

@@ -29,9 +29,5 @@ test("move-gizmo drag in a 60-Surface scene repaints within the budget", async (
   const report = { gizmoDragP95Ms: p95(samples), samples: samples.length };
   await info.attach("viewport-sixty", { body: JSON.stringify(report, null, 2), contentType: "application/json" });
   console.log("[budget] viewport gizmo drag", JSON.stringify(report));
-  // Plan budget: ≤ 16 ms p95, not met (61 ms on the reference machine). A CPU profile attributes the largest
-  // share to the Scene registry's per-commit layout measurement (offsetLeft/offsetTop walk forcing layout
-  // after the dragged transform changes), the pre-existing engine policy deferred to Phase 11 (Phase 05/06
-  // exit reports). This guard catches regressions beyond today's number.
-  expect(report.gizmoDragP95Ms).toBeLessThanOrEqual(75);
+  expect(report.gizmoDragP95Ms).toBeLessThanOrEqual(16);
 });

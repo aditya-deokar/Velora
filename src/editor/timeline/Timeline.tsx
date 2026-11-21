@@ -16,7 +16,7 @@ import { GraphEditor } from "../graph/GraphEditor";
  * an EditOp: drags preview transient ops and commit once on release. Rows are virtualized; only keys in
  * the visible time window are drawn. role="grid": rows are properties, cells are keyframes. */
 export const ROW_HEIGHT = 24, RULER_HEIGHT = 24;
-const MENU_COMMANDS = ["ease.easy", "ease.in", "ease.out", "ease.linear", "ease.auto", "ease.hold", "keyframes.reverse", "timing.open", "clip.group", "clip.ungroup", "stagger.open", "edit.copy", "edit.paste", "keyframes.delete"];
+const MENU_COMMANDS = ["ease.easy", "ease.in", "ease.out", "ease.linear", "ease.auto", "ease.hold", "keyframes.reverse", "timing.open", "clip.group", "clip.ungroup", "stagger.open", "edit.copy", "edit.paste", "keyframes.delete", "agent.ask"];
 type PropertyRow = Extract<TimelineRow, { kind: "property" }>;
 type ClipRow = Extract<TimelineRow, { kind: "clip" }>;
 type Gesture =
@@ -294,6 +294,12 @@ export function Timeline() {
   api.cellKey = cellKey;
   api.focus = (row, key) => { if (!isSelected(row, key)) store.select({ keys: [{ track: row.address, atMs: key.atMs }], tracks: [row.address] }); setFocused({ track: row.address, value: key.value as number }); };
   const graph = state.ui.view === "graph";
+  const visibleRows = rows.slice(visibleFirst, visibleLast);
+  const inWindow = (key: RowKey) => key.time >= windowStart && key.time <= windowEnd;
+  const selectedRow = visibleRows.findIndex(row => row.kind === "property" &&
+    selected.some(ref => trackKey(ref.track) === row.id && row.keys.some(key => key.atMs === ref.atMs && inWindow(key))));
+  const entryRow = selectedRow >= 0 ? selectedRow :
+    visibleRows.findIndex(row => row.kind === "property" && row.keys.some(inWindow));
   return <div className="ve-panel" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }} data-velora-editor-timeline="">
     <div className="ve-tl-head" role="toolbar" aria-label="Timeline controls">
       <button className="ve-btn" onClick={session.toggle} aria-label={session.playing ? "Pause" : "Play"}>{session.playing ? "❚❚" : "▶"}</button>
@@ -316,7 +322,7 @@ export function Timeline() {
           const index = visibleFirst + offset;
           const collapsible = row.kind === "layer" || row.kind === "clip";
           const isRowSelected = row.kind === "property" && state.selection.tracks.some(track => trackKey(track) === row.id);
-          return <div key={row.id} className="ve-label" data-kind={row.kind} aria-selected={isRowSelected} style={{ top: yOf(index), paddingLeft: row.kind === "property" ? 20 : row.kind === "clip" ? 8 + row.depth * 10 : 8 }}
+          return <div key={row.id} className="ve-label" data-kind={row.kind} data-selected={isRowSelected} style={{ top: yOf(index), paddingLeft: row.kind === "property" ? 20 : row.kind === "clip" ? 8 + row.depth * 10 : 8 }}
             onClick={event => {
               if (row.kind === "clip") store.select({ clips: [row.clipId], keys: [], tracks: [], layers: [row.id] });
               if (row.kind === "property") store.select({ tracks: [row.address], keys: [], layers: [row.layer], clips: row.address.clip ? [row.address.clip] : [] });
@@ -340,10 +346,10 @@ export function Timeline() {
         onWheel={wheel} onDoubleClick={openInline} onContextMenu={contextMenu}>
         <svg width={size.width} height={size.height} style={{ display: "block" }}>
           <g data-rows="" transform={`translate(0 ${RULER_HEIGHT - scrollTop})`}>
-            {rows.slice(visibleFirst, visibleLast).map((row, offset) => {
+            {visibleRows.map((row, offset) => {
               const index = visibleFirst + offset;
               const picked = row.kind === "property" ? selected.filter(ref => trackKey(ref.track) === row.id).map(ref => ref.atMs).join(",") : "";
-              const entry = !selected.length && index === visibleFirst;
+              const entry = offset === entryRow;
               return <LaneRow key={row.id} row={row} index={index} width={size.width} start={start} pxPerMs={pxPerMs} picked={picked} entry={entry}
                 clipSelected={row.kind === "clip" && state.selection.clips.includes(row.clipId)} api={api}/>;
             })}
@@ -401,25 +407,33 @@ const LaneRow = memo(function LaneRow({ row, index, width, start, pxPerMs, picke
   const y = index * ROW_HEIGHT, mid = y + ROW_HEIGHT / 2;
   const x = (time: number) => (time - start) * pxPerMs + 12;
   const windowStart = start - 20 / pxPerMs, windowEnd = start + (width + 20) / pxPerMs;
-  if (row.kind === "clip") return <ClipBar row={row} x={x} y={y} pxPerMs={pxPerMs} selected={clipSelected}/>;
-  if (row.kind === "badge") return <text x={16} y={mid + 4} fontSize={11} fill="#a9a9b6">{row.label}</text>;
+  if (row.kind === "clip") return <g role="row" aria-rowindex={index + 1} aria-label={row.label}>
+    <g role="gridcell" aria-selected={clipSelected}><ClipBar row={row} x={x} y={y} pxPerMs={pxPerMs} selected={clipSelected}/></g>
+  </g>;
+  if (row.kind === "badge") return <g role="row" aria-rowindex={index + 1}>
+    <text role="gridcell" x={16} y={mid + 4} fontSize={11} fill="#a9a9b6">{row.label}</text>
+  </g>;
   if (row.kind === "layer") {
     const d = row.summary.filter(time => time >= windowStart && time <= windowEnd).map(time => `M${x(time)} ${mid - 4}l4 4l-4 4l-4 -4Z`).join("");
-    return <g role="row" aria-rowindex={index + 1}><rect x={0} y={y} width={width} height={ROW_HEIGHT} fill="#17171b"/><path d={d} fill="#a9a9b6"/></g>;
+    return <g role="row" aria-rowindex={index + 1} aria-label={row.label}>
+      <g role="gridcell" aria-label={`${row.summary.length} keyframe times`}><rect x={0} y={y} width={width} height={ROW_HEIGHT} fill="#17171b"/><path d={d} fill="#a9a9b6"/></g>
+    </g>;
   }
   const selectedTimes = new Set(picked ? picked.split(",").map(Number) : []);
   const keys = row.keys.filter(key => key.time >= windowStart && key.time <= windowEnd);
   const dense = keys.length > width / 10;
-  const cells = dense ? keys.filter((key, i) => selectedTimes.has(key.atMs) || (entry && i === 0)) : keys;
+  const entryKey = entry ? keys.find(key => selectedTimes.has(key.atMs)) ?? keys[0] : undefined;
+  const cells = dense ? keys.filter(key => selectedTimes.has(key.atMs) || key === entryKey) : keys;
   const paths: Record<string, string> = {};
   if (dense) for (const key of keys) if (!selectedTimes.has(key.atMs)) paths[row.smooth ? "auto" : key.glyph] = (paths[row.smooth ? "auto" : key.glyph] ?? "") + GLYPH_PATH[row.smooth ? "auto" : key.glyph](x(key.time), mid);
   return <g role="row" aria-rowindex={index + 1} aria-label={`${row.label}${dense ? `, ${keys.length} keyframes (zoom in to reach each one)` : ""}`}>
     {row.keys.length > 1 && <line x1={x(row.keys[0].time)} x2={x(row.keys[row.keys.length - 1].time)} y1={mid} y2={mid} stroke={row.smooth ? "#7cc4ff" : "#ffffff22"} strokeWidth={row.smooth ? 2 : 1}/>}
     {Object.entries(paths).map(([glyph, d]) => <path key={glyph} d={d} fill={row.smooth ? "none" : "var(--ve-key)"} stroke={row.smooth ? "var(--ve-key)" : "#0006"} strokeWidth={row.smooth ? 2 : 1}/>)}
-    {cells.map((key, i) => {
+    {!cells.length && <g role="gridcell" aria-label="No keyframes in view"/>}
+    {cells.map(key => {
       const on = selectedTimes.has(key.atMs);
       const label = `${row.layer.replace(/^clip:/, "clip ")} ${row.label}, keyframe at ${(key.atMs / 1000).toFixed(2)} s, value ${typeof key.value === "number" ? Math.round(key.value * 1000) / 1000 : JSON.stringify(key.value)}, easing ${typeof key.easing === "string" ? key.easing : key.easing ? "custom" : "cinematic"} (${glyphLabel[key.glyph]})`;
-      return <g key={key.atMs} className="ve-kf" role="gridcell" aria-label={label} aria-selected={on} tabIndex={on || (entry && i === 0) ? 0 : -1}
+      return <g key={key.atMs} className="ve-kf" role="gridcell" aria-label={label} aria-selected={on} tabIndex={key === entryKey ? 0 : -1}
         data-cell={`${row.id}@${key.atMs}`} onKeyDown={event => api.cellKey(event, index, row, key)} onFocus={() => api.focus(row, key)}>
         <KeyGlyphShape glyph={key.glyph} x={x(key.time)} y={mid} selected={on} smooth={row.smooth}/>
       </g>;

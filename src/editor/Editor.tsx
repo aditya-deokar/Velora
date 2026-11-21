@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { ScenePreview, usePreviewHost } from "../preview/ScenePreview";
 import type { PreviewHot } from "../preview/connection";
 import { useSceneInspector, type ThreeSelection } from "../react";
-import { behaviorById, type EditOp, type MotionClipInput } from "../core";
+import { behaviorById, describeTrack, type EditOp, type MotionClipInput } from "../core";
 import { createEditorStore, DEFAULT_UI, type Doc, type EditorUi, type EditorStore } from "./store";
 import { createBridgeClient, takeBridgeFragment, type BridgeHello } from "./bridge";
 import { EditorContext, useEditor, useEditorState, type EditorContextValue } from "./context";
@@ -11,6 +11,8 @@ import { Layers } from "./Layers";
 import { Inspector } from "./Inspector";
 import { Advisories, useAdvisories } from "./Advisories";
 import { History, copyText, opsCommand } from "./History";
+import { AskAgent } from "./AskAgent";
+import { commandForPlatform } from "./handoff";
 import { Palette } from "./Palette";
 import { EasingLibrary } from "./EasingLibrary";
 import { Timeline } from "./timeline/Timeline";
@@ -175,7 +177,7 @@ function Toolbar() {
   const advisories = useAdvisories();
   const [copied, setCopied] = useState<string>();
   const ops: EditOp[] = store.unsavedOps();
-  const command = opsCommand(sceneId, ops);
+  const command = opsCommand(sceneId, ops, state.sha);
   const run = (id: string) => commandById(id)!.run({ ...controller, state: store.getState() });
   return <div className="ve-panel" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }} data-velora-editor-toolbar="">
     <button className="ve-btn" aria-pressed={state.ui.snap} onClick={() => run("snap.toggle")} title="Snapping (Shift suspends)">Snap</button>
@@ -183,7 +185,8 @@ function Toolbar() {
     <button className="ve-btn ve-icon" aria-label="Undo" disabled={!state.undo.length} onClick={() => store.undo()}>↶</button>
     <button className="ve-btn ve-icon" aria-label="Redo" disabled={!state.redo.length} onClick={() => store.redo()}>↷</button>
     <button className="ve-btn" onClick={() => controller.open("history")}>History</button>
-    <button className="ve-btn" onClick={() => controller.open("advisories")} aria-label={`Advisories (${advisories.length})`}>⚠ {advisories.length}</button>
+    <button className="ve-btn" onClick={() => controller.open("agent")}>Ask agent</button>
+    <button className="ve-btn" onClick={() => controller.open("advisories")}><span aria-hidden="true">⚠</span> Advisories ({advisories.length})</button>
     <button className="ve-btn" onClick={() => controller.open("behaviors")}>Behaviors</button>
     <button className="ve-btn" onClick={() => controller.open("camera-moves")}>Camera moves</button>
     <button className="ve-btn" onClick={() => controller.open("presets")}>Presets</button>
@@ -194,7 +197,7 @@ function Toolbar() {
     <button className="ve-btn" onClick={() => controller.open("palette")} title="Ctrl/⌘+K">⌘K</button>
     <span className="ve-save" data-state={state.save} role="status" aria-live="polite" data-testid="editor-save-state">{SAVE_LABELS[state.save]}</span>
     {state.readOnly && <>
-      <button className="ve-btn" disabled={!ops.length} onClick={async () => { if (await copyText(command.posix)) setCopied("command"); }}>{copied === "command" ? "Copied" : "Copy as command"}</button>
+      <button className="ve-btn" disabled={!ops.length} onClick={async () => { if (await copyText(commandForPlatform(command))) setCopied("command"); }}>{copied === "command" ? "Copied" : "Copy as command"}</button>
       <button className="ve-btn" disabled={!ops.length} title="PowerShell" onClick={async () => { if (await copyText(command.powershell)) setCopied("powershell"); }}>{copied === "powershell" ? "Copied" : "PowerShell"}</button>
       <button className="ve-btn" disabled={!ops.length} onClick={async () => {
         const prompt = `Apply these Velora edit ops to scene "${sceneId}" with velora edit (dry run first, then --write with --expect-sha). Ops:\n${JSON.stringify(ops, null, 2)}`;
@@ -223,8 +226,8 @@ function Effects() {
       if (event.key === "Escape") shared.setSourcePicking(false);
       const command = matchShortcut(event, store.getState());
       if (!command) return;
-      // Tab toggles the director view only from the viewport or the page body; elsewhere it moves focus.
-      if (event.key === "Tab" && target && target !== document.body && !target.closest?.("[data-velora-viewport-overlay],[data-velora-editor-overlay]")) return;
+      // The viewport's pointer focus enables this shortcut without intercepting normal tab navigation.
+      if (event.key === "Tab" && (event.shiftKey || !target?.closest?.("[data-velora-viewport-overlay],[data-velora-editor-overlay]"))) return;
       event.preventDefault();
       command.run({ ...latest.current.controller, state: store.getState() });
     };
@@ -251,6 +254,10 @@ function Effects() {
     {css && <style data-velora-preview-chrome="" data-velora-editor-visibility="">{css}</style>}
     {shared.panel === "palette" && <Palette onClose={close}/>}
     {shared.panel === "history" && <History onClose={close}/>}
+    {shared.panel === "agent" && <AskAgent onClose={close} context={{ target: { scene: shared.sceneId }, timeMs: session.timeMs, range: area, sha: state.sha,
+      selection: [...new Set([...state.selection.layers.map(id => `layer ${id}`), ...state.selection.clips.map(id => `clip ${id}`),
+        ...state.selection.tracks.map(describeTrack), ...state.selection.keys.map(key => `${describeTrack(key.track)} @ ${key.atMs} authored ms`)])],
+      history: state.undo.map(entry => entry.label) }}/>}
     {shared.panel === "advisories" && <Advisories onClose={close}/>}
     {shared.panel === "easing" && <EasingLibrary onClose={close}/>}
     {shared.panel === "behaviors" && <Behaviors key={behaviorClip?.id ?? "library"} clip={behaviorClip} onClose={close}/>}

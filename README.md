@@ -189,7 +189,16 @@ npx velora edit key --scene my-shot --track camera.z --at 1200 --value 400 --eas
 
 The first command verifies your dev server, starts the local edit bridge and opens the editor. The second is the headless equivalent for one keyframe (a dry run until you add `--write`).
 
-Edit mode puts layers, an inspector with stopwatches, a dope sheet and a graph editor around the live scene. Click a stopwatch to animate a property, scrub the timeline, type a value to set a keyframe at the playhead, shape easing with handles (F9 Easy Ease), group tracks into clips (Ctrl/⌘+G) and undo anything. Every change is saved to the scene's JSON through the local bridge (loopback only, token in the URL fragment, compare-and-swap), so your coding agent and your hands edit the same file. Without the bridge, the scene's **Edit** button opens Edit mode read-only and copies the `velora edit apply` command for your changes.
+Edit mode puts layers, the Inspector, a dope sheet and a graph around the live scene. Click a stopwatch to animate a property, set another value at the playhead, and use F9 for Easy Ease. Ctrl/⌘+G groups selected tracks into a clip. **Ask agent** copies the selection and edit intent for your coding agent. The local bridge saves gestures to the scene JSON. Without a bridge, **Copy as command** gives you the equivalent CLI batch.
+
+Open **Compositions → Edit** to cut a film with audio waveforms, captions, overlays and beat markers. Use the local bridge to save, or preview a JSON batch with the CLI.
+
+```sh
+npx velora edit --composition launch.composition.json
+npx velora compose edit --composition launch.composition.json --ops ops.json --json
+```
+
+[Watch a video rendered by Velora](website/public/media/hero/hero.mp4) · [Studio walkthrough](USER_GUIDE.md#editing-scenes-by-hand-edit-mode)
 
 ## Export video
 

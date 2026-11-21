@@ -104,7 +104,7 @@ function ExportMenu({disabled, panelHost, size}: {disabled: boolean; panelHost: 
   const command = `npx velora export --url ${quote(typeof location === "undefined" ? "http://localhost:5173" : exportUrl(location.href))} --output scene-${fps}${CODEC_CONTAINERS[codec][0]} --fps ${fps}${size ? ` --width ${size.width} --height ${size.height}` : ""}`
     + (quality !== "standard" ? ` --quality ${quality}` : "") + (codec !== "h264" ? ` --codec ${codec}` : "");
   return disabled ? <button className="velora-control" disabled><Glyph kind="export"/>Export</button> :
-    <details className="velora-export" ref={details} onToggle={event => setOpen(event.currentTarget.open)}><summary className="velora-control velora-primary" aria-controls={panelId}><Glyph kind="export"/>Export</summary>
+    <details className="velora-export" ref={details} onToggle={event => setOpen(event.currentTarget.open)}><summary className="velora-control velora-primary" aria-controls={open && panelHost ? panelId : undefined}><Glyph kind="export"/>Export</summary>
       {open && panelHost && createPortal(<div id={panelId} role="region" aria-label="Export your scene" className="velora-export-panel velora-chrome" onKeyDown={event => {
         if (event.key === "Escape" && details.current) {
           details.current.open = false;
@@ -168,7 +168,10 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
   const exportOnly = useMemo(() => { try { return hasExportFinishing(resolveLook(look)); } catch { return false; } }, [look]);
   useTransportKeys(session, fps, !blocked);
   const captureSeek = useCallback((ms: number) => {
-    if (blocked) throw new Error(session.issues[0]?.message ?? "Correct the scene before exporting.");
+    if (blocked) {
+      const problem = session.issues[0]?.message;
+      throw new Error(problem ? `Correct the scene before exporting. ${problem}` : "Correct the scene before exporting.");
+    }
     session.seek(ms);
   }, [blocked, session.seek, session.issues]);
   // The preview covers its viewport; the editor contains the whole frame so every edge stays editable.

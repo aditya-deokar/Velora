@@ -159,6 +159,7 @@ These techniques are named after where they are commonly taught and recognized; 
 - **Follow focus.** `{ "kind": "focusFollow", "target": { "surface": "hero" }, "offset": 0 }` holds `focus.distance` on the target's camera depth, so a dolly never loses the subject. Pair it with lookAt for subject-locked moves.
 - **Settling with weight.** `weight` (0..1, or a channel track `{ "target": { "kind": "channel", "id": "settle" }, "property": "value" }`) blends from the authored rotation to the aimed one. Ramp a `settle` channel from 0 to 1 over the last second for a camera that drifts, then locks on.
 - **Orbit rig.** `buildOrbitRig({ radius, fromDeg, toDeg, height, durationMs, ease })` returns `{ clip, constraint }`: a constant-speed camera position path, eased as a group, plus a lookAt. Add the clip to `motion.clips` and the constraint to `scene.constraints`. Keep arcs within about 60 degrees for UI subjects, and pair the rig with focusFollow at long lenses.
+- **Studio camera tools.** Select the subject and use Camera moves to preview a dolly zoom against the subject's framing. Use the Focus tool to set the near and far landings for a rack. The director view shows the layout and camera relationship. Review the landing in the camera view before capture.
 - Constraints resolve in the spatial owner from live layout, so preview and export agree. A constraint target must be a node in `scene.nodes`.
 
 ## Directing in the Studio Viewport (Edit mode)

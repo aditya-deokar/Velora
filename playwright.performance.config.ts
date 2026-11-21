@@ -3,6 +3,7 @@ import base from "./playwright.config";
 export default defineConfig({
   ...base,
   testDir: "./tests/performance",
+  testMatch: "**/*.spec.ts",
   timeout: 45000,
   projects: [
     {

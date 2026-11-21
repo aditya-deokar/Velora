@@ -246,6 +246,7 @@ export function Overlay() {
   }
   function begin(event: ReactPointerEvent<SVGSVGElement>) {
     if (event.button !== 0 || !snapshot) return;
+    event.currentTarget.focus({ preventScroll: true });
     const p = pointOf(event);
     const target = event.target as Element;
     const handle = target.closest?.("[data-handle]")?.getAttribute("data-handle") as HandleId | null;
@@ -384,7 +385,7 @@ export function Overlay() {
   const primary = selected[0] && tool !== "camera" && tool !== "focus" ? gizmoFor(selected[0]) : null;
   const typed = drag?.typed;
   return <svg ref={svg} data-velora-viewport-overlay="" data-tool={tool} viewBox={`0 0 ${frame.width} ${frame.height}`} width={frame.width} height={frame.height}
-    role="application" aria-label={`Viewport (${tool} tool${director ? ", director view" : ""})`} aria-roledescription="viewport"
+    role="application" tabIndex={-1} aria-label={`Viewport (${tool} tool${director ? ", director view" : ""})`} aria-roledescription="viewport"
     style={{ position: "absolute", inset: 0, pointerEvents: "all", cursor: sourcePicking || tool === "focus" ? "crosshair" : tool === "camera" ? "grab" : "default", touchAction: "none", overflow: "visible" }}
     onPointerDown={event => {
       if (sourcePicking && event.button === 0) { event.preventDefault(); pickSource?.(pickSourceElement(event.clientX, event.clientY)); return; }
@@ -415,14 +416,14 @@ export function Overlay() {
       {path.keys.map(key => <g key={key.timeMs}>
         {key.tangents?.in && <line x1={key.point.x} y1={key.point.y} x2={key.tangents.in.x} y2={key.tangents.in.y} className="ve-path"/>}
         {key.tangents?.out && <line x1={key.point.x} y1={key.point.y} x2={key.tangents.out.x} y2={key.tangents.out.y} className="ve-path"/>}
-        <rect data-key-dot={`${path.id}@${key.timeMs}`} aria-label={`${path.id} keyframe at ${(key.timeMs / 1000).toFixed(2)} s`} className="ve-key"
+        <rect role="img" data-key-dot={`${path.id}@${key.timeMs}`} aria-label={`${path.id} keyframe at ${(key.timeMs / 1000).toFixed(2)} s`} className="ve-key"
           x={key.point.x - 5 * s} y={key.point.y - 5 * s} width={10 * s} height={10 * s} transform={`rotate(45 ${key.point.x} ${key.point.y})`}/>
       </g>)}
     </g>)}
     {items.filter(item => selected.includes(item.id)).map(item => <polygon key={item.id} className="ve-outline" data-outline={item.id} {...(item.id === selected[0] ? { "data-primary": "" } : {})} points={poly(item.quad)}/>)}
     {primary && <GizmoHandles tool={tool} geometry={primary} scale={scale}/>}
-    {tool === "camera" && !director && <circle data-handle="rotateZ" aria-label="Roll camera" cx={frame.width / 2} cy={frame.height / 2} r={Math.min(frame.width, frame.height) * 0.42} className="ve-ring" strokeWidth={6 * s} fill="none"/>}
-    {gizmo && <g data-camera-gizmo="" aria-label="Real camera">
+    {tool === "camera" && !director && <circle role="img" data-handle="rotateZ" aria-label="Roll camera" cx={frame.width / 2} cy={frame.height / 2} r={Math.min(frame.width, frame.height) * 0.42} className="ve-ring" strokeWidth={6 * s} fill="none"/>}
+    {gizmo && <g role="img" data-camera-gizmo="" aria-label="Real camera">
       <polygon className="ve-focus-plane" data-focus-plane="" points={poly(gizmo.focus)}/>
       <polygon className="ve-frustum" points={poly(gizmo.frustum)}/>
       {gizmo.eye && gizmo.frustum.map((corner, index) => corner && <line key={index} className="ve-frustum" x1={gizmo.eye!.x} y1={gizmo.eye!.y} x2={corner.x} y2={corner.y}/>)}

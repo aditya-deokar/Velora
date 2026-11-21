@@ -124,7 +124,7 @@ for (const name of VELORA_SKILLS) {
       const segment = line.slice(start, end);
       const allowed = commandFlags.get(cmd);
       for (const f of segment.matchAll(/(--[a-z-]+)/g)) {
-        if (!allowed.has(f[1])) fail(`${name}/SKILL.md:${i + 1} "velora ${cmd} ${f[1]}" unknown flag (see velora ${cmd} --help)`);
+        if (f[1] !== '--help' && !allowed.has(f[1])) fail(`${name}/SKILL.md:${i + 1} "velora ${cmd} ${f[1]}" unknown flag (see velora ${cmd} --help)`);
       }
     }
   }

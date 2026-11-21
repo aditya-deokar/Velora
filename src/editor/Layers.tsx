@@ -80,7 +80,7 @@ export function Layers() {
     const surface = item.kind === "surface";
     return <li key={item.id} role="treeitem" aria-level={item.depth + 1} aria-selected={isSelected} aria-expanded={item.children.length ? !collapsed.includes(item.id) : undefined}>
       <div className="ve-row">
-        <span className="ve-row-main" aria-selected={isSelected} data-item={item.id} tabIndex={selected === item.id || (!selected && item.id === "camera") ? 0 : -1}
+        <span className="ve-row-main" data-selected={isSelected} data-item={item.id} tabIndex={selected === item.id || (!selected && item.id === "camera") ? 0 : -1}
           onClick={event => select(item, event.shiftKey || event.ctrlKey || event.metaKey, event.ctrlKey || event.metaKey)} onDoubleClick={() => surface && setRenaming(item.id)}>
           {item.children.length ? <button className="ve-btn ve-icon" style={{ minHeight: 16, border: 0, background: "none" }} aria-label={collapsed.includes(item.id) ? "Expand" : "Collapse"} tabIndex={-1}
             onClick={event => { event.stopPropagation(); setCollapsed(collapsed.includes(item.id) ? collapsed.filter(id => id !== item.id) : [...collapsed, item.id]); }}>{collapsed.includes(item.id) ? "▸" : "▾"}</button> : <span style={{ width: 16 }}/>}

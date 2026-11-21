@@ -35,9 +35,12 @@ export function validateIdentity(manifest, {repository, tag, publishing = false}
 export const PACKAGE_BUDGET = Object.freeze({ unpackedBytes: 6 * 1024 * 1024, fileBytes: 2 * 1024 * 1024 });
 export function validateRelease(manifest, files, options = {}) {
   validateIdentity(manifest, options);
+  for (const field of ['dependencies','optionalDependencies','peerDependencies'])
+    assert.ok(!manifest[field]?.['axe-core'], 'axe-core must remain a test-only dependency');
   const names = files.map(file => file.path);
   assert.equal(new Set(names).size, names.length, 'Duplicate packed paths');
   for (const name of names) {
+    assert.ok(!name.includes('axe-core'), 'Accessibility audit code must stay out of the package');
     assert.ok(!name.split('/').some(part => part === '..' || part.startsWith('.')), 'Hidden/traversal packed file: ' + name);
     assert.ok(/^(package\.json|README\.md|LICENSE|dist\/(library|cli)\/.+\.(js|map|ts)|schemas\/[a-z-]+\.schema\.json|skills\/velora\/SKILL\.md|skills\/velora\/(REFERENCE|COMPATIBILITY)\.md|skills\/velora\/templates\/[^/]+\/[^/]+\.(json|tsx|jsx|md|srt|txt)|skills\/velora\/scripts\/[A-Za-z0-9-]+\.mjs|skills\/velora-[a-z0-9-]+\/SKILL\.md)$/.test(name),
       'Unexpected packed file: ' + name);

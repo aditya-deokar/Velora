@@ -6,6 +6,12 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
 
 ## [Unreleased]
 
+### Added — Composition editing and agent handoff (v2.1)
+
+- Cut whole compositions in Studio with ripples, rolls, slips, razor splits, overlap transitions, markers, overlays, styled captions and waveform lanes. `velora compose edit` and its helpers use the same validated batches and SHA-guarded writes.
+- Preview beat snap as one undoable edit. Open a shot's scene on its local source time and return to its position in the cut.
+- Copy a Studio selection and intent with **Ask agent**. The version 4 guide and generated project handoff cover scene, source and composition editing. `velora init` upgrades intact format 2 and 3 handoffs in place.
+
 ### Added — Three.js controls (v2.1 Phase 09)
 
 - The optional `@adityadeokar/velora/three` entry adds deterministic React Three Fiber surfaces, Object3D channels, glTF clip scrubbing, and a shared DOM and 3D camera.

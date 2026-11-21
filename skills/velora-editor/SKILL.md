@@ -65,10 +65,10 @@ Op table (`{"op": …}`):
 
 | Group | Ops |
 |---|---|
-| Keyframes | `key.set {track, atMs, value, easing?}` (upsert), `key.remove`, `key.move {track, fromMs, toMs}`, `key.ease`, `keys.shift {refs, deltaMs}`, `keys.scale {refs, pivotMs, factor}`, `keys.reverse {refs}` |
+| Keyframes | `key.set {track, atMs, value, easing?}` (upsert), `key.remove`, `key.move {track, fromMs, toMs}`, `key.ease`, `keys.shift {refs, deltaMs}`, `keys.scale {refs, pivotMs, factor}`, `keys.reverse {refs}`, `keys.retime {refs}` (`toMs` per reference) |
 | Tracks | `track.add {track, keyframes, …options}`, `track.remove`, `track.options` (null clears an option) |
-| Scene | `camera.set` and `focus.set {property, value or null}`, `node.ensure {id}`, `node.remove`, `motion.set {durationMs?, speed?, loop?}`, `look.set` |
-| Structure | `clip.create {id, refs or tracks, startMs?}`, `clip.update`, `clip.dissolve {id, bake?}`, `stagger.set`, `link.set`, `link.remove`, `constraint.set`, `constraint.remove`, `path.fromAxes`, `path.tangent` |
+| Scene | `camera.set` and `focus.set {property, value or null}`, `node.ensure {id}`, `node.parent {id, parentId}`, `node.remove`, `motion.set {durationMs?, speed?, loop?}`, `look.set` |
+| Structure | `clip.create {id, refs or tracks, startMs?}`, `clip.update`, `clip.set {clip}`, `clip.dissolve {id, bake?}`, `stagger.set`, `link.set`, `link.remove`, `constraint.set`, `constraint.remove`, `path.fromAxes`, `path.tangent` |
 | Metadata | `editor.set {labels?, colors?, locked?, markers?}` |
 | Undo | `restore {at, value, index?}` (what inverses use) |
 
@@ -114,6 +114,7 @@ the same ops you make, through the same bridge:
   one with `velora edit paste --scene <id> --from <file> --at <ms> [--onto <surface>]`.
 - While the editor is open, always pass `--expect-sha`: the editor saves after every gesture. If you write, it
   rebases its pending edits or shows **Changed on disk**; it never overwrites yours.
+- **Ask agent** in the toolbar or timeline menu copies your intent, selected tracks or cut, playhead, range and recent edit labels. **History → Copy as command** copies the selected batch. In read-only mode, **Copy as command** copies the pending edits for your shell.
 
 ## Motion design in Edit mode
 
