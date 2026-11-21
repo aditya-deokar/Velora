@@ -1838,7 +1838,7 @@ export async function executeStudioCommand(operation: "studio-init" | "studio-st
       // Any-site Edit mode: the bridge lives in the studio process; only the studio origin may call it.
       const { startSceneBridge, editorUrl } = await import("./edit");
       const studioServer = server;
-      const bridge = await startSceneBridge(root, { origin: server.origin, readOnly: input.readOnly ?? false, version, projectId: project.projectId });
+      const bridge = await startSceneBridge(root, { origin: server.origin, readOnly: input.readOnly ?? false, version, projectId: project.projectId, source: false });
       const stop = async () => { await bridge.server.stop(); await studioServer.stop(); };
       return { success: true, command: "studio", data: { ...data, bridge: bridge.server.origin, editor: editorUrl(data.url, input.scene, bridge.server.port, bridge.token) }, server: { ...server, stop } };
     }

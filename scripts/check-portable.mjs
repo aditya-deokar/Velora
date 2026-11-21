@@ -16,6 +16,27 @@ async function put(file,text){await mkdir(path.dirname(path.join(host,file)),{re
 function run(exe,args,cwd=host){return new Promise((resolve,reject)=>{const resolved=npmCmd(exe);const child=spawn(resolved,args,{cwd,env:{...process.env,NEXT_TELEMETRY_DISABLED:'1'},stdio:['ignore','pipe','pipe'],...(resolved!==exe?NPM_SHELL:{})});let output='';child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>output+=d);const timer=setTimeout(()=>child.kill(),110000);child.on('error',reject);child.on('exit',code=>{clearTimeout(timer);code===0?resolve(output):reject(Error(output))})})}
 async function freePort(){const s=createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const port=s.address().port;await new Promise(r=>s.close(r));return port}
 async function server(args){const port=await freePort();const child=spawn(process.execPath,['node_modules/next/dist/bin/next',...args,'-H','127.0.0.1','-p',String(port)],{cwd:host,env:{...process.env,NEXT_TELEMETRY_DISABLED:'1'},stdio:['ignore','pipe','pipe']});children.push(child);let log='';child.stdout.on('data',d=>log+=d);child.stderr.on('data',d=>log+=d);const url='http://127.0.0.1:'+port;for(let i=0;i<150;i++){try{const r=await fetch(url,{signal:AbortSignal.timeout(1000)});if(r.ok)return {url,child}}catch{}if(child.exitCode!==null)throw Error(log);await new Promise(r=>setTimeout(r,100))}throw Error(log)}
+async function editBridge(cli, origin) {
+ const child = spawn(process.execPath, [cli, 'edit', '--scene', 'survey', '--url', origin, '--no-open', '--json'], { cwd: host, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+ children.push(child);
+ return new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(Error('The Next source edit bridge did not start.')), 45_000);
+  let pending = '', error = '';
+  child.stderr.on('data', data => { error += data; });
+  child.stdout.on('data', data => {
+   pending += data;
+   const lines = pending.split('\n'); pending = lines.pop();
+   for (const line of lines) {
+    try {
+     const result = JSON.parse(line);
+     if (result.success && result.data?.url) { clearTimeout(timer); resolve(result.data.url); }
+    } catch { /* Ignore informational output. */ }
+   }
+  });
+  child.once('error', problem => { clearTimeout(timer); reject(problem); });
+  child.once('exit', code => { clearTimeout(timer); reject(Error(`The Next source edit bridge exited (${code}). ${error.slice(-1200)}`)); });
+ });
+}
 try{
  await mkdir(host,{recursive:true});
  const published=process.env.VELORA_REGISTRY_PACKAGE;
@@ -39,7 +60,7 @@ try{
  const initialized=JSON.parse(await run(process.execPath,[cli,'init','--json']));
  assert.equal(initialized.success,true);assert.equal(initialized.data.integration.kind,kind==='react'?'react':'next-'+kind);
  assert.equal(JSON.parse(await run(process.execPath,[cli,'init','--json'])).data.changed,false);
- const recipe={version:1,id:'survey',title:'Host survey',definition:{width:1000,height:700,scene:{nodes:[{id:'host'}],camera:{rotateY:20,perspective:1800}},motion:{durationMs:200,tracks:[]}}};
+ const recipe={version:1,id:'survey',title:'Host survey',definition:{width:1000,height:700,scene:{nodes:[{id:'host'}],camera:{rotateY:20,perspective:1800},focus:{maxBlur:0}},motion:{durationMs:200,tracks:[]}}};
  await put('src/velora/scenes/survey.scene.json',JSON.stringify(recipe));
  await put('src/velora/scenes/survey.jsx',`"use client";\nimport React from "react"; import {Surface} from "${pkgName}"; import Counter from "../../Counter"; export default function HostScene(){return <Surface id="host"><Counter/></Surface>}`);
  await run(process.execPath,[cli,'sync']);
@@ -85,6 +106,37 @@ try{
   await run(process.execPath,[cli,'export','--url',url+'&velora-scene=survey','--output','scene.mp4','--fps','30','--width','640','--height','480']);
   const probe=JSON.parse(await run('ffprobe',['-v','error','-select_streams','v:0','-show_entries','stream=nb_frames,r_frame_rate','-of','json','scene.mp4']));
   assert.equal(probe.streams[0].r_frame_rate,'30/1');assert.ok(Number(probe.streams[0].nb_frames)>0);
+  if (!published) {
+   await page.goto(await editBridge(cli, dev.url));
+   await expect(page.getByRole('button', { name: 'Pick source element' })).toBeVisible({ timeout: 30_000 });
+   await page.getByRole('button', { name: 'Pick source element' }).click();
+   const box = await page.getByRole('heading', { name: 'existing provider' }).boundingBox();
+   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+   const panel = page.getByRole('dialog', { name: 'Source integration' });
+   await panel.getByRole('button', { name: 'h1', exact: true }).click();
+   await panel.getByLabel('Layer ID').fill('provider-title');
+   await panel.getByRole('button', { name: 'Preview source edit' }).click();
+   await expect(panel.getByRole('region', { name: 'Source diff' })).toContainText('provider-title');
+   assert.equal(await readFile(path.join(host, 'src/Counter.jsx'), 'utf8'), counter);
+   try {
+    const [applied] = await Promise.all([
+     page.waitForResponse(response => response.url().endsWith('/v1/source/apply'), { timeout: 20_000 }),
+     panel.getByRole('button', { name: 'Apply source edit' }).click(),
+    ]);
+    assert.equal(applied.status(), 200, applied.ok() ? undefined : await applied.text());
+    await expect.poll(() => readFile(path.join(host, 'src/Counter.jsx'), 'utf8')).toContain('id="provider-title" passthrough');
+    await expect.poll(async () => JSON.parse(await readFile(path.join(host, 'src/velora/scenes/survey.scene.json'), 'utf8')).definition.scene.nodes).toContainEqual({ id: 'provider-title', parentId: 'host' });
+    await expect(page.locator('[data-velora-id="provider-title"]')).toContainText('existing provider', { timeout: 30_000 });
+    await expect(page.locator('[data-item="provider-title"]')).toBeVisible({ timeout: 30_000 });
+    await page.goto(dev.url);
+    await expect(page.getByRole('heading', { name: 'existing provider' })).toBeVisible();
+    assert.equal(await page.locator('[data-velora-id="provider-title"]').count(), 0);
+   } catch (error) {
+    console.error('Next source scene after HMR:', (await page.locator('body').innerText()).slice(0, 1800), errors.slice(-4));
+    throw error;
+   }
+   console.log('next-app: source pick, reviewed JSX + recipe diff, and fast refresh passed');
+  }
  }
  if(kind!=='react'){
   dev.child.kill();await new Promise(r=>dev.child.once('exit',r));
@@ -99,4 +151,4 @@ try{
  }
  console.log(kind+': installed package/init/retry/sync, shared studio, real provider/counter and '+(kind==='react'?'bundler-independent React 18 renderer':'hot-reload identity/production 404')+' passed.');
 }catch(error){console.error(error);process.exitCode=1}
-finally{await browser?.close();for(const child of children)child.kill();await rm(scratch,{recursive:true,force:true})}
+finally{await browser?.close();for(const child of children)child.kill();await rm(scratch,{recursive:true,force:true,maxRetries:8,retryDelay:250})}

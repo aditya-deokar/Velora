@@ -47,7 +47,7 @@ describe("edit bridge protocol", () => {
   it("answers hello, read, edit and conflict round trips", async () => {
     await start();
     const { port } = bridge.server, token = bridge.token;
-    expect(JSON.parse((await call(port, "GET", "/v1/hello", { token })).body)).toMatchObject({ protocol: 1, readOnly: false, capabilities: ["scenes", "edits", "events", "presets"], fileKinds: ["scene", "preset"] });
+    expect(JSON.parse((await call(port, "GET", "/v1/hello", { token })).body)).toMatchObject({ protocol: 1, readOnly: false, capabilities: ["scenes", "edits", "events", "presets", "source"], fileKinds: ["scene", "preset", "source"] });
     const read = await call(port, "GET", "/v1/scenes/demo", { token });
     expect(read.headers["access-control-allow-origin"]).toBe(ORIGIN);
     expect(JSON.parse(read.body)).toMatchObject({ text: recipe, sha256: sha(recipe) });

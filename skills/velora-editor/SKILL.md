@@ -121,6 +121,14 @@ the same ops you make, through the same bridge:
 - Find **Stagger layers** and **Timing tools** through the command palette. Drag the gold stagger handle to adjust member spacing, or type the delay in the Clip Inspector. The timing tools sequence root layer tracks and align, distribute, reverse, or stretch selected keys.
 - **Behaviors**, **Camera moves**, and **Presets** are available on the toolbar. Saving a preset requires an edit bridge. Project easing presets appear under **Project** in the easing library.
 
+## Source integration
+
+- In a React project, start the edit bridge and choose **Source** for the JSX outline or **Pick source element** to inspect something rendered in the viewport. A code-inspector location can select the source node directly. Otherwise choose a highlighted candidate. **Open in editor** and **Copy path:line** work from the outline.
+- Choose **Promote to layer** to wrap an element, **Group spatial layers** for contiguous Surface siblings, or **Expose prop** for a literal in a function component with a block body. Next App Router edits require an explicit client boundary. A Surface adds a positioned `div`, so check inline, flex, and grid layouts after applying.
+- If a promotion turns a leaf into a spatial group, check depth-of-field coverage before capture. With blur enabled, remaining visible content also needs a Surface leaf or `content`.
+- Review the diff, the resulting outline, and the Git status. **Apply source edit** confirms the write. **Undo last source edit** restores both files if neither has changed since the write. A refusal includes **Ask agent** with the selected node and reason.
+- Run `velora edit source outline --scene <id> --json` to find exact node paths. Use `velora edit source wrap|group|expose` without `--write` for a dry run. Pass `--expect-sha` and `--expect-recipe-sha` to pin the revisions you reviewed.
+
 ## Anti-Patterns
 
 - Rewriting the whole recipe to change one keyframe: noisy diffs and lost author formatting.

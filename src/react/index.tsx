@@ -122,6 +122,8 @@ export type SurfaceProps = {
   transform?: TransformInput;
   children?: ReactNode;
   content?: ReactNode;
+  /** Render the original subtree without a wrapper when used outside a Scene. */
+  passthrough?: boolean;
   className?: string;
   style?: CSSProperties;
 };
@@ -337,6 +339,7 @@ export function Surface({
   transform,
   children,
   content,
+  passthrough,
   className,
   style,
 }: SurfaceProps) {
@@ -345,12 +348,9 @@ export function Surface({
   const parent = useContext(ParentContext);
   const [token] = useState(() => Symbol("velora-binding"));
   const element = useRef<HTMLDivElement>(null);
-  if (!context)
-    throw new Error(
-      "Surface and Motion must be rendered inside a Velora Scene.",
-    );
-  const { registry, nodes, transforms } = context;
+  const registry = context?.registry;
   useLayout(() => {
+    if (!registry || !element.current) return;
     registry.upsert({
       token,
       id,
@@ -359,9 +359,14 @@ export function Surface({
       transform,
     });
   });
-  useLayout(() => () => registry.remove(token), [registry, token]);
+  useLayout(() => () => registry?.remove(token), [registry, token]);
+  if (!context) {
+    if (passthrough) return <>{content}{children}</>;
+    throw new Error("Surface and Motion must be rendered inside a Velora Scene.");
+  }
+  const { nodes, transforms } = context;
   const node = nodes.get(id);
-  const grouped = Array.from(registry.entries.values()).some(
+  const grouped = Array.from(context.registry.entries.values()).some(
     (binding) => binding.parent === token,
   );
   const blur = node?.blur ?? 0;

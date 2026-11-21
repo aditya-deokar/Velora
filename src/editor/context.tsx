@@ -4,6 +4,7 @@ import type { SceneSnapshot } from "../react";
 import type { EditorController } from "./commands";
 import type { EditorState, EditorStore } from "./store";
 import type { BridgeHello, createBridgeClient } from "./bridge";
+import type { SourceHint } from "./source/pick";
 
 /** Everything panels share: the store, the preview host (one session and inspector channel), the latest
  * Scene snapshot and the command controller. Provided once by Editor.tsx. */
@@ -15,6 +16,8 @@ export type EditorContextValue = {
   hello?: BridgeHello;
   client?: ReturnType<typeof createBridgeClient>;
   sceneId: string;
+  sourcePicking?: boolean;
+  pickSource?(hint?: SourceHint): void;
   setFocused(focused: EditorController["focused"]): void;
   notify(message: string, action?: { label: string; run(): void }): void;
 };

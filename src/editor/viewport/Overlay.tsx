@@ -16,6 +16,7 @@ import { focusHit, followOps } from "./FocusTool";
 import { cameraPath, keyDotOps, layerPath, pathKeys, pathWindow, sampleTimes } from "./MotionPath";
 import { onionSkin } from "./OnionSkin";
 import { GizmoHandles, gizmoGeometry, type HandleId } from "./Gizmo";
+import { pickSourceElement } from "../source/pick";
 
 /** The viewport overlay (Phase 06): a chrome-marked SVG in frame pixels above the scaled frame (the
  * ScenePreview overlay slot). It picks Surfaces from projected quads, draws selection, gizmos, motion
@@ -40,7 +41,7 @@ function authoredCamera(doc: Doc, presentationMs: number): Camera {
   return CameraSchema.parse({ ...doc?.definition?.scene?.camera, ...state?.camera });
 }
 export function Overlay() {
-  const { store, host, snapshot, notify } = useEditor();
+  const { store, host, snapshot, notify, sourcePicking, pickSource } = useEditor();
   const state = useEditorState(store);
   const svg = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<Drag>();
@@ -327,8 +328,9 @@ export function Overlay() {
   const typed = drag?.typed;
   return <svg ref={svg} data-velora-viewport-overlay="" data-tool={tool} viewBox={`0 0 ${frame.width} ${frame.height}`} width={frame.width} height={frame.height}
     role="application" aria-label={`Viewport (${tool} tool${director ? ", director view" : ""})`} aria-roledescription="viewport"
-    style={{ position: "absolute", inset: 0, pointerEvents: "all", cursor: tool === "focus" ? "crosshair" : tool === "camera" ? "grab" : "default", touchAction: "none", overflow: "visible" }}
+    style={{ position: "absolute", inset: 0, pointerEvents: "all", cursor: sourcePicking || tool === "focus" ? "crosshair" : tool === "camera" ? "grab" : "default", touchAction: "none", overflow: "visible" }}
     onPointerDown={event => {
+      if (sourcePicking && event.button === 0) { event.preventDefault(); pickSource?.(pickSourceElement(event.clientX, event.clientY)); return; }
       begin(event);
     }}
     onPointerMove={event => { const current = dragRef.current; if (current) update(current, pointOf(event), { shift: event.shiftKey, alt: event.altKey }); }}

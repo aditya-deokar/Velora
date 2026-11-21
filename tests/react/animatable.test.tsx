@@ -27,6 +27,18 @@ function Badge({ id = "badge" }: { id?: string }) {
   return <span data-testid={id} data-fill={fill} data-visible={String(visible)} data-mode={mode} />;
 }
 describe("useAnimatable", () => {
+  it("preserves authored host components outside a Scene when generated bindings opt in", () => {
+    function SharedCard() {
+      const { value } = useAnimatable("shared-card", { value: { type: "number", default: 12 } }, { outsideScene: "defaults" });
+      return <Surface id="shared" passthrough content={<main data-testid="shared">{value}</main>} />;
+    }
+    const view = render(<SharedCard />);
+    expect(view.getByTestId("shared").textContent).toBe("12");
+    expect(view.container.firstElementChild).toBe(view.getByTestId("shared"));
+    view.rerender(<Scene motion={motion(channel("shared-card.value", 12, 24))} timeMs={1000}><SharedCard /></Scene>);
+    expect(view.getByTestId("shared").textContent).toBe("24");
+    expect(view.getByTestId("shared").closest('[data-velora-id="shared"]')).toBeTruthy();
+  });
   it("animates a counter from a recipe channel track with only the hook", () => {
     const view = render(<Scene motion={motion(channel("hero-counter.value", 0, 2000))} timeMs={250}><Surface id="card"><HeroCounter /></Surface></Scene>);
     expect(view.getByTestId("counter").textContent).toBe("500");

@@ -26,6 +26,10 @@ export type BridgeHandlers = {
   listPresets?(): Promise<BridgeReply>;
   readPreset?(id: string): Promise<BridgeReply>;
   writePreset?(id: string, body: unknown): Promise<BridgeReply>;
+  sourceOutline?(input: { file?: string; scene?: string }): Promise<BridgeReply>;
+  sourcePreview?(body: unknown): Promise<BridgeReply>;
+  sourceApply?(body: unknown): Promise<BridgeReply>;
+  sourceUndo?(body: unknown): Promise<BridgeReply>;
 };
 export type BridgeOptions = {
   host?: string;
@@ -102,7 +106,26 @@ export async function startEditBridge(options: BridgeOptions): Promise<BridgeSer
     }
     if (!tokenMatches(options.token, request.headers.authorization)) return json(response, 401, { error: "Missing or invalid bridge token." }, origin);
     const url = new URL(request.url ?? "/", `http://${hostHeader}`);
+    if (request.method === "GET" && url.pathname === "/v1/source/outline" && options.handlers.sourceOutline) {
+      if ([...url.searchParams.keys()].some(key => key !== "file" && key !== "scene") || ["file", "scene"].some(key => url.searchParams.getAll(key).length > 1))
+        return json(response, 400, { error: "Use one file and/or one scene parameter." }, origin);
+      const reply = await options.handlers.sourceOutline({ file: url.searchParams.get("file") ?? undefined, scene: url.searchParams.get("scene") ?? undefined });
+      return json(response, reply.status, reply.body, origin);
+    }
     if (url.search) return json(response, 400, { error: "Query strings are not accepted." }, origin);
+    if (request.method === "POST" && url.pathname.startsWith("/v1/source/")) {
+      const action = url.pathname.slice("/v1/source/".length);
+      if (action === "open") return json(response, 405, { error: "Use the Open in editor link or copy the source location." }, origin);
+      const handler = action === "preview" ? options.handlers.sourcePreview : action === "apply" ? options.handlers.sourceApply : action === "undo" ? options.handlers.sourceUndo : undefined;
+      if (!handler) return json(response, 404, { error: "Unknown source endpoint." }, origin);
+      if (options.readOnly && action !== "preview") return json(response, 405, { error: "This bridge is read-only." }, origin);
+      if (!/^application\/json(?:;\s*charset=utf-8)?$/i.test(request.headers["content-type"] ?? "")) return json(response, 415, { error: "Send application/json." }, origin);
+      let body: unknown;
+      try { body = JSON.parse(await readBody(request)); }
+      catch (error) { const large = (error as { status?: number }).status === 413; return json(response, large ? 413 : 400, { error: large ? "Body exceeds 1 MB." : "Body is not JSON." }, origin); }
+      const reply = await handler(body);
+      return json(response, reply.status, reply.body, origin);
+    }
     const scene = /^\/v1\/scenes\/([a-z0-9]+(?:-[a-z0-9]+)*)(\/edits)?$/.exec(url.pathname);
     if (request.method === "GET" && url.pathname === "/v1/hello") return json(response, 200, options.handlers.hello(), origin);
     if (request.method === "GET" && url.pathname === "/v1/events") {

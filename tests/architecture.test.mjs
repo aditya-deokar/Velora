@@ -107,6 +107,8 @@ import {z} from 'zod'; export const CascadeSchema=z.strictObject({}); export fun
   'src/project/edit.ts': '/** SOURCE OF TRUTH: executeEditCommand.\n * WHAT: apply edit batches to recipes.\n * WHY: one write policy for agents and editors.\n * WHERE: CLI calls this owner.\n */\nexport async function executeEditCommand(){return {};}',
   'src/core/motion.ts': '/** SOURCE OF TRUTH: MotionSchema, evaluateMotion, motionDuration, motionTime, cinematicProgress, cinematicTimeAtProgress, sampleFrameTime, loopSeam, monotoneTangents.\n * WHAT: validate motion and time.\n * WHY: prevent multiple competing clocks.\n * WHERE: consumed by React adapters.\n */\nimport { z } from \'zod\'; export function monotoneTangents(){return [];} export const MotionSchema=z.strictObject({}); export function evaluateMotion(){return 0;} export function motionDuration(){return 0;} export function motionTime(){return 0;} export function cinematicProgress(){return 0;} export function cinematicTimeAtProgress(){return 0;} export function sampleFrameTime(){return 0;} export function loopSeam(){return 0;}',
   'src/core/behaviors.ts': '/** SOURCE OF TRUTH: BEHAVIOR_CATALOG, buildBehavior.\n * WHAT: compile behaviors to clips.\n * WHY: share behavior definitions.\n * WHERE: consumed by the editor.\n */\nexport const BEHAVIOR_CATALOG=Object.freeze([]); export function buildBehavior(){return {};}',
+  'src/core/source.ts': '/** SOURCE OF TRUTH: SourceOutlineSchema.\n * WHAT: validate source outlines.\n * WHY: share source data.\n * WHERE: consumed by the editor.\n */\nimport { z } from "zod"; export const SourceOutlineSchema=z.strictObject({});',
+  'src/project/source.ts': '/** SOURCE OF TRUTH: outlineSource, wrapElement.\n * WHAT: inspect source and prepare edits.\n * WHY: preserve host formatting.\n * WHERE: used by the source bridge.\n */\nexport function outlineSource(){return [];} export function wrapElement(){return {};}',
   'src/core/presets.ts': '/** SOURCE OF TRUTH: PresetSchema.\n * WHAT: validate project presets.\n * WHY: share preset data.\n * WHERE: consumed by project adapters.\n */\nimport { z } from "zod"; export const PresetSchema=z.strictObject({});',
   'src/core/typography.ts': '/** SOURCE OF TRUTH: textAnimatorAt.\n * WHAT: evaluate text selectors.\n * WHY: share range selection.\n * WHERE: consumed by the kit.\n */\nexport function textAnimatorAt(){return [];}',
   'src/kit/text-animator.tsx': '/** SOURCE OF TRUTH: TextAnimator.\n * WHAT: render animated text.\n * WHY: share text animation.\n * WHERE: consumed by scene authors.\n */\nexport function TextAnimator(){return null;}',
@@ -387,7 +389,7 @@ test('v2.1 positive fixtures: editor composes preview, three composes React Thre
     'src/preview/EditMode.tsx': `export const loadEditor = () => import('../editor/Inspector');`,
     'src/project/services/bridge.ts': `import {createServer} from 'node:http'; import {atomic} from '../services'; const port = process.env.PORT; createServer();`,
     'src/project/services.ts': `export const atomic=()=>0;`,
-    'src/project/source.ts': `import ts from 'typescript'; export const outline=()=>ts.version;`,
+    'src/project/source.ts': `${valid['src/project/source.ts']}\nimport ts from 'typescript'; export const outline=()=>ts.version;`,
     'src/project/edit.ts': `/** SOURCE OF TRUTH: executeEditCommand.
  * WHAT: apply edit batches to recipes.
  * WHY: one write policy for agents and editors.

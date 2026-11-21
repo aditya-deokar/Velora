@@ -1,4 +1,4 @@
-import { parseJsonDocument, type EditOp } from "../core";
+import { parseJsonDocument, type EditOp, type SourceConfirm, type SourceDocument, type SourcePreview, type SourceRequest } from "../core";
 import type { Doc, EditorWriter } from "./store";
 
 /** Edit bridge client (protocol v1, see project/services/bridge.ts). The token arrives in the URL
@@ -29,8 +29,17 @@ export function createBridgeClient(address: BridgeAddress, fetchImpl: Fetch = (.
     const response = await fetchImpl(origin + path, { ...init, headers: { ...headers, ...(init.headers ?? {}) } });
     return { status: response.status, body: await response.json().catch(() => ({})) as Record<string, unknown> };
   };
+  const source = async <T>(route: string, body?: unknown): Promise<T> => {
+    const reply = await json(`/v1/source/${route}`, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (reply.status !== 200) throw new Error(String(reply.body.error ?? `Source bridge returned HTTP ${reply.status}.`));
+    return reply.body as T;
+  };
   return {
     origin,
+    outlineSource: (scene: string, file?: string) => source<{ outlines: SourceDocument[] }>(`outline?${new URLSearchParams({ scene, ...(file ? { file } : {}) })}`),
+    previewSource: (request: SourceRequest) => source<SourcePreview>("preview", request),
+    applySource: (request: SourceConfirm) => source<{ undoId: string }>("apply", request),
+    undoSource: (undoId: string) => source<{ undone: true }>("undo", { undoId }),
     async hello(): Promise<BridgeHello> {
       const reply = await json("/v1/hello");
       if (reply.status !== 200) throw new Error(`Bridge refused hello (HTTP ${reply.status}).`);

@@ -25,6 +25,8 @@ import { Presets } from "./Presets";
 import { StaggerTool } from "./StaggerTool";
 import { Timing, Ungroup } from "./MotionDesign";
 import { findRootClip } from "./group";
+import { PromoteDialog } from "./source/PromoteDialog";
+import type { SourceHint } from "./source/pick";
 
 /** The studio editor (Edit mode, Phase 04/05): ScenePreview in editor layout with Layers, Inspector and the
  * timeline in its slots, one store, one session cursor, and the edit bridge for saving. Every editor element
@@ -33,6 +35,8 @@ export type EditorProps = { sceneId: string; title: string; recipe: unknown; chi
 type Shared = {
   store: EditorStore; sceneId: string; hello?: BridgeHello; client?: ReturnType<typeof createBridgeClient>; panel?: EditorPanel; setPanel(panel?: EditorPanel): void;
   focused: { current: EditorController["focused"] }; clipboard: { current?: ClipboardPayload };
+  sourcePicking: boolean; setSourcePicking(value: boolean): void; sourceHint?: SourceHint; pickSource(hint?: SourceHint): void;
+  sourceUndo?: string; setSourceUndo(id?: string): void;
   toast?: { message: string; action?: { label: string; run(): void } }; notify(message: string, action?: { label: string; run(): void }): void;
 };
 const UI_KEYS: (keyof EditorUi)[] = ["autoKey", "snap", "animatedOnly", "view", "zoom", "solo", "hidden", "tool", "onion", "paths"];
@@ -53,6 +57,10 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
   const state = useEditorState(store);
   const [hello, setHello] = useState<BridgeHello>();
   const [panel, setPanel] = useState<EditorPanel>();
+  const [sourcePicking, setSourcePicking] = useState(false);
+  const [sourceHint, setSourceHint] = useState<SourceHint>();
+  const [sourceUndo, setSourceUndo] = useState<string>();
+  const pickSource = (hint?: SourceHint) => { setSourcePicking(false); setSourceHint(hint); setPanel("source"); };
   const [toast, setToast] = useState<Shared["toast"]>();
   const focused = useRef<EditorController["focused"]>(undefined);
   const clipboard = useRef<ClipboardPayload | undefined>(undefined);
@@ -81,8 +89,9 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
           store.setReadOnly(greeting.readOnly, read.sha);
           attempt = 0;
           await client.events(event => {
-            const data = event.data as { path?: string; sha?: string | null } | null;
+            const data = event.data as { path?: string; sha?: string | null; paths?: string[] } | null;
             if (event.event === "file-changed" && data?.path?.endsWith(`/${sceneId}.scene.json`) && data.sha && data.sha !== store.getState().sha) void refresh().catch(() => undefined);
+            if (event.event === "source-changed" && data?.paths?.some(path => path.endsWith(`/${sceneId}.scene.json`))) void refresh().catch(() => undefined);
             if (event.event === "bridge-closing") store.setReadOnly(true);
           }, abort.signal);
         } catch { /* fall through to backoff */ }
@@ -95,7 +104,7 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
   }, [client, sceneId, store]);
   // Without a bridge, HMR delivers recipe changes (agent or IDE edits): adopt, rebase or conflict.
   useEffect(() => { if (!client) store.external(recipe as Doc, undefined, JSON.stringify(recipe)); }, [recipe, client, store]);
-  const shared: Shared = { store, sceneId, hello, client, panel, setPanel, focused, clipboard, toast, notify };
+  const shared: Shared = { store, sceneId, hello, client, panel, setPanel, focused, clipboard, toast, notify, sourcePicking, setSourcePicking, sourceHint, pickSource, sourceUndo, setSourceUndo };
   const definition = (state.draft as Doc).definition;
   return <ScenePreview definition={definition} title={title} backHref={backHref} onBack={onBack} hot={hot} revision={state.revision} layout="editor"
     {...(state.ui.director ? { viewCamera: state.ui.director } : {})} peaking={state.ui.tool === "focus"}
@@ -147,7 +156,7 @@ function WithEditor({ shared, children }: { shared: Shared; children: ReactNode 
         store.setUi(direction === 0 ? { zoom: 1, scroll: 0 } : { zoom: Math.min(400, Math.max(1, ui.zoom * (direction > 0 ? 1.5 : 1 / 1.5))) });
       },
     };
-    return { store, host, snapshot, controller, hello: shared.hello, client: shared.client, sceneId: shared.sceneId, setFocused: next => { shared.focused.current = next; }, notify: shared.notify };
+    return { store, host, snapshot, controller, hello: shared.hello, client: shared.client, sceneId: shared.sceneId, sourcePicking: shared.sourcePicking, pickSource: shared.pickSource, setFocused: next => { shared.focused.current = next; }, notify: shared.notify };
   }, [host, snapshot, state, shared]);
   if (!value) return null;
   return <SharedContext.Provider value={shared}><EditorContext.Provider value={value}><style>{editorTheme}</style>{children}</EditorContext.Provider></SharedContext.Provider>;
@@ -155,6 +164,7 @@ function WithEditor({ shared, children }: { shared: Shared; children: ReactNode 
 const SAVE_LABELS = { saved: "● Saved", saving: "◌ Saving…", unsaved: "○ Not saved (no bridge)", conflict: "▲ Changed on disk", offline: "✕ Bridge disconnected" } as const;
 function Toolbar() {
   const { store, sceneId, controller } = useEditor();
+  const shared = useContext(SharedContext)!;
   const state = useEditorState(store);
   const advisories = useAdvisories();
   const [copied, setCopied] = useState<string>();
@@ -171,6 +181,10 @@ function Toolbar() {
     <button className="ve-btn" onClick={() => controller.open("behaviors")}>Behaviors</button>
     <button className="ve-btn" onClick={() => controller.open("camera-moves")}>Camera moves</button>
     <button className="ve-btn" onClick={() => controller.open("presets")}>Presets</button>
+    {shared.hello?.capabilities.includes("source") && <>
+      <button className="ve-btn" onClick={() => shared.pickSource()}>Source</button>
+      <button className="ve-btn" aria-pressed={shared.sourcePicking} onClick={() => { shared.setPanel(undefined); shared.setSourcePicking(!shared.sourcePicking); }}>Pick source element</button>
+    </>}
     <button className="ve-btn" onClick={() => controller.open("palette")} title="Ctrl/⌘+K">⌘K</button>
     <span className="ve-save" data-state={state.save} role="status" aria-live="polite" data-testid="editor-save-state">{SAVE_LABELS[state.save]}</span>
     {state.readOnly && <>
@@ -189,8 +203,8 @@ function Toolbar() {
 }
 /** One-per-editor effects: shortcuts, the work-area loop, solo/hide styles, popovers and toasts. */
 function Effects() {
-  const shared = useContext(SharedContext)!;
   const { store, host, controller } = useEditor();
+  const shared = useContext(SharedContext)!;
   const state = useEditorState(store);
   const latest = useRef({ controller });
   latest.current = { controller };
@@ -200,6 +214,7 @@ function Effects() {
       const target = event.target as HTMLElement | null;
       const typing = !!target?.closest?.("input,select,textarea,[contenteditable=''],[contenteditable='true']");
       if (typing && event.key !== "Escape") return;
+      if (event.key === "Escape") shared.setSourcePicking(false);
       const command = matchShortcut(event, store.getState());
       if (!command) return;
       // Tab toggles the director view only from the viewport or the page body; elsewhere it moves focus.
@@ -220,6 +235,8 @@ function Effects() {
   const css = [
     ...state.ui.hidden.map(id => `[data-velora-layout=editor] [data-velora-id="${CSS.escape(id)}"]{visibility:hidden!important}`),
     ...(state.ui.solo.length ? [`[data-velora-layout=editor] [data-velora-content]{opacity:.12!important}`, ...state.ui.solo.map(id => `[data-velora-layout=editor] [data-velora-id="${CSS.escape(id)}"] [data-velora-content]{opacity:1!important}`)] : []),
+    // Grouped Surfaces suppress pointer events on ordinary JSX. The picker reads through the SVG overlay.
+    ...(shared.sourcePicking ? ["[data-velora-layout=editor] [data-velora-scene] *{pointer-events:auto!important}"] : []),
   ].join(" ");
   const close = () => shared.setPanel(undefined);
   const selectedClip = state.selection.clips[0] ? findRootClip(state.draft, state.selection.clips[0]) : undefined;
@@ -237,6 +254,7 @@ function Effects() {
     {shared.panel === "stagger" && <StaggerTool onClose={close}/>}
     {shared.panel === "timing" && <Timing onClose={close}/>}
     {shared.panel === "ungroup" && <Ungroup onClose={close}/>}
+    {shared.panel === "source" && <PromoteDialog onClose={close} hint={shared.sourceHint} undoId={shared.sourceUndo} rememberUndo={shared.setSourceUndo}/>}
     {shared.toast?.message && <div className="ve-toast" role="status" data-velora-preview-chrome="" data-testid="editor-toast">{shared.toast.message}
       {shared.toast.action && <button className="ve-btn" onClick={() => { shared.toast!.action!.run(); shared.notify(""); }}>{shared.toast.action.label}</button>}</div>}
   </>;

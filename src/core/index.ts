@@ -1,5 +1,6 @@
 export * from "./scene";
 export * from "./spatial";
+export * from "./source";
 export * from "./motion";
 export * from "./easing";
 export * from "./color";

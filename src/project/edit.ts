@@ -11,6 +11,7 @@ import { startEditBridge, createBridgeToken, watchProjectFiles, BridgeStartError
 import { executeProjectCommand } from "./commands";
 import { discoverPresets, PRESET_DIRECTORY } from "./discovery";
 import { PresetSchema, applyPreset, presetFromTracks, presetTargetKind, type Preset } from "../core/presets";
+import { loadSourceOutlines, prepareSourceEdit, recoverSourceTransaction, sourceBridgeHandlers, writeSourceTransaction } from "./source-edit";
 
 /** SOURCE OF TRUTH: executeEditCommand.
  * WHAT: velora edit (ls, apply, key, ease and the edit bridge): read a scene recipe, apply EditOp batches
@@ -21,7 +22,7 @@ import { PresetSchema, applyPreset, presetFromTracks, presetTargetKind, type Pre
  * WHERE: cli/index parses flags; core/edit and core/json own the reducer and writer; services own file I/O
  * (scoped paths, atomic writes); services/bridge owns the loopback transport and watcher.
  */
-export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "bridge" | "preset";
+export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "bridge" | "preset" | "source";
 export type EditCommandResult =
   | { success: true; command: "edit"; data: Record<string, unknown>; warnings?: CliIssue[]; next?: string[]; server?: BridgeServer }
   | { success: false; command: "edit"; issues: CliIssue[]; next: string[] };
@@ -31,6 +32,15 @@ const failure = (issues: { code: string; message: string; path?: string; hint?: 
 };
 const scenePath = (id: string) => `${SCENE_RECIPE_DIRECTORY}/${id}.scene.json`;
 const EditInputSchema = z.strictObject({
+  sourceAction: z.enum(["outline", "wrap", "group", "expose"]).optional(),
+  file: z.string().max(1200).optional(),
+  node: z.string().optional(),
+  nodes: z.array(z.string()).optional(),
+  sourceId: z.string().optional(),
+  content: z.boolean().optional(),
+  prop: z.string().optional(),
+  enumOptions: z.array(z.string()).optional(),
+  expectRecipeSha: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   scene: z.string().optional(),
   at: z.number().finite().nonnegative().optional(),
   ops: z.string().optional(),
@@ -172,15 +182,21 @@ export function editorUrl(previewUrl: string, scene: string | undefined, port: n
   return `${url.href}#velora-bridge=${port}.${token}`;
 }
 /** Start the bridge for an allowed origin with the scene policy; used by velora edit and velora studio --edit. */
-export async function startSceneBridge(root: string, options: { origin: string; port?: number; readOnly: boolean; version: string; projectId?: string; log?: (entry: Record<string, unknown>) => void }) {
+export async function startSceneBridge(root: string, options: { origin: string; port?: number; readOnly: boolean; version: string; projectId?: string; source?: boolean; log?: (entry: Record<string, unknown>) => void }) {
+  if (options.source !== false && !options.readOnly) await recoverSourceTransaction(root);
   const token = createBridgeToken();
+  let broadcast: BridgeServer["broadcast"] | undefined;
+  const sourceHandlers = options.source === false ? {} : sourceBridgeHandlers(root, paths => {
+    options.log?.({ event: "source-write", paths });
+    broadcast?.("source-changed", { paths });
+  });
   // Recent revisions per scene: a batch whose result equals one of them (undo) writes that text verbatim.
   const history = new Map<string, string[]>();
   const remember = (id: string, text: string) => { const list = history.get(id) ?? []; list.unshift(text); history.set(id, list.slice(0, 64)); };
   const sameValue = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   const handlers = {
     hello: () => ({ protocol: 1, version: options.version, ...(options.projectId ? { projectId: options.projectId } : {}), readOnly: options.readOnly,
-      capabilities: ["scenes", "edits", "events", "presets"], fileKinds: ["scene", "preset"] }),
+      capabilities: ["scenes", "edits", "events", "presets", ...(options.source === false ? [] : ["source"])], fileKinds: ["scene", "preset", ...(options.source === false ? [] : ["source"]) ] }),
     async listPresets(): Promise<BridgeReply> {
       return { status: 200, body: { presets: await discoverPresets(root) } };
     },
@@ -232,7 +248,15 @@ export async function startSceneBridge(root: string, options: { origin: string; 
       return { status: 200, body: { sha, inverse: result.inverse } };
     },
   };
-  const server = await startEditBridge({ token, origins: [options.origin], readOnly: options.readOnly, handlers, ...(options.port !== undefined ? { port: options.port } : {}), ...(options.log ? { log: options.log } : {}) });
+  // Scoped-path refusals (symlinks, protected paths) are a 403, never a generic failure.
+  const guarded = <A extends unknown[]>(run: (...args: A) => Promise<BridgeReply>) => async (...args: A): Promise<BridgeReply> => {
+    try { return await run(...args); }
+    catch (error) { if ((error as { code?: string }).code === "denied-path") return { status: 403, body: { error: "That project path is not allowed." } }; throw error; }
+  };
+  const safe = { hello: handlers.hello, readScene: guarded(handlers.readScene), applySceneEdits: guarded(handlers.applySceneEdits),
+    listPresets: guarded(handlers.listPresets), readPreset: guarded(handlers.readPreset), writePreset: guarded(handlers.writePreset), ...sourceHandlers };
+  const server = await startEditBridge({ token, origins: [options.origin], readOnly: options.readOnly, handlers: safe, ...(options.port !== undefined ? { port: options.port } : {}), ...(options.log ? { log: options.log } : {}) });
+  broadcast = server.broadcast;
   const watcher = watchProjectFiles(root, change => server.broadcast("file-changed", change));
   const stop = server.stop;
   return { token, server: { ...server, stop: async () => { watcher.close(); await stop(); } } };
@@ -244,6 +268,22 @@ export async function executeEditCommand(operation: EditOperation, input: EditIn
   const options = parsed.data;
   try {
     const root = await services.canonicalRoot(context.root);
+    if (operation === "source") {
+      const kind = options.sourceAction ?? "outline";
+      if (kind === "outline") return { success: true, command: "edit", data: { outlines: await loadSourceOutlines(root, { file: options.file, scene: options.scene }) } };
+      if (options.write) await recoverSourceTransaction(root);
+      const sourceRequest = { kind, file: options.file ? services.projectRelativePath(root, options.file) : undefined, node: options.node ?? options.nodes?.[0], id: options.sourceId,
+        ...(options.scene ? { scene: options.scene } : {}), ...(kind === "wrap" ? { content: options.content } : {}),
+        ...(kind === "group" ? { nodes: options.nodes } : {}), ...(kind === "expose" ? { prop: options.prop, options: options.enumOptions } : {}) };
+      let plan: Awaited<ReturnType<typeof prepareSourceEdit>>;
+      try { plan = await prepareSourceEdit(root, sourceRequest); }
+      catch (error) { if (error instanceof z.ZodError) return failure(error.issues.map(issue => ({ code: "ERR_SOURCE_REFUSED", path: issue.path.join("."), message: issue.message }))); throw error; }
+      const [jsx, recipe] = plan.changes;
+      if ((options.expectSha && plan.preview.baseShas[jsx.file] !== options.expectSha) || (options.expectRecipeSha && (!recipe || plan.preview.baseShas[recipe.file] !== options.expectRecipeSha)))
+        return failure([{ code: "ERR_SOURCE_CONFLICT", message: "A reviewed file hash changed. Run the dry run again before writing." }]);
+      if (options.write) await writeSourceTransaction(root, plan.changes);
+      return { success: true, command: "edit", data: { ...plan.preview, written: options.write ?? false } };
+    }
     if (operation === "bridge") {
       if (!options.url) return failure([{ code: "ERR_MISSING_VALUE", path: "url", message: "Pass the running dev server with --url (or set APP_PORT / PORT)." }]);
       if (options.scene) { const read = await readScene(root, options.scene); if ("success" in read) return read; }

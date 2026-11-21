@@ -43,6 +43,7 @@ const owners = new Map([
   // v2.1 Phase 07 owners: behaviors, presets, the text animator math and the motion-graphics kit.
   ['buildBehavior','src/core/behaviors.ts'], ['BEHAVIOR_CATALOG','src/core/behaviors.ts'], ['PresetSchema','src/core/presets.ts'], ['textAnimatorAt','src/core/typography.ts'],
   ['TextAnimator','src/kit/text-animator.tsx'], ['DrawPath','src/kit/draw-path.tsx'], ['Shape','src/kit/shape.tsx'],
+  ['SourceOutlineSchema','src/core/source.ts'], ['outlineSource','src/project/source.ts'], ['wrapElement','src/project/source.ts'],
   ['NoiseSchema','src/core/noise.ts'], ['sampleNoise','src/core/noise.ts'],
   ...['perspectiveForFocalLength','focalLengthForPerspective','lensFor'].map(name=>[name,'src/core/lens.ts']),
   ['evaluateScene', 'src/core/spatial.ts'], ['transformToCss', 'src/core/spatial.ts'],
@@ -89,7 +90,7 @@ const normalize = name => path.posix.normalize(name.replaceAll('\\', '/').replac
 const sourcePattern = /\.(?:[cm]?[jt]sx?)$/;
 const layerOf = name => {
   if (/^src\/project\/errors(?:\.[cm]?[jt]s)?$/.test(name)) return 'projectErrors';
-  if (/^src\/project\/(?:commands|recipes|discovery|edit)(?:\.[cm]?[jt]s)?$/.test(name)) return 'commands';
+  if (/^src\/project\/(?:commands|recipes|discovery|edit|source-edit)(?:\.[cm]?[jt]s)?$/.test(name)) return 'commands';
   if (/^src\/project\/services\//.test(name)) return 'bridgeServices';
   if (/^src\/project\/services(?:\.[cm]?[jt]s)?$/.test(name)) return 'services';
   if (/^src\/project\/source(?:\.[cm]?[jt]s)?$/.test(name)) return 'sourceAdapter';

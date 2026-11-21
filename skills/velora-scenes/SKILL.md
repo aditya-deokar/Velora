@@ -167,3 +167,8 @@ Frame math: `frame = round(timeMs * fps / 1000)`; one cursor owns elapsed time; 
 - Do not use this skill for composition timelines or asset management; load `velora-composition`.
 - Do not use this skill for audio, captions, or transitions; load `velora-audio` or `velora-transitions`.
 - Do not use this skill to judge export readiness; load `velora-verify` and inspect real frames.
+## Promoting JSX to spatial layers
+
+Use the studio's **Pick source element** or `velora edit source outline --scene <id> --json` to find authored JSX. The source diff can wrap an element in a Surface and update its scene recipe in one transaction. **Group spatial layers** gives contiguous Surface siblings a common parent while retaining their IDs and tracks. Use a motion clip to group tracks in time.
+
+Choose a stable, unique layer ID and verify the new wrapper's layout in Edit mode after applying. For JSX rendered in loops, conditions, or props, review the refusal and use **Ask agent** to request a manual change.

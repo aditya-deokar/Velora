@@ -54,4 +54,10 @@ export const editorTheme = `
 [data-velora-layout=editor] .ve-motion-fields .ve-input{width:min(58%,220px)}
 [data-velora-layout=editor] .ve-motion-fields p{margin:0;color:var(--ve-dim)}
 [data-velora-layout=editor] .ve-motion-fields .ve-preset{justify-content:flex-start;gap:10px}
+[data-velora-layout=editor] .ve-source-outline{max-height:220px;overflow:auto}
+[data-velora-layout=editor] .ve-source-outline li{display:flex;align-items:center;gap:5px;margin-block:2px}
+[data-velora-layout=editor] .ve-source-outline ul{list-style:none;padding:0;margin:4px 0}
+[data-velora-layout=editor] .ve-source-outline [data-source-candidate]{border-color:var(--ve-key)}
+[data-velora-layout=editor] .ve-source-links{display:flex;flex-wrap:wrap;gap:6px}
+[data-velora-layout=editor] [aria-label="Source diff"] pre{overflow:auto;max-height:180px;background:#141419;padding:8px;margin:4px 0}
 `;

@@ -95,6 +95,11 @@ export const PROMPT_LIBRARY: readonly Prompt[] = Object.freeze([
       "intentional perspective, focal depth and motion. Save the recipe and matching component in src/velora/scenes/ so they appear in the scene library. Keep the app's original design and data flow.",
     templates: [], skills: ["velora", "velora-scenes", "velora-cinematography"],
   },
+  {
+    id: "promote-layer", title: "Promote a JSX element", intent: "Prepare a minimal source edit when the studio cannot safely refactor JSX.", featured: false,
+    text: `${BASE} Review the requested source edit in <file> at JSX node <node> for scene <scene>. The intended layer or animatable ID is <id>. Operation: <operation>. The studio reported: <reason>. Inspect the component and recipe, preserve layout and existing IDs, then show me the minimal source and recipe diff before applying it. Verify the result in the live scene.`,
+    templates: [], skills: ["velora-editor", "velora-scenes"],
+  },
 ].map(prompt => Object.freeze(PromptSchema.parse(prompt))));
 
 export function findPrompt(id: string): Prompt | undefined {

@@ -17,7 +17,7 @@ import { groupOps } from "./group";
  * WHERE: Editor.tsx builds the controller and dispatches keydown through matchShortcut; panels run
  * commands by id. Edits go through intents and the store, never around them.
  */
-export type EditorPanel = "palette" | "easing" | "history" | "advisories" | "stagger" | "behaviors" | "camera-moves" | "presets" | "save-easing" | "timing" | "ungroup";
+export type EditorPanel = "palette" | "easing" | "history" | "advisories" | "stagger" | "behaviors" | "camera-moves" | "presets" | "save-easing" | "timing" | "ungroup" | "source";
 export type EditorController = {
   store: EditorStore;
   state: EditorState;
@@ -102,6 +102,7 @@ function clipStart(doc: ReturnType<EditorStore["committed"]>, id: string): numbe
 }
 export const EDITOR_COMMANDS: readonly EditorCommand[] = Object.freeze([
   { id: "palette.open", label: "Command palette", group: "General", shortcuts: ["Mod+K"], enabled: always, run: c => c.open("palette") },
+  { id: "source.open", label: "Open JSX source outline", group: "Source", shortcuts: [], enabled: always, run: c => c.open("source") },
   { id: "history.undo", label: "Undo", group: "General", shortcuts: ["Mod+Z"], enabled: s => s.undo.length > 0, run: c => c.store.undo() },
   { id: "history.redo", label: "Redo", group: "General", shortcuts: ["Mod+Shift+Z", "Ctrl+Y"], enabled: s => s.redo.length > 0, run: c => c.store.redo() },
   { id: "history.open", label: "Show history", group: "General", shortcuts: [], enabled: always, run: c => c.open("history") },

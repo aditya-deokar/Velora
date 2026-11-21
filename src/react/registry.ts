@@ -15,7 +15,7 @@ export type Binding = {
 };
 /** A declared animatable as consumers (the inspector) see it: specs only, never component instances. */
 export type AnimatableEntry = { readonly id: string; readonly spec: AnimatableSpec; readonly owner?: string; readonly readingTimeMs?: number };
-type AnimatableDeclaration = { id: string; spec: AnimatableSpec; key: string; owner?: symbol; readingTimeMs?: number };
+type AnimatableDeclaration = { id: string; spec: AnimatableSpec; key: string; owner?: symbol; explicitOwner?: string; readingTimeMs?: number };
 function sameObject(a: object | undefined, b: object | undefined) {
   if (a === b) return true;
   if (!a || !b) return false;
@@ -78,7 +78,7 @@ export function createRegistry() {
       const known = keys.get(declaration.id);
       if (known === undefined) {
         keys.set(declaration.id, declaration.key);
-        const owner = declaration.owner ? entries.get(declaration.owner)?.id : undefined;
+        const owner = declaration.explicitOwner ?? (declaration.owner ? entries.get(declaration.owner)?.id : undefined);
         view.set(declaration.id, Object.freeze({ id: declaration.id, spec: declaration.spec, ...(owner ? { owner } : {}),
           ...(declaration.readingTimeMs ? { readingTimeMs: declaration.readingTimeMs } : {}) }));
       } else if (known !== declaration.key && !issues.some(issue => issue.path === "animatable." + declaration.id))
@@ -143,7 +143,7 @@ export function createRegistry() {
     get animatableIssues(): SceneIssue[] { return animatableIssues; },
     declareAnimatable(token: symbol, declaration: AnimatableDeclaration) {
       const previous = declarations.get(token);
-      if (previous && previous.id === declaration.id && previous.key === declaration.key && previous.owner === declaration.owner && previous.readingTimeMs === declaration.readingTimeMs) return;
+      if (previous && previous.id === declaration.id && previous.key === declaration.key && previous.owner === declaration.owner && previous.explicitOwner === declaration.explicitOwner && previous.readingTimeMs === declaration.readingTimeMs) return;
       declarations.set(token, declaration);
       if (rebuildAnimatables()) publish();
     },

@@ -142,3 +142,21 @@ describe("velora edit preset (v2.1 Phase 07.6)", () => {
     expect(action.code).toBe(2);
   });
 });
+
+it("velora edit source outlines, previews and confirms a JSX wrap through the CLI flags", async () => {
+  const relative = "src/velora/scenes/demo.jsx", sourceFile = path.join(root, relative);
+  const source = 'export default function Demo(){ return <h1 id="title">Proof</h1>; }\n';
+  await writeFile(sourceFile, source);
+  const read = await run(["source", "outline", "--scene", "demo", "--json"]);
+  expect(read.code, read.stderr).toBe(0);
+  const { nodes } = JSON.parse(read.stdout).data.outlines[0];
+  const args = ["source", "wrap", "--file", relative, "--node", nodes[0].path, "--id", "headline", "--content"];
+  const preview = await run([...args, "--json"]);
+  expect(preview.code, preview.stderr).toBe(0);
+  expect(JSON.parse(preview.stdout).data).toMatchObject({ written: false, diffs: [{ file: relative }, { file: "src/velora/scenes/demo.scene.json" }] });
+  expect(await readFile(sourceFile, "utf8")).toBe(source);
+  const result = await run([...args, "--expect-sha", sha(source), "--expect-recipe-sha", sha(recipe), "--write", "--json"]);
+  expect(result.code, result.stderr).toBe(0);
+  expect(await readFile(sourceFile, "utf8")).toContain('<Surface id="headline" content={<h1 id="title">Proof</h1>} />');
+  expect(JSON.parse(await readFile(file(), "utf8")).definition.scene.nodes).toContainEqual({ id: "headline" });
+});

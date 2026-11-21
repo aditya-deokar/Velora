@@ -42,7 +42,7 @@ export async function scopedPath(root: string, target: string): Promise<string> 
   }
   return current;
 }
-export async function readText(root: string, target: string, maxBytes = 2_000_000): Promise<string | undefined> {
+export async function readText(root: string, target: string, maxBytes = 2_000_000, { strictUtf8 = false } = {}): Promise<string | undefined> {
   const filename = await scopedPath(root, target);
   let handle;
   try {
@@ -59,7 +59,10 @@ export async function readText(root: string, target: string, maxBytes = 2_000_00
       length += bytesRead;
     }
     if (length > maxBytes) throw fault("invalid-file", `Project file exceeded ${maxBytes} bytes while reading.`, target);
-    return buffer.subarray(0, length).toString("utf8");
+    const bytes = buffer.subarray(0, length);
+    if (!strictUtf8) return bytes.toString("utf8");
+    try { return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); }
+    catch { throw fault("invalid-file", "Expected a UTF-8 text file.", target); }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
@@ -132,6 +135,28 @@ export async function atomicWrite(root: string, target: string, content: string,
 export async function removeText(root: string, target: string, expected: string) {
   if (await readText(root, target) !== expected) throw fault("conflict", "Pending setup changed; review before retrying.", target);
   await unlink(await scopedPath(root, target));
+}
+export const currentProjectProcess = () => process.pid;
+export function projectProcessIsRunning(pid: number): boolean {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code !== "ESRCH"; }
+}
+export const textByteLength = (text: string) => Buffer.byteLength(text, "utf8");
+export function projectRelativePath(root: string, input: string): string {
+  const target = path.isAbsolute(input) ? path.relative(root, input) : input;
+  return relativeTarget(target.replaceAll("\\", "/").replace(/^\.\//, ""));
+}
+export const resolveProjectImport = (file: string, specifier: string) => path.posix.join(path.posix.dirname(file), specifier);
+export async function gitFileStatus(root: string, target: string): Promise<"clean" | "dirty" | "unknown"> {
+  await scopedPath(root, target);
+  return new Promise(resolve => {
+    const child = spawn("git", ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all", "--", target], { cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
+    let dirty = false;
+    const timer = setTimeout(() => { child.kill(); resolve("unknown"); }, 2500);
+    child.stdout.on("data", () => { dirty = true; });
+    child.once("error", () => { clearTimeout(timer); resolve("unknown"); });
+    child.once("close", code => { clearTimeout(timer); resolve(code !== 0 ? "unknown" : dirty ? "dirty" : "clean"); });
+  });
 }
 // Binary counterparts for asset files, which must round-trip byte-exactly.
 // Read up to `count` leading bytes regardless of total file size, for

@@ -23,29 +23,34 @@ export type AnimatableOptions<S> = {
   channels?: Partial<Record<keyof S & string, string>>;
   /** Minimum readable time for the component's on-screen copy, for authoring review. */
   readingTimeMs?: number;
+  /** An explicitly wrapped descendant Surface in the same component. */
+  owner?: string;
+  /** Return declared defaults when this component is rendered by the host outside a Scene. */
+  outsideScene?: "defaults";
 };
 const useLayout = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 /** Values plus which props currently have a track (so components can keep their own prop fallbacks). */
 export function useAnimatableState<const S extends Record<string, AnimatableProp>>(id: string | undefined, spec: S, options: AnimatableOptions<S> = {}): { values: AnimatableValues<S>; animated: ReadonlySet<keyof S & string> } {
   const { context, parent } = useSceneContext();
-  if (!context) throw new Error("useAnimatable requires a Velora Scene.");
+  if (!context && options.outsideScene !== "defaults") throw new Error("useAnimatable requires a Velora Scene.");
   const key = JSON.stringify(spec);
   const parsed = useMemo(() => AnimatableSpecSchema.safeParse(spec), [key]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!parsed.success) throw new Error(`Invalid animatable spec for ${id ?? "component"}: ${parsed.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`);
   const [token] = useState(() => Symbol("velora-animatable"));
-  const registry = context.registry;
+  const registry = context?.registry;
   const registrable = id !== undefined && ANIMATABLE_ID_PATTERN.test(id);
   useLayout(() => {
-    if (registrable) registry.declareAnimatable(token, { id, spec: parsed.data, key, owner: parent, readingTimeMs: options.readingTimeMs });
+    if (!registry) return;
+    if (registrable) registry.declareAnimatable(token, { id, spec: parsed.data, key, owner: parent, explicitOwner: options.owner, readingTimeMs: options.readingTimeMs });
     else registry.releaseAnimatable(token);
-  }, [registry, token, registrable, id, key, parent, options.readingTimeMs]);
-  useLayout(() => () => registry.releaseAnimatable(token), [registry, token]);
+  }, [registry, token, registrable, id, key, parent, options.readingTimeMs, options.owner]);
+  useLayout(() => () => registry?.releaseAnimatable(token), [registry, token]);
   const values: Record<string, number | string | boolean> = {};
   const animated = new Set<keyof S & string>();
   for (const prop of Object.keys(parsed.data) as (keyof S & string)[]) {
     const channel = options.channels?.[prop] ?? (id === undefined ? undefined : animatableChannel(id, prop));
-    const raw = channel === undefined ? undefined
+    const raw = channel === undefined || !context ? undefined
       : parsed.data[prop].type === "color"
         ? (Object.hasOwn(context.colorChannels, channel) ? context.colorChannels[channel] : undefined)
         : (Object.hasOwn(context.channels, channel) ? context.channels[channel] : undefined);
