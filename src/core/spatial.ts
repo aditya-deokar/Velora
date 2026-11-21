@@ -44,12 +44,16 @@ export type Evaluation = {
   camera?: CameraDefinition;
   focus?: FocusDefinition;
 };
-export type SpatialOptions = { channels?: Readonly<Record<string, number>> };
+export type SpatialOptions = { channels?: Readonly<Record<string, number>>; anchors?: ReadonlyMap<string, readonly [number, number, number]> };
 /** The stage camera matrix: scene positions minus camera, after stage rotation (cameraToCss convention). */
 export function cameraMatrix(c: Pick<CameraDefinition, "x" | "y" | "z" | "rotateX" | "rotateY" | "rotateZ">): Matrix {
   return matrixFor(TransformSchema.parse({ x: -c.x, y: -c.y, z: -c.z, rotateX: c.rotateX, rotateY: c.rotateY, rotateZ: c.rotateZ }));
 }
 type Vec3 = [number, number, number];
+/** Camera pose in CSS stage coordinates, including the perspective eye's positive Z offset. */
+export function cameraWorld(camera: CameraDefinition): Matrix {
+  return multiply(invertAffine(cameraMatrix(camera))!, matrixFor(TransformSchema.parse({ z: camera.perspective })));
+}
 const applyPoint = (m: Matrix, [x, y, z]: readonly number[]): Vec3 =>
   [m[0] * x + m[1] * y + m[2] * z + m[3], m[4] * x + m[5] * y + m[6] * z + m[7], m[8] * x + m[9] * y + m[10] * z + m[11]];
 const wrap = (degrees: number) => ((((degrees + 180) % 360) + 360) % 360) - 180;
@@ -279,12 +283,20 @@ export function evaluateScene(
   };
   const resolved = resolveConstraints(parsed.data.constraints, parsed.data.camera, parsed.data.focus, target => {
     if ("point" in target) return [...target.point] as Vec3;
+    if ("three" in target) {
+      const point = options.anchors?.get(target.three);
+      return point ? [...point] as Vec3 : undefined;
+    }
     const size = measurements[target.surface], [u, v] = target.anchor ?? [0.5, 0.5];
     return applyPoint(stageWorld(target.surface), [(u - 0.5) * (size?.width ?? 0), (v - 0.5) * (size?.height ?? 0), 0]);
   }, options);
   const scene = resolved.camera === parsed.data.camera && resolved.focus === parsed.data.focus ? parsed.data : { ...parsed.data, camera: resolved.camera, focus: resolved.focus };
   const cache = new Map<string, Matrix>();
   const issues: SceneIssue[] = [];
+  for (const [index, constraint] of (scene.constraints ?? []).entries()) {
+    if ("three" in constraint.target && !options.anchors?.has(constraint.target.three))
+      issues.push({ path: "constraints." + index, message: "3D anchor is unavailable: " + constraint.target.three });
+  }
   const camera = cameraMatrix(scene.camera);
   const getWorld = (id: string): Matrix => {
     const cached = cache.get(id);

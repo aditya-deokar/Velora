@@ -10,6 +10,7 @@ import { parseCssColor } from "./color";
  * registry; core/motion evaluates the channel tracks; the Phase 04 inspector reads the registry.
  */
 export const ANIMATABLE_ID_PATTERN = /^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*$/;
+export const THREE_ANIMATABLE_ID_PATTERN = /^three:[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*$/;
 const PROP_PATTERN = /^[a-zA-Z][a-zA-Z0-9]{0,63}$/;
 const finite = z.number().finite();
 const label = z.string().min(1).max(80).optional();
@@ -28,8 +29,11 @@ const EnumPropSchema = z.strictObject({ type: z.literal("enum"), options: z.arra
   .refine(spec => spec.options.includes(spec.default), "default must be one of options.")
   .refine(spec => new Set(spec.options).size === spec.options.length, "options must be distinct.");
 export const AnimatablePropSchema = z.union([NumberPropSchema, ColorPropSchema, BooleanPropSchema, EnumPropSchema]);
+const propCount = (spec: Record<string, unknown>) => Object.keys(spec).length >= 1 && Object.keys(spec).length <= 64;
 export const AnimatableSpecSchema = z.record(z.string().regex(PROP_PATTERN, "Use a camelCase prop name (letters and digits)."), AnimatablePropSchema)
-  .refine(spec => Object.keys(spec).length >= 1 && Object.keys(spec).length <= 64, "Declare between 1 and 64 animatable props.");
+  .refine(propCount, "Declare between 1 and 64 animatable props.");
+export const ThreeAnimatableSpecSchema = z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*(?:\.[a-zA-Z][a-zA-Z0-9]*)*$/), AnimatablePropSchema)
+  .refine(propCount, "Declare between 1 and 64 animatable props.");
 export type AnimatableProp = z.output<typeof AnimatablePropSchema>;
 export type AnimatableSpec = z.output<typeof AnimatableSpecSchema>;
 export type AnimatableValue<P extends AnimatableProp> =

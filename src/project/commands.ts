@@ -10,7 +10,7 @@ import { compositionTotals, resolveCompositionSpec, type Composition } from "../
 import { AUDIO_DRIFT_BUDGET_MS, audioPlacement } from "../core/audio";
 import { checkCaptions, formatSrt, parseCaptions } from "../core/captions";
 import { TRANSITION_CATALOG } from "../core/transitions";
-import { detectForbiddenClock } from "../core/gsap";
+import { detectForbiddenClock, THREE_CLOCK_HINT } from "../core/gsap";
 import { AGENT_NAMES, VELORA_SKILL_NAMES, agentSnippet, parseSkillFrontmatter, validateSkillContent, type AgentName } from "./skills";
 import { SceneRecipeIdSchema, sceneMetadata, type SceneCatalog } from "../core/recipes";
 import { reviewAuthoring } from "../core/authoring";
@@ -626,6 +626,27 @@ export async function executeDoctorCommand(input: unknown, context: { root: stri
   }
   try {
     const catalog = await discoverRecipes(root);
+    const [three, fiber] = await Promise.all([installedVersion(root, "three"), installedVersion(root, "@react-three/fiber")]);
+    const targets = new Set(catalog.scenes.map(scene => scene.binding));
+    for (const component of await discoverSharedComponents(root).catch(() => [])) targets.add(component);
+    let usesThree = false;
+    for (const file of targets) {
+      try {
+        if ((await services.readText(root, file, 256_000))?.includes(`${VELORA_PACKAGE.name}/three`)) { usesThree = true; break; }
+      } catch { /* missing optional source does not invalidate the scene catalog */ }
+    }
+    if (usesThree || three || fiber) {
+      const threeVersion = /^(\d+)\.(\d+)\./.exec(three ?? "");
+      const compatibleThree = !!threeVersion && (+threeVersion[1] > 0 || +threeVersion[2] >= 160);
+      const react19 = (version: string | null) => /^19\./.test(version ?? "");
+      const [react, reactDom] = await Promise.all([installedVersion(root, "react"), installedVersion(root, "react-dom")]);
+      doctorCheck(checks, issues, "three", "Three.js", !usesThree || compatibleThree,
+        three ?? "Not installed.", "unsupported-project", "Install three >=0.160 for /three.");
+      doctorCheck(checks, issues, "fiber", "React Three Fiber", !usesThree || /^9\./.test(fiber ?? ""),
+        fiber ?? "Not installed.", "unsupported-project", "Install @react-three/fiber ^9 for /three.");
+      doctorCheck(checks, issues, "three-react", "React renderer for /three", !usesThree || (react19(react) && react19(reactDom)),
+        `React ${react ?? "missing"}, React DOM ${reactDom ?? "missing"}. /three requires React and React DOM 19 in the installed R3F peer range.`, "ERR_REACT_UNSUPPORTED");
+    }
     if (catalog.issues.length) doctorCheck(checks, issues, "scenes", "Scene catalog", false,
       catalog.issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n").slice(0, 500), "ERR_SCENE_INVALID");
     else doctorCheck(checks, issues, "scenes", "Scene catalog", true,
@@ -672,7 +693,7 @@ function inspectFailure(issues: unknown[]): InspectResult {
   const normalized = (issues as unknown[]).map(normalizeIssue);
   return { success: false as const, command: "inspect" as const, issues: normalized, next: nextForIssues(normalized) };
 }
-async function installedVersion(root: string, name: "react" | "react-dom"): Promise<string | null> {
+async function installedVersion(root: string, name: "react" | "react-dom" | "three" | "@react-three/fiber"): Promise<string | null> {
   try {
     const text = await services.readDependency(root, name);
     if (!text) return null;
@@ -913,20 +934,22 @@ async function validate(root: string, input: { composition?: string }): Promise<
     const issues: CliIssue[] = [];
     for (const issue of catalog.issues) issues.push(classifyCatalogIssue(issue));
     issues.push(...report.issues);
-    issues.push(...await checkSceneClocks(root, catalog));
+    const clocks = await checkSceneClocks(root, catalog);
+    issues.push(...clocks.issues);
     if (issues.length) return { success: false, issues, next: nextForIssues(issues) };
     return { success: true, data: { project, validation: {
-      scenes: catalog.scenes.length, assets: report.assets.length, advice: await validationAdvice(catalog), requiresVisualReview: true as const,
+      scenes: catalog.scenes.length, assets: report.assets.length, advice: [...await validationAdvice(catalog), ...clocks.advice], requiresVisualReview: true as const,
     } } };
   }
   const full = await checkCompositionFull(root, input.composition);
   const issues = [...full.issues];
-  issues.push(...await checkSceneClocks(root, full.catalog));
+  const clocks = await checkSceneClocks(root, full.catalog);
+  issues.push(...clocks.issues);
   if (issues.length) return { success: false, issues, next: nextForIssues(issues) };
   return { success: true, data: { project, validation: {
     scenes: full.catalog.scenes.length, assets: full.assets.length, composition: input.composition,
     ...(full.totals ? { durationMs: full.totals.durationMs } : {}),
-    advice: await validationAdvice(full.catalog), requiresVisualReview: true as const,
+    advice: [...await validationAdvice(full.catalog), ...clocks.advice], requiresVisualReview: true as const,
   } } };
 }
 async function validationAdvice(catalog: SceneCatalog): Promise<{ code: string; path: string; message: string }[]> {
@@ -1029,8 +1052,9 @@ function checkCompositionTransitions(
 // Render-path clock discipline: scene bindings and shared components must not
 // own ScrollTrigger, ticker or rAF clocks. Static text scan with line numbers;
 // unreadable files are skipped (discovery already validated their existence).
-async function checkSceneClocks(root: string, catalog: { scenes: { id: string; binding: string }[] }): Promise<CliIssue[]> {
+async function checkSceneClocks(root: string, catalog: { scenes: { id: string; binding: string }[] }): Promise<{ issues: CliIssue[]; advice: { code: string; path: string; message: string }[] }> {
   const issues: CliIssue[] = [];
+  const advice: { code: string; path: string; message: string }[] = [];
   const targets = new Map<string, string>();
   for (const scene of catalog.scenes) targets.set(scene.binding, `scene "${scene.id}"`);
   try {
@@ -1043,11 +1067,16 @@ async function checkSceneClocks(root: string, catalog: { scenes: { id: string; b
     } catch { continue; }
     if (text === undefined) continue;
     for (const hit of detectForbiddenClock(text)) {
-      const what = hit.kind === "scrolltrigger" ? "ScrollTrigger" : hit.kind === "ticker" ? "a ticker clock" : "requestAnimationFrame";
-      issues.push(normalizeIssue({ code: "ERR_ANIMATION_CLOCK", path: `${file}:${hit.line}`, message: `${label} uses ${what} (line ${hit.line}). Drive motion from video time instead.` }));
+      const isThree = hit.kind === "three-clock" || hit.kind === "three-delta";
+      const what = hit.kind === "scrolltrigger" ? "ScrollTrigger" : hit.kind === "ticker" ? "a ticker clock"
+        : hit.kind === "three-clock" ? "the Three.js clock" : hit.kind === "three-delta" ? "accumulated frame delta" : "requestAnimationFrame";
+      const path = `${file}:${hit.line}`;
+      const message = `${label} uses ${what} (line ${hit.line}).`;
+      if (isThree) advice.push({ code: "WARN_THREE_CLOCK", path, message: `${message} ${THREE_CLOCK_HINT}` });
+      else issues.push(normalizeIssue({ code: "ERR_ANIMATION_CLOCK", path, message: `${message} Drive motion from video time instead.` }));
     }
   }
-  return issues;
+  return { issues, advice };
 }
 // SOURCE OF TRUTH: executeAudioCommand, executeCaptionsCommand, media validation ops.
 // WHAT: composition audio inventory plus static checks; caption file validation

@@ -142,7 +142,7 @@ Phase 01 (both are stop conditions in Phase 00.1).
 | D1 | Confirmed 2026-11-14 (instruction to implement Phase 03); implemented | Bridge design unbuilt; the checker already reserves `src/project/services/**` (bridgeServices) and `src/project/edit.ts` (commands). |
 | D2 | Accepted and implemented (01) | The recipe `editor` block is optional editor-owned metadata; the renderer and `presentPreview` ignore it. |
 | D3 | Confirmed by the Phase 08 implementation request | Every host source write requires explicit confirmation and compares the reviewed revisions. |
-| D4 | Accepted (recommendation), confirm before 09 | The `three` layer allows only `three` and `@react-three/fiber`; nothing is installed yet. |
+| D4 | Confirmed in Phase 09 | The optional `three` layer uses `three` and React Three Fiber 9. The S3 spike passed on React 19.2.0. The core entry retains React 18.2+ support. |
 | D5 | Accepted (recommendation), confirm before 11 | Guide stays version 3 through 01. |
 | D6 | Resolved 2026-11-16: in-house | Built in-house (SVG per visible row, virtualized, dense rows as paths); measured budgets in `artifacts/phase-05-exit.md`. |
 | D7 | Accepted (recommendation) | Phase 01 changes are additive within recipe version 1 and scene version 3. |
@@ -307,7 +307,7 @@ on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 
 | Phase | Status | Headline evidence |
 |---|---|---|
-| 00 | done except spikes | Goldens (motion, spatial, optics/shot, format corpus, capture) and `scripts/golden.mjs`; baselines; v2.1 checker layers. Spikes: S5 partly run, S1–S4 and S6–S8 not run (`artifacts/phase-00-spikes.md`, `artifacts/phase-00-exit.md`). |
+| 00 | done except spikes | Goldens (motion, spatial, optics/shot, format corpus, capture) and `scripts/golden.mjs`; baselines; v2.1 checker layers. Spikes: S3 passed, S5 partly run, S1–S2, S4 and S6–S8 not run (`artifacts/phase-00-spikes.md`, `artifacts/phase-00-exit.md`). |
 | 01 | done | Motion model v3 with goldens unchanged; compiled evaluator about 1,700x faster than the Phase 00 baseline at 300 tracks (`artifacts/phase-01-exit.md`). |
 | 02 | done | Clips, staggers, position paths, links, lookAt/focusFollow and the orbit rig; goldens unchanged (`artifacts/phase-02-exit.md`). |
 | 03 | done | `EditOpSchema`/`applyEdits` with exact inverses, the formatting-preserving writer, `velora edit`, and the secure loopback bridge and watcher (`artifacts/phase-03-exit.md`). S2 not run. |
@@ -316,4 +316,5 @@ on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 | 06 | implemented, viewport budget open | Picking, gizmos, motion paths, director view, and focus tools ([exit report](artifacts/phase-06-exit.md)). |
 | 07 | implemented, CI gate open | Clip grouping and timing, stagger drag, behavior and camera libraries, project presets, and keyframeable text, paths, and shapes ([exit report](artifacts/phase-07-exit.md)). |
 | 08 | implemented, dashboard validation open | JSX picking, reviewed source edits, channel exposure, and guarded undo. Vite and Next fixture workflows passed ([exit report](artifacts/phase-08-exit.md)). |
-| 09–16 | not started | — |
+| 09 | done | Optional Three.js entry, deterministic glTF capture, shared camera and studio gizmos. Product-orbit exports and the installed React 18 fixture passed byte comparisons ([exit report](artifacts/phase-09-exit.md)). |
+| 10–16 | not started | — |

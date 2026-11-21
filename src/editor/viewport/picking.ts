@@ -1,5 +1,6 @@
-import { projectWorld, surfaceQuad, type CameraDefinition, type ProjectedPoint } from "../../core";
+import { intersectPlane, projectWorld, screenRay, surfaceQuad, type CameraDefinition, type ProjectedPoint } from "../../core";
 import type { SceneSnapshot } from "../../react";
+import { sceneGizmo, type SceneGizmo } from "../../react/registry";
 import type { Frame } from "./scene";
 
 /** Viewport picking (Phase 06.2): projected Surface quads from the Scene snapshot's world matrices and
@@ -58,6 +59,32 @@ export function hitStack(items: readonly Pickable[], point: Point, scope?: strin
     if (id && !out.includes(id)) out.push(id);
   }
   return out;
+}
+/** Hit the canvas that actually paints at this pointer. The editor overlay sits above it,
+ * so use the DOM paint stack, then let the optional adapter do the raycast. */
+export function pickThreeCanvas(client: Point, snapshot: SceneSnapshot, camera: CameraDefinition, frame: Frame, skip: ReadonlySet<string>): { surface: string; gizmo: SceneGizmo; toPoint(client: Point, framePoint: Point): Point | undefined } | undefined {
+  const parents = new Map(snapshot.bindings.map(binding => [binding.id, binding.parentId]));
+  for (const element of document.elementsFromPoint(client.x, client.y)) {
+    const binding = element.closest("[data-velora-id]");
+    const id = binding?.getAttribute("data-velora-id");
+    if (!id) continue;
+    let blocked = false;
+    for (let parent: string | undefined = id; parent; parent = parents.get(parent)) blocked ||= skip.has(parent);
+    if (blocked) continue;
+    if (!(element instanceof HTMLCanvasElement)) return;
+    const gizmo = sceneGizmo(element);
+    if (!gizmo) return;
+    if (element.closest('[data-velora-three-camera="velora"]')) {
+      const box = element.getBoundingClientRect();
+      return { surface: id, gizmo, toPoint: client => ({ x: 2 * (client.x - box.left) / box.width - 1, y: 1 - 2 * (client.y - box.top) / box.height }) };
+    }
+    const node = snapshot.nodes.find(node => node.id === id);
+    if (!node?.width || !node.height) return;
+    return { surface: id, gizmo, toPoint: (_client, point) => {
+      const hit = intersectPlane(screenRay(camera, frame, point), node.world);
+      return hit ? { x: 2 * hit.u / node.width, y: -2 * hit.v / node.height } : undefined;
+    } };
+  }
 }
 /** Click picking: the nearest hit, or with `cycle` (Alt+click) the next one below `current` in the stack. */
 export function pick(items: readonly Pickable[], point: Point, options: { scope?: string; cycle?: boolean; current?: string } = {}): string | undefined {

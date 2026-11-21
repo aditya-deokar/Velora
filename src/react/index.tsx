@@ -1,6 +1,5 @@
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import {
-  createContext,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -26,15 +25,16 @@ import {
   TransformSchema,
   type CameraInput,
   type SceneConstraintInput,
-  type EvaluatedNode,
   type FocusInput,
   type Measurements,
   type SceneIssue,
   type TransformInput,
 } from "../core";
-import { SURFACE_VISUAL_PROPERTIES, motionFingerprint, type MotionInput, type MotionState, type SurfaceVisualProperty } from "../core/motion";
+import { SURFACE_VISUAL_PROPERTIES, motionFingerprint, type MotionInput, type MotionState } from "../core/motion";
 import { FocusFilter } from "./FocusFilter";
-import { createRegistry, type Registry } from "./registry";
+import { createRegistry } from "./registry";
+import { ParentContext, SceneContext, type SurfaceVisuals, type ThreeSelection } from "./context";
+export { useSceneTime, type ThreeSelection } from "./context";
 import type { SceneInspector } from "./inspector";
 
 /** SOURCE OF TRUTH: Scene / Surface / Motion live DOM adapter.
@@ -51,17 +51,6 @@ import type { SceneInspector } from "./inspector";
  * and put clipping, opacity and decoration on content leaves. Layout styles belong
  * on wrappers. Arbitrary host layout shifts require resize or a React commit.
  */
-type SurfaceVisuals = Partial<Record<SurfaceVisualProperty, number>>;
-type SceneContextValue = {
-  registry: Registry;
-  nodes: Map<string, EvaluatedNode>;
-  transforms: Map<string, TransformInput>;
-  visuals: Map<string, SurfaceVisuals>;
-  channels: Readonly<Record<string, number>>;
-  colorChannels: Readonly<Record<string, string>>;
-  styles: Readonly<Record<string, Readonly<Record<string, string>>>>;
-  timeMs: number;
-};
 const noStrings: Readonly<Record<string, string>> = Object.freeze({});
 // DEV-only: motion inputs are immutable (core caches their compiled form). Warn once when a host
 // mutates a motion object in place instead of passing a new one.
@@ -84,21 +73,6 @@ const VISUAL_BASE: Record<string, number> = { opacity: 1, blur: 0, brightness: 1
 const pick = (values: Record<string, number> | undefined, visual: boolean) =>
   values ? Object.fromEntries(Object.entries(values).filter(([key]) => visualKeys.has(key) === visual)) : undefined;
 const emptyMotion: MotionState = { surfaces: {}, camera: {}, focus: {}, channels: {}, issues: [] };
-const createSceneContexts = () => ({ scene: createContext<SceneContextValue | null>(null), parent: createContext<symbol | undefined>(undefined) });
-function sceneContexts() {
-  if (typeof window === "undefined") return createSceneContexts();
-  // Fast Refresh can evaluate the installed React entry again while the existing Scene is mounted.
-  // Share context identity within this browser realm and React runtime.
-  const key = Symbol.for("velora.scene-context.v1");
-  const host = window as unknown as Record<symbol, WeakMap<typeof createContext, ReturnType<typeof createSceneContexts>> | undefined>;
-  const contexts = host[key] ??= new WeakMap();
-  const existing = contexts.get(createContext);
-  if (existing) return existing;
-  const created = createSceneContexts();
-  contexts.set(createContext, created);
-  return created;
-}
-const { scene: SceneContext, parent: ParentContext } = sceneContexts();
 const useLayout = typeof window === "undefined" ? useEffect : useLayoutEffect;
 export type SceneProps = {
   motion?: MotionInput;
@@ -113,6 +87,7 @@ export type SceneProps = {
   /** Editor-only director viewpoint: replaces the evaluated camera for display (no constraints, no
    * depth of field). The real camera still drives `inspector` snapshots; capture refuses this view. */
   viewCamera?: CameraInput;
+  threeSelection?: ThreeSelection;
   className?: string;
   style?: CSSProperties;
   onDiagnostics?: (issues: SceneIssue[]) => void;
@@ -124,6 +99,10 @@ export type SurfaceProps = {
   content?: ReactNode;
   /** Render the original subtree without a wrapper when used outside a Scene. */
   passthrough?: boolean;
+  /** Internal projection override for a full-frame surface that renders its own camera. */
+  projectionTransform?: string;
+  /** Style the isolated paint wrapper when content needs an explicit size. */
+  contentStyle?: CSSProperties;
   className?: string;
   style?: CSSProperties;
 };
@@ -135,6 +114,7 @@ export function Scene({
   constraints,
   inspector,
   viewCamera,
+  threeSelection,
   motion,
   timeMs = 0,
   className,
@@ -184,7 +164,7 @@ export function Scene({
         return measurement ? [[binding.id, measurement] as const] : [];
       }),
     );
-    const evaluation = RESOURCES["evaluate-spatial"](input, measurements, { channels: state.channels });
+    const evaluation = RESOURCES["evaluate-spatial"](input, measurements, { channels: state.channels, anchors: registry.sampleAnchors(state.channels) });
     const ids = new Set(bindings.map((b) => b.id));
     evaluation.issues.push(
       ...state.issues,
@@ -217,6 +197,8 @@ export function Scene({
   const context = useMemo(
     () => ({
       registry,
+      displayCamera: (result.view ?? result.evaluation).camera ?? (result.validated.success ? result.validated.data.camera : undefined),
+      threeSelection,
       timeMs: motion ? motionTime(motion, timeMs) : Number.isFinite(timeMs) ? timeMs : 0,
       visuals: new Map(
         [...new Set([...Object.keys(result.state.surfaces), ...Object.keys(result.state.additive?.surfaces ?? {})])].map((id) => [
@@ -237,7 +219,7 @@ export function Scene({
           : [],
       ),
     }),
-    [registry, result, timeMs, motion],
+    [registry, result, timeMs, motion, threeSelection],
   );
   // Editor consumers observe the committed evaluation; no instances, elements or callbacks leave the Scene.
   useLayout(() => {
@@ -340,6 +322,8 @@ export function Surface({
   children,
   content,
   passthrough,
+  projectionTransform,
+  contentStyle,
   className,
   style,
 }: SurfaceProps) {
@@ -399,7 +383,7 @@ export function Surface({
           // Animated CSS custom properties cascade to descendants (var(--name)) without flattening 3D.
           ...variables,
           position: style?.position ?? "relative",
-          transform: transformToCss(transforms.get(id)),
+          transform: projectionTransform ?? transformToCss(transforms.get(id)),
           transformOrigin: transformOriginCss(transforms.get(id)),
           transformStyle: "preserve-3d",
           filter: "none",
@@ -409,7 +393,7 @@ export function Surface({
         }}
       >
         {content !== undefined && (
-          <div data-velora-content="" style={leafStyle}>
+          <div data-velora-content="" style={{ ...leafStyle, ...contentStyle }}>
             {content}
           </div>
         )}
@@ -459,12 +443,6 @@ function leafClip(visual: SurfaceVisuals): string | undefined {
   if (top === undefined && right === undefined && bottom === undefined && left === undefined) return undefined;
   return `inset(${top ?? 0}% ${right ?? 0}% ${bottom ?? 0}% ${left ?? 0}%)`;
 }
-/** Opt-in component adapters read the same explicit time used by spatial tracks. */
-export function useSceneTime(): number {
-  const context = useContext(SceneContext);
-  if (!context) throw new Error("useSceneTime requires a Velora Scene.");
-  return context.timeMs;
-}
 /** A named channel's value at the current scene time (cursor paths, counters, scroll offsets).
  * Channels come from recipe motion tracks, so components follow the one eased clock. */
 export function useChannel(id: string, fallback = 0): number {
@@ -478,16 +456,13 @@ export function useColorChannel(id: string, fallback: string): string {
   if (!context) throw new Error("useColorChannel requires a Velora Scene.");
   return Object.hasOwn(context.colorChannels, id) ? context.colorChannels[id] : fallback;
 }
-/** Internal: the Scene context for sibling adapters (animatables); not part of the public API. */
-export function useSceneContext() {
-  return { context: useContext(SceneContext), parent: useContext(ParentContext) };
-}
 /** Motion shares Surface registration; Scene supplies canonical evaluated tracks. */
 export const Motion = Surface;
 
 export type SceneErrorBoundaryProps = {
   children?: ReactNode;
   resetKey?: unknown;
+  fallback?: ReactNode;
   onError?: (error: unknown) => void;
   onReset?: () => void;
 };
@@ -496,9 +471,9 @@ export type SceneErrorBoundaryProps = {
  * WHY: preserve a consistent recovery action for failed host components.
  * WHERE: react-error-boundary catches render failures; callers keep their existing API.
  */
-export function SceneErrorBoundary({ children, resetKey, onError, onReset }: SceneErrorBoundaryProps) {
+export function SceneErrorBoundary({ children, resetKey, fallback, onError, onReset }: SceneErrorBoundaryProps) {
   return (
-    <ErrorBoundary FallbackComponent={SceneErrorFallback} resetKeys={[resetKey]} onError={onError} onReset={onReset}>
+    <ErrorBoundary fallbackRender={props => fallback === undefined ? <SceneErrorFallback {...props}/> : fallback} resetKeys={[resetKey]} onError={onError} onReset={onReset}>
       {children}
     </ErrorBoundary>
   );

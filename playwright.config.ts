@@ -4,7 +4,8 @@ const baseURL =
   "http://127.0.0.1:" +
     String(process.env.VELORA_TEST_PORT ?? 4173);
 export default defineConfig({
-  testDir: "./tests/browser",
+  testDir: "./tests",
+  testMatch: ["**/browser/**/*.spec.ts", "**/three/**/*.spec.ts"],
   fullyParallel: false,
   workers: 1,
   retries: 0,

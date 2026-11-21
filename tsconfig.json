@@ -8,6 +8,10 @@
     ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "paths": {
+      "@adityadeokar/velora": ["./src/index.ts"],
+      "@adityadeokar/velora/three": ["./src/three/index.ts"]
+    },
     "jsx": "react-jsx",
     "strict": true,
     "noEmit": true,

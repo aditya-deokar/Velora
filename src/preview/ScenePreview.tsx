@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { SUPPORTED_EXPORT_FPS, ExportFrameRateSchema, QualityPresetSchema, VideoCodecSchema, CODEC_CONTAINERS, type CameraInput, type PreviewDefinitionInput, type QualityPreset, type VideoCodec } from "../core";
-import { Scene, SceneErrorBoundary, useSceneCapture, createSceneInspector, type SceneInspector } from "../react";
+import { Scene, SceneErrorBoundary, useSceneCapture, createSceneInspector, type SceneInspector, type ThreeSelection } from "../react";
 import { LookLayer } from "../kit";
 import { decodeBase64Url, hasExportFinishing, resolveLook, LookSchema, type LookInput } from "../core";
 import { usePreviewSession } from "./session";
@@ -49,6 +49,7 @@ export type ScenePreviewProps = {
   /** Editor-only director viewpoint (layout="editor"): replaces the camera for display only; the
    * capture viewport is marked data-velora-view="director" and exports refuse it. */
   viewCamera?: CameraInput;
+  threeSelection?: ThreeSelection;
   /** Editor-only: force focus peaking on (the focus tool turns it on while active). */
   peaking?: boolean;
 };
@@ -129,7 +130,7 @@ function ExportMenu({disabled, panelHost, size}: {disabled: boolean; panelHost: 
     </details>;
 }
 
-export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, revision, hot, timeline, fps = 60, exportSize, aside, layout, slots, editHref, viewCamera, peaking}: ScenePreviewProps) {
+export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, revision, hot, timeline, fps = 60, exportSize, aside, layout, slots, editHref, viewCamera, threeSelection, peaking}: ScenePreviewProps) {
   const editor = layout === "editor";
   const [inspector] = useState(() => editor ? createSceneInspector() : undefined);
   const session = usePreviewSession(input, revision, timeline);
@@ -165,9 +166,9 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
   const exportOnly = useMemo(() => { try { return hasExportFinishing(resolveLook(look)); } catch { return false; } }, [look]);
   useTransportKeys(session, fps, !blocked);
   const captureSeek = useCallback((ms: number) => {
-    if (blocked) throw new Error("Correct the scene before exporting.");
+    if (blocked) throw new Error(session.issues[0]?.message ?? "Correct the scene before exporting.");
     session.seek(ms);
-  }, [blocked, session.seek]);
+  }, [blocked, session.seek, session.issues]);
   // The preview covers its viewport; the editor contains the whole frame so every edge stays editable.
   const scale = definition && size.width && size.height ? (editor ? Math.min : Math.max)(size.width / definition.width, size.height / definition.height) : 1;
   const stateText = !connection.connected ? "Reconnecting to your app…" : connection.error ? "Source needs a correction" :
@@ -180,7 +181,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
         <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
           <LookLayer look={look} timeMs={session.timeMs} width={definition.width} height={definition.height}>
             <Scene camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
-              timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(inspector ? {inspector} : {})}
+              timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(inspector ? {inspector, threeSelection} : {})}
               {...(editor && viewCamera ? {viewCamera} : {})}>
               {children}
             </Scene>
@@ -254,7 +255,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
               <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
                 <LookLayer look={look} timeMs={session.timeMs} width={definition.width} height={definition.height}>
                   <Scene camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
-                    timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(inspector ? {inspector} : {})}>
+                    timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(inspector ? {inspector, threeSelection} : {})}>
                     {children}
                   </Scene>
                 </LookLayer>

@@ -55,6 +55,12 @@ try {
   const originalConfig=await readFile(path.join(host,'vite.config.mjs'),'utf8');
   const originalApp=await readFile(path.join(host,'src/App.tsx'),'utf8');
   const originalPackage=JSON.parse(await readFile(path.join(host,'package.json'),'utf8'));
+  if (!registryPackage) {
+    // Leave the published-release check on its original host. The current artifact
+    // must also open the real studio from a React 18 installation with no Three peers.
+    originalPackage.dependencies.react = originalPackage.dependencies['react-dom'] = '18.3.1';
+    await writeFile(path.join(host,'package.json'),JSON.stringify(originalPackage,null,2)+'\n');
+  }
   let tarball;
   if(!registryPackage) {
   const rawPack = await ok('npm',['pack','--json',...(process.env.VELORA_VERIFY_PREBUILT==='1'?['--ignore-scripts']:[]),'--pack-destination',scratch],root);
@@ -100,6 +106,10 @@ try {
   assert.notEqual(entryAfter,originalEntry);
   const installedPkg = packageName;
   assert.ok(existsSync(path.join(host,'node_modules',installedPkg,'package.json')),'Setup installs the published package name');
+  if (!registryPackage) {
+    assert.equal(JSON.parse(await readFile(path.join(host,'node_modules/react/package.json'),'utf8')).version,'18.3.1');
+    assert.ok(!existsSync(path.join(host,'node_modules/three')) && !existsSync(path.join(host,'node_modules/@react-three/fiber')));
+  }
   const cli=path.join(host,'node_modules',installedPkg,'dist/cli/velora.js');
   const installedGuide=JSON.parse(await ok(process.execPath,[cli,'guide','--json']));
   const publicGuide=JSON.parse(await ok(process.execPath,['--input-type=module','-e',`import {getAuthoringGuide} from '${installedPkg}'; console.log(JSON.stringify(getAuthoringGuide()))`]));
@@ -166,6 +176,7 @@ try {
   const productionCode=(await Promise.all((await readdir(assets)).filter(name=>name.endsWith('.js')).map(name=>readFile(path.join(assets,name),'utf8')))).join('\n');
   assert.ok(!productionCode.includes('velora-library-scroll')&&!productionCode.includes('data-velora-capture'),'Production host must not ship the unused studio renderer');
   // v2.1 S5: the Edit-mode editor is a lazy chunk the production host never ships.
+  assert.ok(!/WebGLRenderer|TransformControls|react-three-fiber/.test(productionCode),'Production host must not ship optional Three.js code');
   assert.ok(!productionCode.includes('data-velora-editor-timeline')&&!productionCode.includes('velora-editor-grid'),'Production host must not ship the studio editor chunk');
   const previewPort=await port();const productionOrigin=`http://127.0.0.1:${previewPort}`;
   const production=logged(spawn(process.execPath,['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port',String(previewPort),'--strictPort'],{cwd:host,stdio:['ignore','pipe','pipe']}));processes.push(production);

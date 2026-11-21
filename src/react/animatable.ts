@@ -8,7 +8,7 @@ import {
   type AnimatableProp,
   type AnimatableValues,
 } from "../core";
-import { useSceneContext } from "./index";
+import { useSceneContext } from "./context";
 
 /** SOURCE OF TRUTH: useAnimatable.
  * WHAT: typed component props at scene time: each declared prop reads channel `<id>.<prop>` (or an

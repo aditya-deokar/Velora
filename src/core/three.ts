@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { detectThreeClocks, THREE_CLOCK_HINT } from "./gsap";
 
 /** SOURCE OF TRUTH: WebGLSurface contract and time-discipline validation.
  * WHAT: the schema for time-driven WebGL leaves plus static source checks.
@@ -28,5 +29,9 @@ export function validateWebGLSource(source: string, path: string): WebGLIssue[] 
     else if (/\.ticker\s*\./.test(text) || /gsap\s*\.\s*ticker/i.test(text))
       issues.push({ code: "ERR_WEBGL_TIMELOOP", path: `${path}:${i + 1}`, message: "Ticker clocks break frame determinism. Drive the scene from the timeMs prop instead." });
   });
+  issues.push(...detectThreeClocks(source).map(hit => ({
+    code: "ERR_WEBGL_TIMELOOP", path: `${path}:${hit.line}`,
+    message: (hit.kind === "three-clock" ? "Three's clock breaks absolute seeks. " : "Accumulating frame delta breaks backward seeks. ") + THREE_CLOCK_HINT,
+  })));
   return issues;
 }

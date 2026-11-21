@@ -4,8 +4,8 @@ Date: 2026-11-14. Branch `feat/v2.1-motion-graphics-suite-plan`, starting commit
 Reference machine: Windows 11 (win32-x64), Node 24.12.0, Playwright 1.58.2 with Chromium build 1208 only
 (Firefox and WebKit are not installed).
 
-The plan time-boxes the spikes at 18 working days in total. This pass ran only the spike that fit inside
-the Phase 00/01 session (S5, partly). Every other spike is **not run**, not passed. None of S1–S4 or S6–S8
+The plan time-boxes the spikes at 18 working days in total. The initial pass ran only the spike that fit inside
+the Phase 00/01 session (S5, partly). The table records later verdicts as each spike is run. None of S1–S4 or S6–S8
 blocks Phase 01, which needs no editor UI, bridge, 3D or depth work. Each one does block the phase noted
 below, and must be run before that phase starts.
 
@@ -13,12 +13,16 @@ below, and must be run before that phase starts.
 |---|---|---|---|
 | S1 Timeline rendering | Not run | No verdict. D6 stays at its recommendation (build in house) until S1 runs. | 05 (and 10) |
 | S2 Bridge transport | Not run | No verdict. Only Chromium is installed here, so the Firefox/WebKit gate cannot pass on this machine yet. | 03 |
-| S3 Deterministic R3F | Not run | No verdict. `three` and `@react-three/fiber` are not dependencies; installing them is a Phase 09 layer decision. | 09 |
+| S3 Deterministic R3F | Passed 2026-11-21 | R3F 9.8.2 accepts absolute seconds on its manual root. A Suspense-loaded glTF reproduced the same Chromium pixels after a backward seek. | 09 |
 | S4 Click-to-source | Not run | No verdict. | 08 |
 | S5 Lazy editor chunk | **Partly run** | Chunk emission **passes**; installed-host exclusion is **not yet verified**. | 04 |
 | S6 Volumetric depth in live DOM | Not run | No verdict. The band-quantized fallback (14.4) stays the contingency. | 13, 14 |
 | S7 Stage DPR and sharpness | Not run | No verdict. D10's numbers are still open. | 12 |
 | S8 Projected parallax in iframes | Not run | No verdict. | 13 |
+
+## S3 Deterministic R3F
+
+Chromium 1208 with SwiftShader, React 19.2.0, Three.js 0.187.0 and R3F 9.8.2. A 400 × 300 canvas rendered a glTF triangle after its Suspense boundary resolved. Each layout commit called the root's `advance(seconds, false)` once. A frame subscriber observed the absolute times 0, 0.25, 0.75, 0.25 in that order. The two 0.25-second PNGs had SHA-256 `9edf1b0b522ba4932abe367d81306cd5005a8d135dc20a607fe0fd12e6268adf`. The 0.75-second PNG differed. With a single 20-frame, display-paced run, the observed means were 18.78 ms with drawing-buffer preservation and 16.55 ms without it. That timing includes browser pacing and is a smoke measurement. R3F's installed peer range is React and React DOM 19.0 through 19.3.
 
 ## S5: lazy editor chunk (partly run)
 

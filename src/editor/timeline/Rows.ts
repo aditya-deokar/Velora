@@ -43,8 +43,8 @@ export function buildRows(doc: Doc, snapshot: SceneSnapshot | undefined, options
     const target = track.target as TrackAddress["target"];
     if (target.kind === "surface" || target.kind === "style") return target.id;
     if (target.kind === "channel") {
-      const owner = snapshot?.animatables.find(entry => target.id.startsWith(entry.id + "."))?.owner;
-      return owner ?? "channels";
+      const entry = snapshot?.animatables.find(entry => target.id.startsWith(entry.id + ".") && Object.hasOwn(entry.spec, target.id.slice(entry.id.length + 1)));
+      return (entry?.kind === "three" ? entry.id : entry?.owner) ?? "channels";
     }
     return target.kind;
   };
@@ -57,7 +57,7 @@ export function buildRows(doc: Doc, snapshot: SceneSnapshot | undefined, options
   for (const layer of layers) {
     const tracks = groups.get(layer)!;
     const children = tracks.map(track => property(track, layer, undefined) as Extract<TimelineRow, { kind: "property" }>);
-    rows.push({ kind: "layer", id: `layer:${layer}`, label: options.labels?.[layer] ?? (layer === "camera" ? "Camera" : layer === "focus" ? "Focus" : layer === "channels" ? "Channels" : layer),
+    rows.push({ kind: "layer", id: `layer:${layer}`, label: options.labels?.[layer] ?? snapshot?.animatables.find(entry => entry.kind === "three" && entry.id === layer)?.label ?? (layer === "camera" ? "Camera" : layer === "focus" ? "Focus" : layer === "channels" ? "Channels" : layer),
       summary: [...new Set(children.flatMap(row => row.keys.map(key => key.time)))].sort((a, b) => a - b) });
     if (!options.collapsed.includes(`layer:${layer}`)) rows.push(...children);
   }
@@ -86,6 +86,6 @@ export function buildRows(doc: Doc, snapshot: SceneSnapshot | undefined, options
     rows.push({ kind: "badge", id: `link:${name(link.to)}`, label: `🔗 ${name(link.to)} ← ${name(link.from)}${link.scale !== undefined ? ` ×${link.scale}` : ""}${link.delayMs ? ` +${link.delayMs}ms` : ""}` });
   }
   for (const [index, constraint] of ((doc.definition?.scene?.constraints ?? []) as Doc[]).entries())
-    rows.push({ kind: "badge", id: `constraint:${index}`, label: `⌖ ${constraint.kind} → ${constraint.target.surface ?? JSON.stringify(constraint.target.point)}` });
+    rows.push({ kind: "badge", id: `constraint:${index}`, label: `⌖ ${constraint.kind} → ${constraint.target.surface ?? constraint.target.three ?? JSON.stringify(constraint.target.point)}` });
   return rows;
 }

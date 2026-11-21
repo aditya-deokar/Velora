@@ -6,6 +6,12 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
 
 ## [Unreleased]
 
+### Added — Three.js controls (v2.1 Phase 09)
+
+- The optional `@adityadeokar/velora/three` entry adds deterministic React Three Fiber surfaces, Object3D channels, glTF clip scrubbing, and a shared DOM and 3D camera.
+- Studio Layers shows registered 3D objects. Raycast picking and an in-canvas transform gizmo write the same channel keyframes as the inspector.
+- `velora doctor` reports the optional peers, and validation flags scene code that uses a competing 3D clock.
+
 ### Added — Motion design (v2.1 Phase 07)
 
 - Group animation into clips and edit clip easing, speed, play count, and blend mode. Ungrouping previews the sampled deviation when baking is required.

@@ -47,6 +47,12 @@ export function validateRelease(manifest, files, options = {}) {
   for (const file of sized) assert.ok(file.size <= PACKAGE_BUDGET.fileBytes, `Packed file over the ${PACKAGE_BUDGET.fileBytes} byte budget: ${file.path} (${file.size})`);
   const total = sized.reduce((sum, file) => sum + file.size, 0);
   assert.ok(total <= PACKAGE_BUDGET.unpackedBytes, `Unpacked package ${total} bytes exceeds the ${PACKAGE_BUDGET.unpackedBytes} byte budget`);
+  if (manifest.exports["./three"]) {
+    for (const peer of ["three", "@react-three/fiber"]) {
+      assert.equal(typeof manifest.peerDependencies?.[peer], "string", `Missing ${peer} peer dependency`);
+      assert.equal(manifest.peerDependenciesMeta?.[peer]?.optional, true, `${peer} must remain optional`);
+    }
+  }
   const required = ['package.json','README.md','LICENSE',manifest.bin.velora.slice(2)];
   for (const entry of Object.values(manifest.exports)) {
     assert.equal(typeof entry.types, 'string');

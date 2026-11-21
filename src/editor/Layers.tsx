@@ -7,7 +7,7 @@ import type { Doc } from "./store";
 /** Layers panel (EDITOR-UX §2): Camera, Focus, Motion, Look; the live Surface tree (recipe nodes that are
  * not mounted are flagged); animatables under their owning Surface; clips. Rename, color tags and locks
  * write editor metadata; solo and hide are editor-only UI state. role="tree" with roving focus. */
-type Item = { id: string; label: string; kind: "camera" | "focus" | "motion" | "look" | "surface" | "animatable" | "clip"; depth: number; children: Item[]; flag?: string; owner?: string };
+type Item = { id: string; label: string; kind: "camera" | "focus" | "motion" | "look" | "surface" | "animatable" | "three" | "clip"; depth: number; children: Item[]; flag?: string; owner?: string };
 const COLORS: Record<string, string> = { red: "#ff6b6b", orange: "#ff9f43", yellow: "#ffd166", green: "#5ee6a0", teal: "#3cc9c9", blue: "#7cc4ff", purple: "#b893ff", gray: "#9aa0aa" };
 export function Layers() {
   const { store, snapshot, sceneId } = useEditor();
@@ -25,7 +25,8 @@ export function Layers() {
     const mounted = new Set(bindings.map(binding => binding.id));
     const surface = (id: string, depth: number, flag?: string): Item => ({ id, label: labels[id] ?? id, kind: "surface", depth, flag, children: [
       ...bindings.filter(binding => binding.parentId === id).map(binding => surface(binding.id, depth + 1)),
-      ...(snapshot?.animatables ?? []).filter(entry => entry.owner === id).map(entry => ({ id: `animatable:${entry.id}`, label: entry.id, kind: "animatable" as const, depth: depth + 1, children: [], owner: id })),
+      ...(snapshot?.animatables ?? []).filter(entry => entry.owner === id).map(entry => ({ id: entry.kind === "three" ? entry.id : `animatable:${entry.id}`, label: entry.label ?? entry.id,
+        kind: entry.kind ?? ("animatable" as const), depth: depth + 1, children: [], owner: id })),
     ] });
     const roots: Item[] = [
       { id: "camera", label: "Camera", kind: "camera", depth: 0, children: [] },
@@ -39,7 +40,7 @@ export function Layers() {
     const needle = query.trim().toLowerCase();
     const keep = (item: Item): Item | undefined => {
       const children = item.children.map(keep).filter(Boolean) as Item[];
-      const hit = (!needle || item.label.toLowerCase().includes(needle) || item.id.toLowerCase().includes(needle)) && (!state.ui.animatedOnly || animatedIds.has(item.id) || item.kind === "clip");
+      const hit = (!needle || item.label.toLowerCase().includes(needle) || item.id.toLowerCase().includes(needle)) && (!state.ui.animatedOnly || animatedIds.has(item.id) || item.kind === "clip" || (item.kind === "three" && [...animatedIds].some(id => id.startsWith(item.id + "."))));
       return hit || children.length ? { ...item, children } : undefined;
     };
     return roots.map(keep).filter(Boolean) as Item[];
@@ -83,7 +84,7 @@ export function Layers() {
           onClick={event => select(item, event.shiftKey || event.ctrlKey || event.metaKey, event.ctrlKey || event.metaKey)} onDoubleClick={() => surface && setRenaming(item.id)}>
           {item.children.length ? <button className="ve-btn ve-icon" style={{ minHeight: 16, border: 0, background: "none" }} aria-label={collapsed.includes(item.id) ? "Expand" : "Collapse"} tabIndex={-1}
             onClick={event => { event.stopPropagation(); setCollapsed(collapsed.includes(item.id) ? collapsed.filter(id => id !== item.id) : [...collapsed, item.id]); }}>{collapsed.includes(item.id) ? "▸" : "▾"}</button> : <span style={{ width: 16 }}/>}
-          <span aria-hidden="true">{item.kind === "camera" ? "🎥" : item.kind === "focus" ? "◎" : item.kind === "motion" ? "⏱" : item.kind === "look" ? "◐" : item.kind === "clip" ? "▭" : item.kind === "animatable" ? "⚙" : "▢"}</span>
+          <span aria-hidden="true">{item.kind === "camera" ? "🎥" : item.kind === "focus" ? "◎" : item.kind === "motion" ? "⏱" : item.kind === "look" ? "◐" : item.kind === "clip" ? "▭" : item.kind === "animatable" ? "⚙" : item.kind === "three" ? "◇" : "▢"}</span>
           {surface && colors[item.id] && <span className="ve-tag" style={{ background: COLORS[colors[item.id]] }} aria-label={`Color ${colors[item.id]}`}/>}
           {renaming === item.id ? <input className="ve-input" autoFocus defaultValue={labels[item.id] ?? ""} placeholder={item.id} aria-label={`Label for ${item.id}`}
             onKeyDown={event => {

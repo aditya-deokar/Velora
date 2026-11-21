@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ScenePreview, usePreviewHost } from "../preview/ScenePreview";
 import type { PreviewHot } from "../preview/connection";
-import { useSceneInspector } from "../react";
+import { useSceneInspector, type ThreeSelection } from "../react";
 import { behaviorById, type EditOp, type MotionClipInput } from "../core";
 import { createEditorStore, DEFAULT_UI, type Doc, type EditorUi, type EditorStore } from "./store";
 import { createBridgeClient, takeBridgeFragment, type BridgeHello } from "./bridge";
@@ -106,7 +106,13 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
   useEffect(() => { if (!client) store.external(recipe as Doc, undefined, JSON.stringify(recipe)); }, [recipe, client, store]);
   const shared: Shared = { store, sceneId, hello, client, panel, setPanel, focused, clipboard, toast, notify, sourcePicking, setSourcePicking, sourceHint, pickSource, sourceUndo, setSourceUndo };
   const definition = (state.draft as Doc).definition;
-  return <ScenePreview definition={definition} title={title} backHref={backHref} onBack={onBack} hot={hot} revision={state.revision} layout="editor"
+  const selectedThree = state.selection.layers[0];
+  const tool = state.ui.tool;
+  const threeSelection = useMemo<ThreeSelection | undefined>(() => {
+    if (!selectedThree?.startsWith("three:") || sourcePicking || tool === "camera" || tool === "focus" || tool === "pivot") return;
+    return { id: selectedThree, mode: tool === "rotate" ? "rotate" : tool === "scale" ? "scale" : "translate" };
+  }, [selectedThree, sourcePicking, tool]);
+  return <ScenePreview definition={definition} title={title} backHref={backHref} onBack={onBack} hot={hot} revision={state.revision} layout="editor" threeSelection={threeSelection}
     {...(state.ui.director ? { viewCamera: state.ui.director } : {})} peaking={state.ui.tool === "focus"}
     slots={{
       overlay: <WithEditor shared={shared}><Overlay/></WithEditor>,

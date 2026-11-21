@@ -14,8 +14,28 @@ export type Binding = {
   transform?: TransformInput;
 };
 /** A declared animatable as consumers (the inspector) see it: specs only, never component instances. */
-export type AnimatableEntry = { readonly id: string; readonly spec: AnimatableSpec; readonly owner?: string; readonly readingTimeMs?: number };
-type AnimatableDeclaration = { id: string; spec: AnimatableSpec; key: string; owner?: symbol; explicitOwner?: string; readingTimeMs?: number };
+export type AnimatableEntry = { readonly id: string; readonly spec: AnimatableSpec; readonly owner?: string; readonly readingTimeMs?: number; readonly kind?: "three"; readonly label?: string };
+type AnimatableDeclaration = { id: string; spec: AnimatableSpec; key: string; owner?: symbol; explicitOwner?: string; readingTimeMs?: number; kind?: "three"; label?: string };
+export type StageAnchor = readonly [number, number, number];
+export type AnchorSampler = (channels: Readonly<Record<string, number>>) => StageAnchor | undefined;
+export type GizmoMode = "translate" | "rotate" | "scale";
+export type GizmoPoint = { x: number; y: number };
+export type GizmoDrag = {
+  move(point: GizmoPoint): Readonly<Record<string, number>>;
+  end(): void;
+};
+export type SceneGizmo = {
+  pick(point: GizmoPoint): string | undefined;
+  hover(point: GizmoPoint): void;
+  begin(point: GizmoPoint): GizmoDrag | undefined;
+};
+const gizmos = new WeakMap<Element, SceneGizmo>();
+export function registerGizmo(element: Element, gizmo: SceneGizmo) {
+  gizmos.set(element, gizmo);
+  return () => { if (gizmos.get(element) === gizmo) gizmos.delete(element); };
+}
+export function sceneGizmo(element: Element): SceneGizmo | undefined { return gizmos.get(element); }
+
 function sameObject(a: object | undefined, b: object | undefined) {
   if (a === b) return true;
   if (!a || !b) return false;
@@ -69,6 +89,8 @@ function uncoveredContent(root:Element):boolean {
 export function createRegistry() {
   const entries = new Map<symbol, Binding>();
   const declarations = new Map<symbol, AnimatableDeclaration>();
+  const anchors = new Map<symbol, { id: string; sample: AnchorSampler }>();
+  const externalIssues = new Map<symbol, SceneIssue>();
   let animatableView: ReadonlyMap<string, AnimatableEntry> = new Map();
   let animatableIssues: SceneIssue[] = [];
   // First declaration of an id wins; a later declaration with a different spec is a Scene issue.
@@ -80,9 +102,12 @@ export function createRegistry() {
         keys.set(declaration.id, declaration.key);
         const owner = declaration.explicitOwner ?? (declaration.owner ? entries.get(declaration.owner)?.id : undefined);
         view.set(declaration.id, Object.freeze({ id: declaration.id, spec: declaration.spec, ...(owner ? { owner } : {}),
-          ...(declaration.readingTimeMs ? { readingTimeMs: declaration.readingTimeMs } : {}) }));
-      } else if (known !== declaration.key && !issues.some(issue => issue.path === "animatable." + declaration.id))
-        issues.push({ path: "animatable." + declaration.id, message: `Animatable ${declaration.id} is declared twice with different specs. Give each component its own id or share one spec.` });
+          ...(declaration.readingTimeMs ? { readingTimeMs: declaration.readingTimeMs } : {}),
+          ...(declaration.kind ? { kind: declaration.kind } : {}), ...(declaration.label ? { label: declaration.label } : {}) }));
+      } else if ((known !== declaration.key || declaration.kind === "three") && !issues.some(issue => issue.path === "animatable." + declaration.id))
+        issues.push({ path: "animatable." + declaration.id, message: declaration.kind === "three"
+          ? `3D animatable ${declaration.id} is declared twice. Give each object and clip its own id.`
+          : `Animatable ${declaration.id} is declared twice with different specs. Give each component its own id or share one spec.` });
     }
     const changed = JSON.stringify(issues) !== JSON.stringify(animatableIssues) || JSON.stringify([...view.values()]) !== JSON.stringify([...animatableView.values()]);
     animatableView = view;
@@ -140,10 +165,36 @@ export function createRegistry() {
     get coverageIssues(){return coverageIssues;},
     /** Read-only view of declared animatables (id -> spec and owning Surface id). */
     get animatables(): ReadonlyMap<string, AnimatableEntry> { return animatableView; },
-    get animatableIssues(): SceneIssue[] { return animatableIssues; },
+    get animatableIssues(): SceneIssue[] { return [...animatableIssues, ...externalIssues.values()]; },
+    reportIssue(token: symbol, issue?: SceneIssue) {
+      if (issue) {
+        if (sameObject(externalIssues.get(token), issue)) return;
+        externalIssues.set(token, issue);
+      } else if (!externalIssues.delete(token)) return;
+      publish();
+    },
+    registerAnchor(token: symbol, id: string, sample: AnchorSampler) {
+      const entry = { id, sample };
+      anchors.set(token, entry);
+      publish();
+      return () => {
+        if (anchors.get(token) !== entry) return;
+        anchors.delete(token);
+        publish();
+      };
+    },
+    sampleAnchors(channels: Readonly<Record<string, number>>) {
+      const samples = new Map<string, StageAnchor>();
+      for (const { id, sample } of anchors.values()) {
+        if (samples.has(id)) continue;
+        const point = sample(channels);
+        if (point && point.every(Number.isFinite)) samples.set(id, point);
+      }
+      return samples;
+    },
     declareAnimatable(token: symbol, declaration: AnimatableDeclaration) {
       const previous = declarations.get(token);
-      if (previous && previous.id === declaration.id && previous.key === declaration.key && previous.owner === declaration.owner && previous.explicitOwner === declaration.explicitOwner && previous.readingTimeMs === declaration.readingTimeMs) return;
+      if (previous && previous.id === declaration.id && previous.key === declaration.key && previous.owner === declaration.owner && previous.explicitOwner === declaration.explicitOwner && previous.readingTimeMs === declaration.readingTimeMs && previous.kind === declaration.kind && previous.label === declaration.label) return;
       declarations.set(token, declaration);
       if (rebuildAnimatables()) publish();
     },

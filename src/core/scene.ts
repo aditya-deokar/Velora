@@ -60,6 +60,7 @@ export const FocusSchema = z.strictObject({
 const unit = finite.min(0).max(1);
 export const ConstraintTargetSchema = z.union([
   z.strictObject({ surface: id, anchor: z.tuple([unit, unit]).optional() }),
+  z.strictObject({ three: id }),
   z.strictObject({ point: z.tuple([finite, finite, finite]) }),
 ]);
 // A constant 0..1 or a channel track (the TrackRef shape) whose value is clamped to 0..1.

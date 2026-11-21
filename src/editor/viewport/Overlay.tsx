@@ -3,8 +3,9 @@ import { CameraSchema, FocusSchema, intersectPlane, projectWorld, screenRay, typ
 import { useEditor, useEditorState } from "../context";
 import { stateAt, toAuthored, toPresentation } from "../properties";
 import type { Doc } from "../store";
-import type { IntentContext } from "../intents";
-import { combineSelection, enterGroup, exitGroup, marquee, pick, pickables, type Pickable } from "./picking";
+import { intentToOps, type IntentContext } from "../intents";
+import type { GizmoDrag, SceneGizmo } from "../../react/registry";
+import { combineSelection, enterGroup, exitGroup, marquee, pick, pickables, pickThreeCanvas, type Pickable } from "./picking";
 import { displayCamera, framePoint, parentWorld, realCamera, transformAt, type Frame } from "./scene";
 import { guideLines, moveTo, pushTo, setOps, movePlane } from "./MovePlane";
 import { ringDelta, rotateTo, unwrap, type RingAxis } from "./RotateRings";
@@ -47,6 +48,8 @@ export function Overlay() {
   const [drag, setDrag] = useState<Drag>();
   const dragRef = useRef<Drag | undefined>(undefined);
   dragRef.current = drag;
+  const threeDrag = useRef<{ drag: GizmoDrag; ops: EditOp[]; id: string; toPoint(client: Point, frame: Point): Point | undefined } | undefined>(undefined);
+  const previousGizmo = useRef<SceneGizmo | undefined>(undefined);
   const doc = state.draft as Doc;
   const frame: Frame = useMemo(() => ({ width: host.frame.width, height: host.frame.height }), [host.frame.width, host.frame.height]);
   const scale = host.frame.scale || 1;
@@ -146,6 +149,7 @@ export function Overlay() {
   // ---------- keyboard: Esc cancels or leaves a group; digits + Enter type a value during a drag ----------
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && threeDrag.current) { event.preventDefault(); finishThree(false); return; }
       const current = dragRef.current;
       if (current) {
         if (event.key === "Escape") { event.preventDefault(); store.cancel(); setDrag(undefined); return; }
@@ -206,12 +210,65 @@ export function Overlay() {
   });
   // ---------- pointer ----------
   const pointOf = (event: { clientX: number; clientY: number }) => framePoint(svg.current!, event.clientX, event.clientY, frame);
+  function threeAt(event: ReactPointerEvent<SVGSVGElement>) {
+    if (!snapshot || director || tool === "camera" || tool === "focus" || sourcePicking) return;
+    return pickThreeCanvas({ x: event.clientX, y: event.clientY }, snapshot, camera, frame, new Set([...locked, ...state.ui.hidden]));
+  }
+  function finishThree(commit: boolean) {
+    const current = threeDrag.current;
+    if (!current) return;
+    threeDrag.current = undefined;
+    current.drag.end();
+    if (!commit || !current.ops.length) { store.cancel(); return; }
+    const issues = store.commit(current.ops, `Transform ${current.id}`);
+    if (issues.length) notify(issues[0].message);
+  }
+  function updateThree(event: ReactPointerEvent<SVGSVGElement>) {
+    const client = { x: event.clientX, y: event.clientY }, frame = pointOf(event);
+    const current = threeDrag.current;
+    if (current) {
+      const point = current.toPoint(client, frame);
+      if (!point) return;
+      const committed = store.committed();
+      const ctx = context();
+      current.ops = Object.entries(current.drag.move(point)).flatMap(([name, value]) => intentToOps({
+        kind: "set", track: { target: { kind: "channel", id: `${current.id}.${name}` }, property: "value" }, value,
+      }, committed, ctx));
+      if (current.ops.length) store.preview(current.ops);
+      else store.cancel();
+      return;
+    }
+    const hit = threeAt(event);
+    if (previousGizmo.current && previousGizmo.current !== hit?.gizmo) previousGizmo.current.hover({ x: 2, y: 2 });
+    previousGizmo.current = hit?.gizmo;
+    const point = hit?.toPoint(client, frame);
+    if (point) hit?.gizmo.hover(point);
+  }
   function begin(event: ReactPointerEvent<SVGSVGElement>) {
     if (event.button !== 0 || !snapshot) return;
     const p = pointOf(event);
     const target = event.target as Element;
     const handle = target.closest?.("[data-handle]")?.getAttribute("data-handle") as HandleId | null;
     const keyDot = target.closest?.("[data-key-dot]")?.getAttribute("data-key-dot");
+    if (!handle && !keyDot && !event.altKey) {
+      const hit = threeAt(event);
+      const point = hit?.toPoint({ x: event.clientX, y: event.clientY }, p);
+      if (hit && point) {
+        const current = state.selection.layers[0];
+        const active = current?.startsWith("three:") && hit.gizmo.begin(point);
+        if (active) {
+          threeDrag.current = { drag: active, id: current, ops: [], toPoint: hit.toPoint };
+          svg.current?.setPointerCapture(event.pointerId);
+        } else {
+          const id = hit.gizmo.pick(point) ?? hit.surface;
+          const mode = event.ctrlKey || event.metaKey ? "toggle" : event.shiftKey ? "add" : "replace";
+          const layers = combineSelection(state.selection.layers, [id], mode).filter(id => !id.startsWith("clip:"));
+          store.select({ layers, clips: [], tracks: [], keys: [] });
+        }
+        event.preventDefault();
+        return;
+      }
+    }
     const base = { from: p, to: p, moved: false, typed: "", ops: [] as EditOp[] };
     const committed = store.committed();
     let next: Drag | undefined;
@@ -333,9 +390,14 @@ export function Overlay() {
       if (sourcePicking && event.button === 0) { event.preventDefault(); pickSource?.(pickSourceElement(event.clientX, event.clientY)); return; }
       begin(event);
     }}
-    onPointerMove={event => { const current = dragRef.current; if (current) update(current, pointOf(event), { shift: event.shiftKey, alt: event.altKey }); }}
-    onPointerUp={() => { const current = dragRef.current; if (current) finish(current); }}
-    onPointerCancel={() => { if (dragRef.current) { store.cancel(); setDrag(undefined); } }}
+    onPointerMove={event => {
+      const current = dragRef.current;
+      if (current) update(current, pointOf(event), { shift: event.shiftKey, alt: event.altKey });
+      else updateThree(event);
+    }}
+    onPointerUp={() => { finishThree(true); const current = dragRef.current; if (current) finish(current); }}
+    onPointerCancel={() => { finishThree(false); if (dragRef.current) { store.cancel(); setDrag(undefined); } }}
+    onLostPointerCapture={() => finishThree(false)}
     onDoubleClick={doubleClick}>
     <style>{`.ve-outline{fill:none;stroke:#4cc2ff;stroke-width:${2 * s}px}.ve-outline[data-primary]{stroke-width:${3 * s}px}
 .ve-handle{fill:#fff;stroke:#1677c8;stroke-width:${1.5 * s}px;cursor:pointer}.ve-depth{fill:#9be7ff}

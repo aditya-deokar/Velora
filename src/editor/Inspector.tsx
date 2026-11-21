@@ -1,3 +1,4 @@
+import type { SceneSnapshot } from "../react";
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { EASING_NAMES, focalLengthForPerspective, perspectiveForFocalLength, type EditOp, type TrackAddress } from "../core";
 import { useEditor, useEditorState } from "./context";
@@ -225,6 +226,14 @@ function StyleVars({ id }: { id: string }) {
     </div>
   </>;
 }
+function AnimatableProperties({ entries, objectLabels = false }: { entries: SceneSnapshot["animatables"]; objectLabels?: boolean }) {
+  return <>{entries.flatMap(entry => Object.entries(entry.spec).map(([prop, spec]) =>
+    <PropertyRow key={`${entry.id}.${prop}`} track={{ target: { kind: "channel", id: `${entry.id}.${prop}` }, property: "value" }}
+      label={objectLabels ? (spec.label ?? prop) : `${entry.id}.${prop}`}
+      spec={{ name: prop, step: spec.type === "number" ? (spec.step ?? 1) : 1, ...(spec.type === "number" ? { unit: spec.unit, min: spec.min, max: spec.max } : {}) }}
+      kind={spec.type} options={spec.type === "enum" ? spec.options : undefined}
+      fallback={spec.type === "boolean" ? (spec.default ? 1 : 0) : spec.type === "enum" ? Math.max(0, spec.options.indexOf(spec.default)) : spec.default}/>))}</>;
+}
 export function Inspector() {
   const { store, snapshot } = useEditor();
   const state = useEditorState(store);
@@ -251,17 +260,17 @@ export function Inspector() {
     const id = subject.slice(5);
     const entry = listClips(doc).find(({ clip }) => clip.id === id);
     body = entry && <Group title={entry.clip.label ?? `Clip ${id}`}><ClipInspector clip={entry.clip} root={!entry.parent}/></Group>;
+  } else if (subject.startsWith("three:")) {
+    const entry = snapshot?.animatables.find(entry => entry.id === subject && entry.kind === "three");
+    body = entry && <><Group title={entry.label ?? subject}><AnimatableProperties entries={[entry]} objectLabels/></Group>
+      <Group title="Easing at playhead"><EasingAtPlayhead/></Group></>;
   } else {
-    const animatables = (snapshot?.animatables ?? []).filter(entry => entry.owner === subject);
+    const animatables = (snapshot?.animatables ?? []).filter(entry => entry.owner === subject && entry.kind !== "three");
     body = <>
       <Group title="Transform">{TRANSFORM_PROPS.map(spec => <PropertyRow key={spec.name} track={{ target: { kind: "surface", id: subject }, property: spec.name }} spec={spec}/>)}</Group>
       <Group title="Visual and grade" open={false}>{VISUAL_PROPS.map(spec => <PropertyRow key={spec.name} track={{ target: { kind: "surface", id: subject }, property: spec.name }} spec={spec}/>)}</Group>
       <Group title="Style vars" open={false}><StyleVars id={subject}/></Group>
-      {animatables.length > 0 && <Group title="Props">{animatables.flatMap(entry => Object.entries(entry.spec).map(([prop, spec]) =>
-        <PropertyRow key={`${entry.id}.${prop}`} track={{ target: { kind: "channel", id: `${entry.id}.${prop}` }, property: "value" }} label={`${entry.id}.${prop}`}
-          spec={{ name: prop, step: spec.type === "number" ? (spec.step ?? 1) : 1, ...(spec.type === "number" ? { unit: spec.unit, min: spec.min, max: spec.max } : {}) }}
-          kind={spec.type} options={spec.type === "enum" ? spec.options : undefined}
-          fallback={spec.type === "boolean" ? (spec.default ? 1 : 0) : spec.type === "enum" ? Math.max(0, spec.options.indexOf(spec.default)) : spec.default}/>))}</Group>}
+      {animatables.length > 0 && <Group title="Props"><AnimatableProperties entries={animatables}/></Group>}
       <Group title="Constraints" open={false}><Constraints surface={subject}/></Group>
       <Group title="Easing at playhead"><EasingAtPlayhead/></Group>
     </>;
