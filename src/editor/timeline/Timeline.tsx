@@ -9,20 +9,20 @@ import { buildRows, type RowKey, type TimelineRow } from "./Rows";
 import { snapTime, type SnapCandidate } from "./snap";
 import { Ruler } from "./Ruler";
 import { KeyGlyphShape, glyphLabel } from "./Keyframes";
-import { ClipBar } from "./ClipBar";
+import { ClipBar, staggerHandleX } from "./ClipBar";
 import { GraphEditor } from "../graph/GraphEditor";
 
 /** Timeline dock (05.1–05.3, 05.7): dope sheet or graph editor over one session cursor. Every gesture is
  * an EditOp: drags preview transient ops and commit once on release. Rows are virtualized; only keys in
  * the visible time window are drawn. role="grid": rows are properties, cells are keyframes. */
 export const ROW_HEIGHT = 24, RULER_HEIGHT = 24;
-const MENU_COMMANDS = ["ease.easy", "ease.in", "ease.out", "ease.linear", "ease.auto", "ease.hold", "keyframes.reverse", "edit.copy", "edit.paste", "keyframes.delete"];
+const MENU_COMMANDS = ["ease.easy", "ease.in", "ease.out", "ease.linear", "ease.auto", "ease.hold", "keyframes.reverse", "timing.open", "clip.group", "clip.ungroup", "stagger.open", "edit.copy", "edit.paste", "keyframes.delete"];
 type PropertyRow = Extract<TimelineRow, { kind: "property" }>;
 type ClipRow = Extract<TimelineRow, { kind: "clip" }>;
 type Gesture =
   | { kind: "keys"; mode: "move" | "scale"; refs: KeyRef[]; anchor: number; pivot: number; x0: number; moved: boolean; delta: number }
   | { kind: "marquee"; x0: number; y0: number; x1: number; y1: number; additive: boolean }
-  | { kind: "clip"; mode: "move" | "start" | "end" | "speed"; row: ClipRow; clip: Doc; x0: number; moved: boolean; delta: number }
+  | { kind: "clip"; mode: "move" | "start" | "end" | "speed" | "stagger"; row: ClipRow; clip: Doc; x0: number; moved: boolean; delta: number }
   | { kind: "scrub" }
   | { kind: "marker"; index: number; x0: number; time: number; delta: number };
 export function timecode(ms: number, fps: number, framesOnly = false): string {
@@ -105,7 +105,7 @@ export function Timeline() {
     return [...groups.values()].map(group => g.mode === "move" ? { op: "keys.shift", refs: group.refs, deltaMs: group.local } as EditOp
       : { op: "keys.scale", refs: group.refs, pivotMs: Math.max(0, group.pivot), factor: Math.max(1e-3, group.factor) } as EditOp);
   };
-  const hit = (px: number, py: number): { row: TimelineRow; index: number; key?: RowKey; edge?: "start" | "end" } | undefined => {
+  const hit = (px: number, py: number): { row: TimelineRow; index: number; key?: RowKey; edge?: "start" | "end" | "stagger" } | undefined => {
     if (py < RULER_HEIGHT) return undefined;
     const index = Math.floor((py - RULER_HEIGHT + scrollTop) / ROW_HEIGHT);
     const row = rows[index];
@@ -114,6 +114,8 @@ export function Timeline() {
       const key = row.keys.reduce<RowKey | undefined>((best, candidate) => Math.abs(x(candidate.time) - px) <= 7 && (!best || Math.abs(x(candidate.time) - px) < Math.abs(x(best.time) - px)) ? candidate : best, undefined);
       return { row, index, key };
     }
+    if (row.kind === "clip" && row.staggerHandle && Math.abs(px - staggerHandleX(row, x)) <= 6 && (py - RULER_HEIGHT + scrollTop) % ROW_HEIGHT >= 12)
+      return { row, index, edge: "stagger" };
     if (row.kind === "clip" && px >= x(row.start) - 2 && px <= x(row.end) + 2)
       return { row, index, edge: px - x(row.start) < 7 ? "start" : x(row.end) - px < 7 ? "end" : undefined };
     return { row, index };
@@ -149,7 +151,7 @@ export function Timeline() {
     if (target?.row.kind === "clip") {
       const clip = findClip(store.committed(), target.row.clipId);
       if (!clip) return;
-      store.select({ clips: [target.row.clipId], keys: [], layers: [`clip:${target.row.clipId}`] });
+      store.select({ clips: [target.row.clipId], keys: [], tracks: [], layers: [`clip:${target.row.clipId}`] });
       gesture.current = { kind: "clip", mode: event.altKey ? "speed" : target.edge ?? "move", row: target.row, clip, x0: px, moved: false, delta: 0 };
       return;
     }
@@ -157,9 +159,12 @@ export function Timeline() {
     gesture.current = { kind: "marquee", x0: px, y0: py, x1: px, y1: py, additive: event.shiftKey || event.ctrlKey || event.metaKey };
   };
   const clipOps = (g: Extract<Gesture, { kind: "clip" }>, delta: number): EditOp[] => {
-    const clip = g.clip, authored = delta * speed;
+    const clip = g.clip, authored = delta * g.row.parentRate;
+    if (g.mode === "stagger" && clip.stagger && clip.members && g.row.staggerHandle)
+      return [{ op: "stagger.set", clipId: clip.id, members: clip.members, eachMs: Math.max(0, Math.round((clip.stagger.eachMs + delta / g.row.staggerHandle.rate) * 1000) / 1000),
+        ...(clip.stagger.order !== undefined ? { order: clip.stagger.order } : {}), ...(clip.stagger.ease !== undefined ? { ease: clip.stagger.ease } : {}) } as EditOp];
     if (g.mode === "move") return [{ op: "clip.update", id: clip.id, startMs: Math.max(0, clip.startMs + authored) }];
-    const width = (g.row.end - g.row.start) * speed;
+    const width = (g.row.end - g.row.start) * g.row.parentRate;
     const span = width * (clip.speed ?? 1) / (clip.loop || 1);
     if (g.mode === "speed") return [{ op: "clip.update", id: clip.id, speed: Math.min(4, Math.max(0.05, (clip.speed ?? 1) * width / Math.max(1, width + authored))) }];
     if (g.mode === "end") return [{ op: "clip.update", id: clip.id, durationMs: Math.max(1, span + authored * (clip.speed ?? 1)) }];
@@ -177,7 +182,7 @@ export function Timeline() {
     if (g.kind === "clip") {
       g.moved = true;
       const edge = g.mode === "end" ? g.row.end : g.row.start;
-      const snapped = g.mode === "speed" ? { timeMs: edge + raw, kind: "frame" } : snapTime(edge + raw, { fps: host.fps, pxPerMs, candidates: candidates([]), enabled: state.ui.snap && !event.shiftKey });
+      const snapped = g.mode === "speed" || g.mode === "stagger" ? { timeMs: edge + raw, kind: "frame" } : snapTime(edge + raw, { fps: host.fps, pxPerMs, candidates: candidates([]), enabled: state.ui.snap && !event.shiftKey });
       g.delta = snapped.timeMs - edge;
       setSnapLine({ time: snapped.timeMs, kind: snapped.kind });
       store.preview(clipOps(g, g.delta));
@@ -218,7 +223,7 @@ export function Timeline() {
     if (g.kind === "scrub") return;
     if (!g.moved || !g.delta) { store.cancel(); return; }
     if (g.kind === "clip") {
-      const issues = store.commit(clipOps(g, g.delta), `${g.mode === "move" ? "Move" : g.mode === "speed" ? "Retime" : "Trim"} clip ${g.clip.id}`);
+      const issues = store.commit(clipOps(g, g.delta), `${g.mode === "move" ? "Move" : g.mode === "speed" ? "Retime" : g.mode === "stagger" ? "Adjust stagger in" : "Trim"} clip ${g.clip.id}`);
       if (issues.length) notify(issues[0].message);
       return;
     }
@@ -312,7 +317,16 @@ export function Timeline() {
           const collapsible = row.kind === "layer" || row.kind === "clip";
           const isRowSelected = row.kind === "property" && state.selection.tracks.some(track => trackKey(track) === row.id);
           return <div key={row.id} className="ve-label" data-kind={row.kind} aria-selected={isRowSelected} style={{ top: yOf(index), paddingLeft: row.kind === "property" ? 20 : row.kind === "clip" ? 8 + row.depth * 10 : 8 }}
-            onClick={() => row.kind === "property" ? store.select({ tracks: [row.address], layers: [row.layer.startsWith("clip:") ? row.layer : row.layer] }) : row.kind === "layer" ? store.select({ layers: [row.id.slice(6)] }) : undefined}>
+            onClick={event => {
+              if (row.kind === "clip") store.select({ clips: [row.clipId], keys: [], tracks: [], layers: [row.id] });
+              if (row.kind === "property") store.select({ tracks: [row.address], keys: [], layers: [row.layer], clips: row.address.clip ? [row.address.clip] : [] });
+              if (row.kind === "layer") {
+                const id = row.id.slice(6), existing = state.selection.layers.filter(layer => !layer.startsWith("clip:"));
+                const toggle = event.ctrlKey || event.metaKey;
+                const layers = event.shiftKey || toggle ? existing.includes(id) ? toggle ? existing.filter(layer => layer !== id) : existing : [...existing, id] : [id];
+                store.select({ layers, clips: [], tracks: [], keys: [] });
+              }
+            }}>
             {collapsible && <button className="ve-btn ve-icon" style={{ minHeight: 16, border: 0, background: "none" }} aria-label={collapsed.includes(row.id) ? "Expand row" : "Collapse row"}
               onClick={event => { event.stopPropagation(); setCollapsed(collapsed.includes(row.id) ? collapsed.filter(id => id !== row.id) : [...collapsed, row.id]); }}>{collapsed.includes(row.id) ? "▸" : "▾"}</button>}
             <span>{row.label}</span>

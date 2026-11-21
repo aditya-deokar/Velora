@@ -25,7 +25,7 @@ function toneWav(): Buffer {
 const recipeDoc = (id: string) => ({ version: 1, id, title: id, definition: { width: 128, height: 96, scene: { nodes: [] } } });
 let root: string;
 const hasSubtitles = spawnSync("ffmpeg", ["-hide_banner", "-filters"], { encoding: "utf8" }).stdout?.split(/\r?\n/).some(line => line.trim().split(/\s+/)[1] === "subtitles") ?? false;
-let seeks: { url: string; timeMs: number }[];
+let seeks: { url: string; timeMs: number; session: number }[];
 async function setup(files: Record<string, string | Buffer> = {}) {
   root = await mkdtemp(path.join(tmpdir(), "velora-video-"));
   await mkdir(path.join(root, "src/velora/scenes"), { recursive: true });
@@ -55,15 +55,19 @@ beforeEach(async () => {
   vi.mocked(executeRecipeCommand).mockImplementation(async (_op, input: unknown) => ({
     success: true, data: { url: `http://127.0.0.1:9/${(input as { sceneId: string }).sceneId}` },
   }) as never);
-  vi.mocked(openCapture).mockImplementation(async (input: { url: string }) => ({
-    close: vi.fn(),
-    manifest: async () => ({ version: 1, durationMs: 100, selector: '[data-velora-capture="scene"]' }),
-    snapshot: vi.fn(async (timeMs: number) => {
-      seeks.push({ url: input.url, timeMs });
-      return png;
-    }),
-    encode: vi.fn(),
-  }) as Awaited<ReturnType<typeof openCapture>>);
+  let session = 0;
+  vi.mocked(openCapture).mockImplementation(async (input: { url: string }) => {
+    const id = session++;
+    return {
+      close: vi.fn(),
+      manifest: async () => ({ version: 1, durationMs: 100, selector: '[data-velora-capture="scene"]' }),
+      snapshot: vi.fn(async (timeMs: number) => {
+        seeks.push({ url: input.url, timeMs, session: id });
+        return png;
+      }),
+      encode: vi.fn(),
+    } as Awaited<ReturnType<typeof openCapture>>;
+  });
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 const progress: [number, number][] = [];
@@ -114,7 +118,7 @@ describe("composition video render", () => {
       scenes: [{ id: "s1", recipe: "demo-a", startMs: 0, durationMs: 200 }, { id: "s2", recipe: "demo-b", startMs: 100, durationMs: 200, transition: { type: "crossfade", durationMs: 100 } }],
       overlays: [{ id: "title", recipe: "demo-b", startMs: 200, durationMs: 100 }], assets: [],
     }));
-    const result = await run({ out: "layered.mp4" });
+    const result = await run({ out: "layered.mp4", noCache: true });
     expect(result, JSON.stringify(result)).toMatchObject({ success: true, data: { frames: 9, durationMs: 300 } });
     const manifest = JSON.parse(await readFile(path.join(root, "layered.manifest.json"), "utf8"));
     expect(RenderManifestSchema.safeParse(manifest).success).toBe(true);
@@ -122,8 +126,13 @@ describe("composition video render", () => {
     expect(layers).toEqual(["", "", "", "s1+s2", "s1+s2", "s1+s2", "s2+title", "s2+title", "s2+title"]);
     expect(manifest.frames[2].segmentId).toBe("s1");
     expect(manifest.frames[8].segmentId).toBe("s2");
-    // A frame inside the window captured A and B at their own local times.
-    expect(seeks.filter((s) => s.url.endsWith("/demo-b")).map((s) => Math.round(s.timeMs)).slice(0, 3)).toEqual([0, 33, 67]);
+    // The shot and overlay reuse the same URL. Their worker calls can interleave.
+    const timesBySession = new Map<number, number[]>();
+    for (const seek of seeks.filter(entry => entry.url.endsWith("/demo-b"))) {
+      if (!timesBySession.has(seek.session)) timesBySession.set(seek.session, []);
+      timesBySession.get(seek.session)!.push(Math.round(seek.timeMs));
+    }
+    expect([...timesBySession.values()].sort((a, b) => a.length - b.length)).toEqual([[0, 33, 67], [0, 33, 67, 100, 100, 100]]);
   }, 180_000);
   it.runIf(hasSubtitles)("renders gaps as black void and mixes audio with drift evidence", async () => {
     await writeFile(path.join(root, "teaser.composition.json"), JSON.stringify({

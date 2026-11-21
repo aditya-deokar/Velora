@@ -7,6 +7,7 @@ import { rackOps } from "./viewport/FocusTool";
 import { toAuthored } from "./properties";
 import { intentToOps } from "./intents";
 import { findTrack, listTracks, snapToFrame, trackKey } from "./model";
+import { groupOps } from "./group";
 
 /** SOURCE OF TRUTH: EDITOR_COMMANDS.
  * WHAT: every editor action as data: a stable id, a label, shortcuts (EDITOR-UX §5), enabled(state) and
@@ -16,7 +17,7 @@ import { findTrack, listTracks, snapToFrame, trackKey } from "./model";
  * WHERE: Editor.tsx builds the controller and dispatches keydown through matchShortcut; panels run
  * commands by id. Edits go through intents and the store, never around them.
  */
-export type EditorPanel = "palette" | "easing" | "history" | "advisories";
+export type EditorPanel = "palette" | "easing" | "history" | "advisories" | "stagger" | "behaviors" | "camera-moves" | "presets" | "save-easing" | "timing" | "ungroup";
 export type EditorController = {
   store: EditorStore;
   state: EditorState;
@@ -137,19 +138,19 @@ export const EDITOR_COMMANDS: readonly EditorCommand[] = Object.freeze([
   { id: "edit.cut", label: "Cut keyframes", group: "Keyframes", shortcuts: ["Mod+X"], enabled: hasKeys, run: c => c.cut() },
   { id: "edit.paste", label: "Paste keyframes at playhead", group: "Keyframes", shortcuts: ["Mod+V"], enabled: always, run: c => c.paste() },
   { id: "edit.duplicate", label: "Duplicate keyframes", group: "Keyframes", shortcuts: ["Mod+D"], enabled: hasKeys, run: c => c.duplicate() },
-  { id: "clip.group", label: "Group tracks into a clip", group: "Structure", shortcuts: ["Mod+G"], enabled: s => s.selection.tracks.some(track => !track.clip), run: c => {
-    const doc = c.store.committed();
-    const ids = new Set(JSON.stringify(doc?.definition?.motion?.clips ?? []).match(/"id":"([^"]+)"/g) ?? []);
-    let n = 1;
-    while (ids.has(`"id":"group-${n}"`)) n++;
-    const refs = c.state.selection.tracks.filter(track => !track.clip);
-    commit(c, [{ op: "clip.create", id: `group-${n}`, refs, startMs: 0 }], `Group ${refs.length} tracks`);
-    c.store.select({ tracks: [], keys: [], clips: [`group-${n}`] });
+  { id: "clip.group", label: "Group animation into a clip", group: "Structure", shortcuts: ["Mod+G"], enabled: s => !!groupOps(s.draft, s.selection), run: c => {
+    const group = groupOps(c.store.committed(), c.state.selection);
+    if (!group) return;
+    const issues = c.store.commit(group.ops, "Group animation");
+    if (issues.length) c.notify(issues[0].message);
+    else c.store.select({ tracks: [], keys: [], clips: [group.id], layers: [`clip:${group.id}`] });
   } },
-  { id: "clip.ungroup", label: "Ungroup clip", group: "Structure", shortcuts: ["Mod+Shift+G"], enabled: s => s.selection.clips.length > 0, run: c => {
-    const issues = c.store.commit(c.state.selection.clips.map(id => ({ op: "clip.dissolve", id } as EditOp)));
-    if (issues.length) c.notify(issues[0].message); else c.store.select({ clips: [] });
-  } },
+  { id: "clip.ungroup", label: "Ungroup clip", group: "Structure", shortcuts: ["Mod+Shift+G"], enabled: s => s.selection.clips.length > 0, run: c => c.open("ungroup") },
+  { id: "stagger.open", label: "Stagger layers", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length > 1, run: c => c.open("stagger") },
+  { id: "behaviors.open", label: "Apply a behavior", group: "Motion Design", shortcuts: [], enabled: always, run: c => c.open("behaviors") },
+  { id: "shots.open", label: "Apply a camera move", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length === 1, run: c => c.open("camera-moves") },
+  { id: "presets.open", label: "Browse or save project presets", group: "Motion Design", shortcuts: [], enabled: always, run: c => c.open("presets") },
+  { id: "timing.open", label: "Sequence layers, align, distribute or stretch keyframes", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length > 1 || hasKeys(s), run: c => c.open("timing") },
   { id: "marker.add", label: "Add marker at playhead", group: "Timeline", shortcuts: ["M"], enabled: always, run: c => {
     const markers = (c.store.committed().editor?.markers ?? []) as { atMs: number; label: string }[];
     const atMs = snapToFrame(c.session.timeMs, c.fps);

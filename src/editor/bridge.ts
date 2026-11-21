@@ -53,6 +53,23 @@ export function createBridgeClient(address: BridgeAddress, fetchImpl: Fetch = (.
         } catch { return { status: "offline" }; }
       };
     },
+    /** Project presets (07.6): list, read and save with compare-and-swap (baseSha null creates). */
+    async listPresets(): Promise<{ id: string; title?: string; kind?: string; sha: string; issues?: unknown[] }[]> {
+      const reply = await json("/v1/presets");
+      if (reply.status !== 200) throw new Error(`Bridge could not list presets (HTTP ${reply.status}).`);
+      return (reply.body.presets as never) ?? [];
+    },
+    async readPreset(id: string): Promise<{ sha: string; preset: Record<string, unknown> }> {
+      const reply = await json(`/v1/presets/${encodeURIComponent(id)}`);
+      if (reply.status !== 200) throw new Error(`Bridge could not read preset ${id} (HTTP ${reply.status}).`);
+      return { sha: reply.body.sha256 as string, preset: reply.body.preset as Record<string, unknown> };
+    },
+    async writePreset(preset: { id: string } & Record<string, unknown>, baseSha: string | null): Promise<{ status: "ok"; sha: string } | { status: "conflict"; sha: string | null } | { status: "invalid"; message: string }> {
+      const reply = await json(`/v1/presets/${encodeURIComponent(preset.id)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ baseSha, preset }) });
+      if (reply.status === 200) return { status: "ok", sha: reply.body.sha as string };
+      if (reply.status === 409) return { status: "conflict", sha: (reply.body.sha as string | null) ?? null };
+      return { status: "invalid", message: String((reply.body.issues as { message?: string }[] | undefined)?.[0]?.message ?? reply.body.error ?? `HTTP ${reply.status}`) };
+    },
     /** Stream events until the signal aborts or the bridge closes. */
     async events(onEvent: (event: BridgeEvent) => void, signal: AbortSignal): Promise<void> {
       const response = await fetchImpl(origin + "/v1/events", { headers, signal });

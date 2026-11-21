@@ -81,7 +81,7 @@ function resolvedLens(definition: Pick<ShotDefinition, "scene" | "motion">, stat
   const constraints = definition.scene.constraints?.map(constraint => SceneConstraintSchema.parse(constraint));
   return resolveConstraints(constraints, camera, focus, target => {
     if ("point" in target) return [...target.point] as [number, number, number];
-    if (target.surface !== SUBJECT_ID) return undefined;
+    if (!("surface" in target) || target.surface !== SUBJECT_ID) return undefined;
     const [u, v] = target.anchor ?? [0.5, 0.5];
     return [(u - 0.5) * (subject?.width ?? 0), (v - 0.5) * (subject?.height ?? 0), 0];
   }, { channels: state.channels });
@@ -277,7 +277,10 @@ export type FramingSample = { timeMs: number; subjectVisible: number; regionVisi
 export type FramingReport = { samples: FramingSample[]; minSubjectVisible: number; minDepthMargin: number; worstRegionBlur: number };
 /** Project a grid over the subject (and its focus region) at sampled times: visible fraction inside
  * the frame, camera-plane margin (fraction of perspective) and depth-of-field blur at the region. */
-export function framingReport(definition: ShotDefinition, subject: { width: number; height: number }, options: { samples?: number; focusRegion?: Region; times?: number[] } = {}): FramingReport {
+export function framingReport(definition: ShotDefinition, subject: { width: number; height: number }, options: {
+  samples?: number; focusRegion?: Region; times?: number[];
+  poseAt?: (timeMs: number) => { world: Matrix; perspective: number; focus: z.output<typeof FocusSchema> };
+} = {}): FramingReport {
   const motion = definition.motion;
   const duration = motion.durationMs / (motion.speed ?? 0.5);
   const times = options.times ?? Array.from({ length: options.samples ?? 24 }, (_, i) => (duration * i) / ((options.samples ?? 24) - 1));
@@ -286,9 +289,9 @@ export function framingReport(definition: ShotDefinition, subject: { width: numb
     Array.from({ length: n * n }, (_, i) => [x0 + (w * (i % n + 0.5)) / n - subject.width / 2, y0 + (h * (Math.floor(i / n) + 0.5)) / n - subject.height / 2] as const);
   const subjectGrid = grid(0, 0, subject.width, subject.height, 9), regionGrid = grid(region.x, region.y, region.width, region.height, 5);
   const samples = times.map(timeMs => {
-    const state = evaluateMotion(motion, timeMs);
-    const { camera: c, focus: f } = resolvedLens(definition, state, subject);
-    const m = cameraMatrix(c);
+    const pose = options.poseAt?.(timeMs);
+    const { camera: c, focus: f } = pose ? { camera: pose, focus: pose.focus } : resolvedLens(definition, evaluateMotion(motion, timeMs), subject);
+    const m = pose ? pose.world : cameraMatrix(c as z.output<typeof CameraSchema>);
     const project = ([x, y]: readonly [number, number]) => {
       const [wx, wy, wz] = apply(m, [x, y, 0]);
       const k = c.perspective / (c.perspective - wz);
@@ -370,4 +373,68 @@ export function buildOrbitRig(input: OrbitRigInput): { clip: MotionClipInput; co
     clip: { id: rig.id, label: "Orbit rig", startMs: rig.startMs, ease: rig.ease, tracks, source: { behavior: "orbit-rig", version: 1, params: { radius: rig.radius, fromDeg: rig.fromDeg, toDeg: rig.toDeg, height: rig.height } } },
     constraint: { kind: "lookAt", subject: "camera", target: rig.target },
   };
+}
+
+/** Camera-move library (07.5): one `SHOT_KINDS` move applied to a layer of an existing scene. buildShot
+ * designs the move for a subject at the stage origin in a standard aspect frame; this scales it to the
+ * scene frame, moves it to the layer's stage center (camera x/y/z += R(t)·P per key, so the view of the
+ * layer is the designed one) and returns a camera clip with `source: {shot, version, params}`, together
+ * with the framing report of the designed move and a certification verdict with "Adjust" suggestions. */
+export type ShotVerdict = { ok: boolean; inFrame: number; depthMargin: number; focusBlur: number; suggestions: string[] };
+export const SHOT_CERTIFICATION = Object.freeze({ minSubjectVisible: 0.85, minDepthMargin: 0.15, maxRegionBlur: 2 });
+export function shotVerdict(report: FramingReport, input: { lens?: number; intensity?: string }): ShotVerdict {
+  const suggestions: string[] = [];
+  const inFrame = report.minSubjectVisible, depthMargin = report.minDepthMargin, focusBlur = report.worstRegionBlur;
+  if (inFrame < SHOT_CERTIFICATION.minSubjectVisible) suggestions.push(input.intensity && input.intensity !== "subtle" ? "Lower the intensity to subtle." : "Use a wider lens (35 mm) so the subject stays in frame.");
+  if (depthMargin < SHOT_CERTIFICATION.minDepthMargin) suggestions.push("Lower the intensity: the camera passes too close to the subject.");
+  if (focusBlur > SHOT_CERTIFICATION.maxRegionBlur) suggestions.push("Use a longer lens or deeper focus so the subject region stays sharp.");
+  return { ok: suggestions.length === 0, inFrame, depthMargin, focusBlur, suggestions };
+}
+export function buildShotClip(input: ShotInput, options: { subject: { width: number; height: number; center?: readonly [number, number, number] }; frame: { width: number; height: number }; sceneSpeed?: number; clipId?: string; startMs?: number }):
+  { clip: MotionClipInput; definition: ShotDefinition; report: FramingReport; verdict: ShotVerdict } {
+  const ratio = options.frame.width / options.frame.height;
+  const aspect = (Object.keys(ASPECT_FRAMES) as (keyof typeof ASPECT_FRAMES)[]).reduce((best, key) =>
+    Math.abs(Math.log(ASPECT_FRAMES[key].width / ASPECT_FRAMES[key].height / ratio)) < Math.abs(Math.log(ASPECT_FRAMES[best].width / ASPECT_FRAMES[best].height / ratio)) ? key : best, "16:9" as keyof typeof ASPECT_FRAMES);
+  const s = options.frame.height / ASPECT_FRAMES[aspect].height;
+  const clampSide = (value: number) => Math.min(7680, Math.max(64, value));
+  const subject = { width: clampSide(options.subject.width / s), height: clampSide(options.subject.height / s) };
+  const shot = ShotInputSchema.parse({ ...input, aspect, subject });
+  const definition = buildShot(shot);
+  const report = framingReport(definition, subject);
+  const verdict = shotVerdict(report, { ...(shot.lens !== undefined ? { lens: shot.lens } : {}), intensity: shot.intensity });
+  const [px, py, pz] = options.subject.center ?? [0, 0, 0];
+  const base = CameraSchema.parse(definition.scene.camera);
+  const offsetAt = (timeMs: number) => {
+    const state = evaluateMotion(definition.motion, timeMs);
+    const c = CameraSchema.parse({ ...definition.scene.camera, ...state.camera });
+    return apply(rotation(c), [px, py, pz]);
+  };
+  const spatial = new Set(["x", "y", "z", "perspective"]);
+  const axis = { x: 0, y: 1, z: 2 } as const;
+  const tracks = (definition.motion.tracks as { target: { kind: string }; property: string; keyframes: { timeMs: number; value: number }[] }[]).map(track => {
+    if (track.target.kind === "camera" && spatial.has(track.property))
+      return { ...track, keyframes: track.keyframes.map(frame => ({ ...frame, value: round(frame.value * s + (track.property in axis ? offsetAt(frame.timeMs)[axis[track.property as keyof typeof axis]] : 0)) })) };
+    if (track.target.kind === "focus" && track.property === "distance") return { ...track, keyframes: track.keyframes.map(frame => ({ ...frame, value: round(frame.value * s) })) };
+    return track;
+  });
+  // Static camera and focus values of the designed shot become constant tracks inside the clip.
+  const animated = new Set(tracks.map(track => `${track.target.kind}.${track.property}`));
+  for (const key of ["x", "y", "z", "rotateX", "rotateY", "rotateZ", "perspective"] as const) {
+    if (animated.has(`camera.${key}`)) continue;
+    const value = key in axis ? base[key] * s + offsetAt(0)[axis[key as keyof typeof axis]] : key === "perspective" ? base.perspective * s : base[key];
+    tracks.push({ target: { kind: "camera" }, property: key, keyframes: [{ timeMs: 0, value: round(value) }] });
+  }
+  const focus = FocusSchema.parse(definition.scene.focus);
+  for (const key of ["distance", "fStop", "focalLength", "maxBlur"] as const) {
+    if (animated.has(`focus.${key}`)) continue;
+    tracks.push({ target: { kind: "focus" }, property: key, keyframes: [{ timeMs: 0, value: round(key === "distance" ? focus.distance * s : focus[key]) }] });
+  }
+  const speed = Math.min(4, Math.max(0.05, 1 / (options.sceneSpeed ?? 1)));
+  const clip: MotionClipInput = {
+    id: options.clipId ?? `shot-${shot.kind}`, label: `${shot.kind} camera move`, startMs: options.startMs ?? 0, durationMs: definition.motion.durationMs,
+    ...(Math.abs(speed - 1) > 1e-9 ? { speed: round(speed) } : {}),
+    tracks: tracks as MotionClipInput["tracks"],
+    source: { shot: shot.kind, version: 1, params: { intensity: shot.intensity, ...(shot.lens !== undefined ? { lens: shot.lens } : {}), durationMs: definition.motion.durationMs, aspect } },
+  };
+  return { clip, definition, report, verdict };
 }

@@ -14,7 +14,7 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `load` | `--scene`, `--project`, `--json` | `velora load --scene <id> --json` |
 | `validate` | `--project`, `--composition`, `--json` | `velora validate --composition teaser.composition.json --json` |
 | `inspect` | `--project`, `--scene`, `--composition`, `--json` | `velora inspect --scene <id> --json` |
-| `assets` | `--as`, `--id`, `--yes`, `--project`, `--json` | `velora assets ls --json` |
+| `assets` | `--as`, `--yes`, `--project`, `--json` | `velora assets ls --json` |
 | `snapshot` | `--scene`, `--url`, `--time`, `--project`, `--json` | `velora snapshot --scene <id> --url <origin> --json` |
 | `export` | `--url`, `--output`, `--fps`, `--width`, `--height`, `--audio`, `--captions`, `--quality`, `--codec`, `--transparent`, `--motion-blur`, `--motion-samples`, `--gif-fps`, `--poster`, `--project`, `--json` | `velora export --url <scene-url> --output clip.mp4 --quality master --json` |
 | `doctor` | `--project`, `--url`, `--json` | `velora doctor --json` |
@@ -22,7 +22,7 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `frames` | `--composition`, `--out`, `--every`, `--at`, `--contact-sheet`, `--columns`, `--no-cache`, `--cache-dir`, `--url`, `--project`, `--json` | `velora frames --composition teaser.composition.json --out stills --every 30 --json` |
 | `shot` | `--scene`, `--time`, `--out`, `--url`, `--quality`, `--motion-blur`, `--motion-samples`, `--fps`, `--transparent`, `--finish`, `--project`, `--json` | `velora shot --scene demo --time 500 --out shot.png --json` |
 | `check` | `--frames`, `--video`, `--manifest`, `--budget-ms`, `--project`, `--json` | `velora check --frames stills --json` |
-| `audio` | `--composition`, `--file`, `--write-markers`, `--project`, `--json` | `velora audio check --composition teaser.composition.json --json` |
+| `audio` | `--composition`, `--write-markers`, `--project`, `--json` | `velora audio check --composition teaser.composition.json --json` |
 | `captions` | `--file`, `--composition`, `--project`, `--json` | `velora captions validate --file subs.srt --json` |
 | `compose` | `--composition`, `--to`, `--tolerance`, `--write`, `--project`, `--json` | `velora compose snap --composition launch.composition.json --to beats --json` |
 | `review` | `--composition`, `--platform`, `--project`, `--json` | `velora review --composition launch.composition.json --platform youtube-1080p --json` |
@@ -32,7 +32,7 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `transitions` | `--type`, `--json` | `velora transitions ls --json` |
 | `deliver` | `--composition`, `--targets`, `--out`, `--quality`, `--parallel`, `--no-cache`, `--no-stream`, `--url`, `--project`, `--json` | `velora deliver --composition launch.composition.json --targets youtube,reels,website-hero --json` |
 | `studio` | `--site`, `--port`, `--check`, `--edit`, `--scene`, `--read-only`, `--project`, `--json` | `velora studio --site http://127.0.0.1:4321 --json` |
-| `edit` | `--scene`, `--at`, `--ops`, `--expect-sha`, `--write`, `--track`, `--value`, `--ease`, `--label`, `--from`, `--onto`, `--port`, `--url`, `--read-only`, `--no-open`, `--project`, `--json` | `velora edit key --scene home-hero --track camera.z --at 1200 --value 400 --json` |
+| `edit` | `--scene`, `--at`, `--ops`, `--expect-sha`, `--write`, `--track`, `--value`, `--ease`, `--label`, `--from`, `--onto`, `--preset`, `--to`, `--layer`, `--title`, `--values`, `--file`, `--id`, `--port`, `--url`, `--read-only`, `--no-open`, `--project`, `--json` | `velora edit preset ls --json` |
 | `create` | `--name`, `--blueprint`, `--json` | `velora create my-launch --name Fieldnote --json` |
 | `prompts` | `--id`, `--json` | `velora prompts show --id launch-film --json` |
 | `skills` | `--dir`, `--agent`, `--source`, `--json` | `velora skills install --dir <path> --json` |
@@ -62,6 +62,7 @@ Success: `{ success: true, command, data, warnings?, next? }`. Failure: `{ succe
 | `ERR_SITE_NOT_LOOPBACK`, `ERR_SITE_UNREACHABLE`, `ERR_SITE_REDIRECT_EXTERNAL`, `ERR_STUDIO_FAILED` | Any-site studio | `velora studio --site <url> --check --json` |
 | `ERR_EDIT_INVALID`, `ERR_EDIT_TARGET`, `ERR_EDIT_UNSUPPORTED` | Edit op failed (path names the op) | `velora edit ls --scene <id> --json` |
 | `ERR_EDIT_CONFLICT` | The file changed since it was read | Re-read with `velora edit ls --scene <id> --json`, then apply again |
+| `ERR_PRESET_NOT_FOUND`, `ERR_PRESET_INVALID`, `ERR_PRESET_TARGET` | A project preset is missing, does not match `schemas/preset.schema.json`, or animates another kind of target | `velora edit preset ls --json` |
 | `ERR_BRIDGE_PORT`, `ERR_BRIDGE_HOST` | Edit bridge could not bind (port in use, non-loopback) | `velora edit --port <n>` |
 | `ERR_BRAND_INVALID`, `ERR_LOOK_INVALID` | Brand file and looks | `velora brand check --json` |
 | `ERR_CODEC_UNAVAILABLE`, `ERR_FFMPEG_FILTER`, `ERR_OUTPUT_UNWRITABLE` | Encoding and output paths | `velora doctor --json`, `velora render --help` |

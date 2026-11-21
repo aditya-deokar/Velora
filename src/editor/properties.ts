@@ -34,7 +34,9 @@ const VISUAL_BASE: Record<string, number> = { opacity: 1, blur: 0, brightness: 1
 /** The motion speed (authored ms per presentation ms); legacy recipes default to 0.5. */
 export function motionSpeed(doc: Doc): number {
   // Read the field with the schema's default; never parse the whole motion just for its speed.
-  const speed = doc?.definition?.motion?.speed;
+  const motion = doc?.definition?.motion;
+  if (!motion) return 1;
+  const speed = motion.speed;
   return typeof speed === "number" && speed > 0 ? speed : MOTION_DEFAULT_SPEED;
 }
 const MOTION_DEFAULT_SPEED = MotionSchema.parse({ durationMs: 0, tracks: [] }).speed;

@@ -38,9 +38,11 @@ export function Typewriter({ id, text, startMs = 0, cps = 18, caret = true, styl
   const time = useSceneTime();
   // Graphemes keep emoji and combining marks whole; newlines stay.
   const graphemes = segmentText(text, "grapheme").flatMap((line, index) => index ? ["\n", ...line] : line);
-  // An <id>.reveal track (0..1) scrubs the typing span instead of the prop timing.
-  const typed = useRevealOverride(id, startMs, (graphemes.length / Math.max(1e-6, cps)) * 1000) ?? time;
-  const shown = Math.max(0, Math.min(graphemes.length, Math.floor(((typed - startMs) / 1000) * cps)));
+  const characters = useAnimatableState(animatableIdFor(id), { chars: { type: "number", default: 0, min: 0, max: graphemes.length } });
+  // The count can be keyed directly. Otherwise the reveal override scrubs the cps timing.
+  const typed = useRevealOverride(id, startMs, (graphemes.length / Math.max(1e-6, cps)) * 1000, true) ?? time;
+  const count = characters.animated.has("chars") ? characters.values.chars : ((typed - startMs) / 1000) * cps;
+  const shown = Math.max(0, Math.min(graphemes.length, Math.floor(count)));
   const blinkOn = Math.floor(time / 530) % 2 === 0 || shown < graphemes.length;
   return <span data-velora-typewriter="" style={{ whiteSpace: "pre-wrap", ...style }}>
     {graphemes.slice(0, shown).join("")}

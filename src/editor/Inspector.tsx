@@ -2,7 +2,8 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { EASING_NAMES, focalLengthForPerspective, perspectiveForFocalLength, type EditOp, type TrackAddress } from "../core";
 import { useEditor, useEditorState } from "./context";
 import { intentToOps, isAnimated, type PropertyIntent } from "./intents";
-import { findTrack, listTracks, trackKey } from "./model";
+import { findTrack, listClips, listTracks, trackKey } from "./model";
+import { ClipInspector } from "./ClipInspector";
 import { CAMERA_PROPS, FOCUS_PROPS, TRANSFORM_PROPS, VISUAL_PROPS, keyAtPlayhead, stateAt, toAuthored, toPresentation, valueAt, type PropertySpec } from "./properties";
 import type { Doc } from "./store";
 
@@ -248,7 +249,8 @@ export function Inspector() {
   </Group>;
   else if (subject.startsWith("clip:")) {
     const id = subject.slice(5);
-    body = <Group title={`Clip ${id}`}><p style={{ padding: "4px 10px", color: "var(--ve-dim)" }}>Drag the clip bar in the timeline to move it; Alt-drag to change speed; edges trim. Ctrl/⌘+Shift+G ungroups.</p></Group>;
+    const entry = listClips(doc).find(({ clip }) => clip.id === id);
+    body = entry && <Group title={entry.clip.label ?? `Clip ${id}`}><ClipInspector clip={entry.clip} root={!entry.parent}/></Group>;
   } else {
     const animatables = (snapshot?.animatables ?? []).filter(entry => entry.owner === subject);
     body = <>

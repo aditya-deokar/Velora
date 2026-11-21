@@ -108,3 +108,37 @@ describe("velora edit paste", () => {
     expect(JSON.parse(bad.stderr).issues[0].code).toBe("ERR_EDIT_TARGET");
   });
 });
+
+describe("velora edit preset (v2.1 Phase 07.6)", () => {
+  const cardTrack = `{ "target": { "kind": "surface", "id": "card" }, "property": "y", "keyframes": [{ "timeMs": 200, "value": 50 }, { "timeMs": 1200, "value": 0 }] }`;
+  it("saves a layer's tracks as a relative preset, lists and shows it, and applies it to another layer", async () => {
+    await writeFile(file(), recipe.replace(`"tracks": [`, `"tracks": [${cardTrack},`).replace(`"nodes": [{ "id": "card" }]`, `"nodes": [{ "id": "card" }, { "id": "badge" }]`));
+    const dry = JSON.parse((await run(["preset", "save", "--scene", "demo", "--preset", "settle", "--layer", "card", "--title", "Settle", "--json"])).stdout);
+    expect(dry.data).toMatchObject({ written: false, preset: { id: "settle", kind: "motion", body: { values: "relative", tracks: [{ target: { id: "$target" }, keyframes: [{ timeMs: 0, value: 0 }, { timeMs: 1000, value: -50 }] }] } } });
+    const saved = JSON.parse((await run(["preset", "save", "--scene", "demo", "--preset", "settle", "--layer", "card", "--title", "Settle", "--write", "--json"])).stdout);
+    expect(saved.data.written).toBe(true);
+    const onDisk = await readFile(path.join(root, "src/velora/presets/settle.preset.json"), "utf8");
+    expect(saved.data.sha).toBe(sha(onDisk));
+    // Saving again without --expect-sha never overwrites.
+    const again = JSON.parse((await run(["preset", "save", "--scene", "demo", "--preset", "settle", "--layer", "card", "--write", "--json"])).stderr);
+    expect(again.issues[0].code).toBe("ERR_EDIT_CONFLICT");
+    const listed = JSON.parse((await run(["preset", "ls", "--json"])).stdout);
+    expect(listed.data.presets).toEqual([expect.objectContaining({ id: "settle", title: "Settle", kind: "motion" })]);
+    const shown = JSON.parse((await run(["preset", "show", "--preset", "settle", "--json"])).stdout);
+    expect(shown.data.preset.title).toBe("Settle");
+    const applied = JSON.parse((await run(["preset", "apply", "--scene", "demo", "--preset", "settle", "--to", "badge", "--at", "500", "--write", "--json"])).stdout);
+    expect(applied.success).toBe(true);
+    const doc = JSON.parse(await readFile(file(), "utf8"));
+    expect(doc.definition.motion.clips[0]).toMatchObject({ id: "settle-badge", startMs: 500, source: { preset: "settle", version: 1 }, tracks: [{ target: { kind: "surface", id: "badge" }, keyframes: [{ timeMs: 0, value: 0 }, { timeMs: 1000, value: -50 }] }] });
+  });
+  it("refuses incompatible targets and missing presets", async () => {
+    await mkdir(path.join(root, "src/velora/presets"), { recursive: true });
+    await writeFile(path.join(root, "src/velora/presets/count.preset.json"), JSON.stringify({ version: 1, id: "count", title: "Count", kind: "easing", body: { curves: [{ name: "soft", easing: "cubic.out" }] } }));
+    const easing = JSON.parse((await run(["preset", "apply", "--scene", "demo", "--preset", "count", "--to", "card", "--json"])).stderr);
+    expect(easing.issues[0].code).toBe("ERR_PRESET_TARGET");
+    const missing = JSON.parse((await run(["preset", "show", "--preset", "nope", "--json"])).stderr);
+    expect(missing.issues[0].code).toBe("ERR_PRESET_NOT_FOUND");
+    const action = await run(["preset", "explode", "--json"]);
+    expect(action.code).toBe(2);
+  });
+});

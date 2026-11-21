@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { ScenePreview, usePreviewHost } from "../preview/ScenePreview";
 import type { PreviewHot } from "../preview/connection";
 import { useSceneInspector } from "../react";
-import type { EditOp } from "../core";
+import { behaviorById, type EditOp, type MotionClipInput } from "../core";
 import { createEditorStore, DEFAULT_UI, type Doc, type EditorUi, type EditorStore } from "./store";
 import { createBridgeClient, takeBridgeFragment, type BridgeHello } from "./bridge";
 import { EditorContext, useEditor, useEditorState, type EditorContextValue } from "./context";
@@ -19,13 +19,19 @@ import { snapToFrame } from "./model";
 import { toAuthored } from "./properties";
 import { editorTheme } from "./theme";
 import { Overlay } from "./viewport/Overlay";
+import { Behaviors } from "./Behaviors";
+import { CameraMoves } from "./CameraMoves";
+import { Presets } from "./Presets";
+import { StaggerTool } from "./StaggerTool";
+import { Timing, Ungroup } from "./MotionDesign";
+import { findRootClip } from "./group";
 
 /** The studio editor (Edit mode, Phase 04/05): ScenePreview in editor layout with Layers, Inspector and the
  * timeline in its slots, one store, one session cursor, and the edit bridge for saving. Every editor element
  * is chrome-marked; the capture viewport only ever contains the scene. */
 export type EditorProps = { sceneId: string; title: string; recipe: unknown; children?: ReactNode; hot?: PreviewHot; backHref?: string; onBack?: () => void };
 type Shared = {
-  store: EditorStore; sceneId: string; hello?: BridgeHello; panel?: EditorPanel; setPanel(panel?: EditorPanel): void;
+  store: EditorStore; sceneId: string; hello?: BridgeHello; client?: ReturnType<typeof createBridgeClient>; panel?: EditorPanel; setPanel(panel?: EditorPanel): void;
   focused: { current: EditorController["focused"] }; clipboard: { current?: ClipboardPayload };
   toast?: { message: string; action?: { label: string; run(): void } }; notify(message: string, action?: { label: string; run(): void }): void;
 };
@@ -56,6 +62,7 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(undefined), action ? 9000 : 4000);
   };
+  useEffect(() => { if (state.notice) notify(state.notice.message); }, [state.notice]);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
   // Connect: hello, read the file on disk (authoritative), then follow its changes.
   useEffect(() => {
@@ -88,7 +95,7 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
   }, [client, sceneId, store]);
   // Without a bridge, HMR delivers recipe changes (agent or IDE edits): adopt, rebase or conflict.
   useEffect(() => { if (!client) store.external(recipe as Doc, undefined, JSON.stringify(recipe)); }, [recipe, client, store]);
-  const shared: Shared = { store, sceneId, hello, panel, setPanel, focused, clipboard, toast, notify };
+  const shared: Shared = { store, sceneId, hello, client, panel, setPanel, focused, clipboard, toast, notify };
   const definition = (state.draft as Doc).definition;
   return <ScenePreview definition={definition} title={title} backHref={backHref} onBack={onBack} hot={hot} revision={state.revision} layout="editor"
     {...(state.ui.director ? { viewCamera: state.ui.director } : {})} peaking={state.ui.tool === "focus"}
@@ -140,7 +147,7 @@ function WithEditor({ shared, children }: { shared: Shared; children: ReactNode 
         store.setUi(direction === 0 ? { zoom: 1, scroll: 0 } : { zoom: Math.min(400, Math.max(1, ui.zoom * (direction > 0 ? 1.5 : 1 / 1.5))) });
       },
     };
-    return { store, host, snapshot, controller, hello: shared.hello, sceneId: shared.sceneId, setFocused: next => { shared.focused.current = next; }, notify: shared.notify };
+    return { store, host, snapshot, controller, hello: shared.hello, client: shared.client, sceneId: shared.sceneId, setFocused: next => { shared.focused.current = next; }, notify: shared.notify };
   }, [host, snapshot, state, shared]);
   if (!value) return null;
   return <SharedContext.Provider value={shared}><EditorContext.Provider value={value}><style>{editorTheme}</style>{children}</EditorContext.Provider></SharedContext.Provider>;
@@ -161,6 +168,9 @@ function Toolbar() {
     <button className="ve-btn ve-icon" aria-label="Redo" disabled={!state.redo.length} onClick={() => store.redo()}>↷</button>
     <button className="ve-btn" onClick={() => controller.open("history")}>History</button>
     <button className="ve-btn" onClick={() => controller.open("advisories")} aria-label={`Advisories (${advisories.length})`}>⚠ {advisories.length}</button>
+    <button className="ve-btn" onClick={() => controller.open("behaviors")}>Behaviors</button>
+    <button className="ve-btn" onClick={() => controller.open("camera-moves")}>Camera moves</button>
+    <button className="ve-btn" onClick={() => controller.open("presets")}>Presets</button>
     <button className="ve-btn" onClick={() => controller.open("palette")} title="Ctrl/⌘+K">⌘K</button>
     <span className="ve-save" data-state={state.save} role="status" aria-live="polite" data-testid="editor-save-state">{SAVE_LABELS[state.save]}</span>
     {state.readOnly && <>
@@ -212,12 +222,21 @@ function Effects() {
     ...(state.ui.solo.length ? [`[data-velora-layout=editor] [data-velora-content]{opacity:.12!important}`, ...state.ui.solo.map(id => `[data-velora-layout=editor] [data-velora-id="${CSS.escape(id)}"] [data-velora-content]{opacity:1!important}`)] : []),
   ].join(" ");
   const close = () => shared.setPanel(undefined);
+  const selectedClip = state.selection.clips[0] ? findRootClip(state.draft, state.selection.clips[0]) : undefined;
+  const behaviorClip = selectedClip && behaviorById(selectedClip.source?.behavior) ? selectedClip as MotionClipInput : undefined;
   return <>
     {css && <style data-velora-preview-chrome="" data-velora-editor-visibility="">{css}</style>}
     {shared.panel === "palette" && <Palette onClose={close}/>}
     {shared.panel === "history" && <History onClose={close}/>}
     {shared.panel === "advisories" && <Advisories onClose={close}/>}
     {shared.panel === "easing" && <EasingLibrary onClose={close}/>}
+    {shared.panel === "behaviors" && <Behaviors key={behaviorClip?.id ?? "library"} clip={behaviorClip} onClose={close}/>}
+    {shared.panel === "camera-moves" && <CameraMoves onClose={close}/>}
+    {shared.panel === "presets" && <Presets onClose={close}/>}
+    {shared.panel === "save-easing" && <Presets onClose={close} saveEasing/>}
+    {shared.panel === "stagger" && <StaggerTool onClose={close}/>}
+    {shared.panel === "timing" && <Timing onClose={close}/>}
+    {shared.panel === "ungroup" && <Ungroup onClose={close}/>}
     {shared.toast?.message && <div className="ve-toast" role="status" data-velora-preview-chrome="" data-testid="editor-toast">{shared.toast.message}
       {shared.toast.action && <button className="ve-btn" onClick={() => { shared.toast!.action!.run(); shared.notify(""); }}>{shared.toast.action.label}</button>}</div>}
   </>;

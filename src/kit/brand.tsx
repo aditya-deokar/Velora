@@ -52,9 +52,12 @@ export function useRevealScale(): number {
 }
 /** With an `<id>.reveal` track (0..1), the scene time inside a component's reveal span that the
  * track selects; otherwise undefined and the component keeps its prop timing. */
-export function useRevealOverride(id: string | undefined, startMs: number, spanMs: number): number | undefined {
-  const state = useAnimatableState(animatableIdFor(id), REVEAL_SPEC);
-  return state.animated.has("reveal") ? startMs + state.values.reveal * Math.max(0, spanMs) : undefined;
+export function useRevealOverride(id: string | undefined, startMs: number, spanMs: number, legacyReadOnly = false): number | undefined {
+  const state = useAnimatableState(legacyReadOnly ? undefined : animatableIdFor(id), REVEAL_SPEC,
+    legacyReadOnly && id !== undefined ? { channels: { reveal: `${id}.reveal` } } : {});
+  const progress = useAnimatableState(id === undefined ? undefined : animatableIdFor(`${id}.reveal`), { progress: REVEAL_SPEC.reveal });
+  const value = progress.animated.has("progress") ? progress.values.progress : state.animated.has("reveal") ? state.values.reveal : undefined;
+  return value === undefined ? undefined : startMs + value * Math.max(0, spanMs);
 }
 /** Eased 0..1 progress of a reveal at the current scene time; personality scales duration and sets the default easing. */
 export function useReveal({ startMs = 0, durationMs = 900, easing }: RevealTiming = {}, index = 0, timeOverride?: number): number {

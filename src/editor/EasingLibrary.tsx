@@ -1,6 +1,8 @@
-import { applyEasing, type EasingInput, type EditOp } from "../core";
+import { EasingSchema, applyEasing, type EasingInput, type EditOp } from "../core";
 import { useEditor, useEditorState } from "./context";
 import { findTrack } from "./model";
+import type { Doc, Selection } from "./store";
+import { useProjectPresets } from "./preset-library";
 
 /** Easing library drawer (05.6): presets with curve thumbnails (sampled from applyEasing) and spacing dots
  * that show the motion feel. Applying sets the easing of every selected keyframe's outgoing segment. */
@@ -26,33 +28,42 @@ export const EASING_PRESETS: readonly EasingPreset[] = Object.freeze([
   { id: "hold", label: "Hold", group: "Steps", easing: "hold" },
   { id: "linear", label: "Linear", group: "Steps", easing: "linear" },
 ]);
-function Thumb({ easing }: { easing: EasingPreset["easing"] }) {
+export function CurveThumbnail({ easing }: { easing: EasingPreset["easing"] }) {
   const sample = (p: number) => easing === "auto" ? p * p * (3 - 2 * p) : applyEasing(easing as never, p);
   const d = Array.from({ length: 41 }, (_, i) => `${i ? "L" : "M"}${(i / 40) * 56 + 2} ${46 - sample(i / 40) * 36}`).join("");
   return <svg width={60} height={64} aria-hidden="true"><rect x={2} y={10} width={56} height={36} fill="#0f0f12"/><path d={d} fill="none" stroke="#7cc4ff" strokeWidth={1.5}/>
     {[0, 0.25, 0.5, 0.75, 1].map(p => <circle key={p} cx={2 + Math.max(0, Math.min(1, sample(p))) * 56} cy={56} r={2.5} fill="#ffd166"/>)}</svg>;
 }
+export function easingSelectionOps(doc: Doc, selection: Selection, easing: EasingPreset["easing"]): EditOp[] {
+  const parsed = easing === "auto" ? easing : EasingSchema.parse(easing);
+  if (selection.keys.length) return selection.keys.filter(ref => {
+    const track = findTrack(doc, ref.track);
+    return track && track.keyframes.at(-1)?.timeMs !== ref.atMs;
+  }).map(ref => ({ op: "key.ease", track: ref.track, atMs: ref.atMs, easing: parsed }));
+  return parsed === "auto" ? [] : selection.clips.map(id => ({ op: "clip.update", id, ease: parsed }));
+}
 export function EasingLibrary({ onClose }: { onClose(): void }) {
-  const { store, notify } = useEditor();
+  const { store, notify, controller } = useEditor();
   const state = useEditorState(store);
+  const { entries, connected } = useProjectPresets();
+  const presets = [...EASING_PRESETS, ...entries.flatMap(preset => preset.kind === "easing" ? preset.body.curves.map(({ name, easing }, index) => ({ id: `${preset.id}-${index}`, label: name, group: "Project", easing })) : [])];
   const apply = (preset: EasingPreset) => {
-    const doc = store.committed();
-    const refs = state.selection.keys.filter(ref => { const track = findTrack(doc, ref.track); return track && track.keyframes[track.keyframes.length - 1].timeMs !== ref.atMs; });
-    if (!refs.length) { notify("Select keyframes (not the last of a track) to apply an easing."); return; }
-    const issues = store.commit(refs.map(ref => ({ op: "key.ease", track: ref.track, atMs: ref.atMs, easing: preset.easing } as EditOp)), `Ease: ${preset.label}`);
+    const ops = easingSelectionOps(store.committed(), state.selection, preset.easing);
+    if (!ops.length) { notify("Select a clip or keyframes with outgoing segments to apply this easing."); return; }
+    const issues = store.commit(ops, `Ease: ${preset.label}`);
     if (issues.length) notify(issues[0].message);
   };
-  const groups = [...new Set(EASING_PRESETS.map(preset => preset.group))];
+  const groups = [...new Set(presets.map(preset => preset.group))];
   return <div className="ve-popover ve-panel" role="dialog" aria-label="Easing library" style={{ right: 16, bottom: 300, width: 520 }} data-velora-preview-chrome=""
     onKeyDown={event => { if (event.key === "Escape") onClose(); }}>
     <div className="ve-h"><span>Easing library</span><span style={{ display: "flex", gap: 6 }}>
-      <button className="ve-btn" disabled title="Saving custom curves arrives with presets (Phase 07)">Save curve</button>
+      <button className="ve-btn" disabled={!connected || state.readOnly} onClick={() => controller.open("save-easing")}>Save curve</button>
       <button className="ve-btn" onClick={onClose}>Close</button></span></div>
     {groups.map(group => <section key={group} aria-label={group}>
       <h3 style={{ fontSize: 11, color: "var(--ve-dim)", margin: "8px 4px 4px" }}>{group}</h3>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(90px,1fr))", gap: 4 }}>
-        {EASING_PRESETS.filter(preset => preset.group === group).map(preset => <button key={preset.id} className="ve-btn" style={{ flexDirection: "column" }} onClick={() => apply(preset)} aria-label={`Apply ${preset.label}`}>
-          <Thumb easing={preset.easing}/><span style={{ fontSize: 10 }}>{preset.label}</span></button>)}
+        {presets.filter(preset => preset.group === group).map(preset => <button key={preset.id} className="ve-btn" style={{ flexDirection: "column" }} onClick={() => apply(preset)} aria-label={`Apply ${preset.label}`}>
+          <CurveThumbnail easing={preset.easing}/><span style={{ fontSize: 10 }}>{preset.label}</span></button>)}
       </div>
     </section>)}
   </div>;

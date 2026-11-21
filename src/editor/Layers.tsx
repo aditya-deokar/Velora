@@ -51,9 +51,14 @@ export function Layers() {
     return out;
   }, [items, collapsed]);
   const selected = state.selection.layers[0];
-  const select = (item: Item) => {
+  const select = (item: Item, extend = false, toggle = false) => {
     if (item.kind === "clip") store.select({ layers: [item.id], clips: [item.id.slice(5)], tracks: [], keys: [] });
-    else store.select({ layers: [item.kind === "animatable" ? item.owner! : item.id], tracks: [], keys: [] });
+    else {
+      const id = item.kind === "animatable" ? item.owner! : item.id;
+      const existing = state.selection.layers.filter(layer => !layer.startsWith("clip:"));
+      const layers = !extend ? [id] : existing.includes(id) ? toggle ? existing.filter(layer => layer !== id) : existing : [...existing, id];
+      store.select({ layers, clips: [], tracks: [], keys: [] });
+    }
   };
   const toggleUi = (key: "solo" | "hidden", id: string) => store.setUi({ [key]: state.ui[key].includes(id) ? state.ui[key].filter(entry => entry !== id) : [...state.ui[key], id] });
   const commitEditor = (ops: Parameters<typeof store.commit>[0], label: string) => store.commit(ops, label);
@@ -66,16 +71,16 @@ export function Layers() {
     else if (event.key === "End") { event.preventDefault(); focus(flat.length - 1); }
     else if (event.key === "ArrowLeft" && index >= 0) { event.preventDefault(); const item = flat[index]; if (item.children.length && !collapsed.includes(item.id)) setCollapsed([...collapsed, item.id]); }
     else if (event.key === "ArrowRight" && index >= 0) { event.preventDefault(); setCollapsed(collapsed.filter(id => id !== flat[index].id)); }
-    else if ((event.key === "Enter" || event.key === " ") && index >= 0) { event.preventDefault(); select(flat[index]); }
+    else if ((event.key === "Enter" || event.key === " ") && index >= 0) { event.preventDefault(); event.stopPropagation(); select(flat[index], event.shiftKey || event.ctrlKey || event.metaKey, event.ctrlKey || event.metaKey); }
     else if (event.key === "F2" && index >= 0 && flat[index].kind === "surface") { event.preventDefault(); setRenaming(flat[index].id); }
   };
   const render = (item: Item) => {
-    const isSelected = selected === item.id || (item.kind === "clip" && state.selection.clips.includes(item.id.slice(5)));
+    const isSelected = state.selection.layers.includes(item.id) || (item.kind === "clip" && state.selection.clips.includes(item.id.slice(5)));
     const surface = item.kind === "surface";
     return <li key={item.id} role="treeitem" aria-level={item.depth + 1} aria-selected={isSelected} aria-expanded={item.children.length ? !collapsed.includes(item.id) : undefined}>
       <div className="ve-row">
-        <span className="ve-row-main" aria-selected={isSelected} data-item={item.id} tabIndex={isSelected || (!selected && item.id === "camera") ? 0 : -1}
-          onClick={() => select(item)} onDoubleClick={() => surface && setRenaming(item.id)}>
+        <span className="ve-row-main" aria-selected={isSelected} data-item={item.id} tabIndex={selected === item.id || (!selected && item.id === "camera") ? 0 : -1}
+          onClick={event => select(item, event.shiftKey || event.ctrlKey || event.metaKey, event.ctrlKey || event.metaKey)} onDoubleClick={() => surface && setRenaming(item.id)}>
           {item.children.length ? <button className="ve-btn ve-icon" style={{ minHeight: 16, border: 0, background: "none" }} aria-label={collapsed.includes(item.id) ? "Expand" : "Collapse"} tabIndex={-1}
             onClick={event => { event.stopPropagation(); setCollapsed(collapsed.includes(item.id) ? collapsed.filter(id => id !== item.id) : [...collapsed, item.id]); }}>{collapsed.includes(item.id) ? "▸" : "▾"}</button> : <span style={{ width: 16 }}/>}
           <span aria-hidden="true">{item.kind === "camera" ? "🎥" : item.kind === "focus" ? "◎" : item.kind === "motion" ? "⏱" : item.kind === "look" ? "◐" : item.kind === "clip" ? "▭" : item.kind === "animatable" ? "⚙" : "▢"}</span>
@@ -108,6 +113,6 @@ export function Layers() {
     <div className="ve-h"><span>Layers</span>
       <button className="ve-btn" aria-pressed={state.ui.animatedOnly} onClick={() => store.setUi({ animatedOnly: !state.ui.animatedOnly })} title="Show only animated (U)">Animated</button></div>
     <div style={{ padding: "6px 8px" }}><input className="ve-input" type="search" placeholder="Search layers" aria-label="Search layers" value={query} onChange={event => setQuery(event.target.value)}/></div>
-    <ul className="ve-tree" role="tree" aria-label="Scene layers" ref={tree} onKeyDown={onKey}>{items.map(render)}</ul>
+    <ul className="ve-tree" role="tree" aria-label="Scene layers" aria-multiselectable="true" ref={tree} onKeyDown={onKey}>{items.map(render)}</ul>
   </div>;
 }

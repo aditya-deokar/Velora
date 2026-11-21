@@ -45,6 +45,7 @@ export const EditOpSchema = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("keys.shift"), refs: z.array(keyRef).min(1).max(2000), deltaMs: finite }),
   z.strictObject({ op: z.literal("keys.scale"), refs: z.array(keyRef).min(1).max(2000), pivotMs: time, factor: finite.positive().max(100) }),
   z.strictObject({ op: z.literal("keys.reverse"), refs: z.array(keyRef).min(2).max(2000) }),
+  z.strictObject({ op: z.literal("keys.retime"), refs: z.array(keyRef.extend({ toMs: time })).min(1).max(2000) }),
   // Tracks
   z.strictObject({ op: z.literal("track.add"), track: TrackAddressSchema, keyframes: z.array(raw).min(1).max(10_000), interpolation: z.enum(["segments", "smooth"]).optional(),
     ease: EasingSchema.optional(), unit: z.string().max(4).optional(), noise: raw.optional(), rove: z.boolean().optional(), orient: raw.optional() }),
@@ -55,6 +56,7 @@ export const EditOpSchema = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("camera.set"), property: z.enum(["x", "y", "z", "perspective", "rotateX", "rotateY", "rotateZ"]), value: z.union([finite, z.null()]) }),
   z.strictObject({ op: z.literal("focus.set"), property: z.enum(["distance", "fStop", "focalLength", "maxBlur"]), value: z.union([finite, z.null()]) }),
   z.strictObject({ op: z.literal("node.ensure"), id: z.string().min(1).max(128), parentId: z.string().min(1).max(128).optional() }),
+  z.strictObject({ op: z.literal("node.parent"), id: z.string().min(1).max(128), parentId: z.string().min(1).max(128).nullable() }),
   z.strictObject({ op: z.literal("node.remove"), id: z.string().min(1).max(128) }),
   z.strictObject({ op: z.literal("motion.set"), durationMs: time.optional(), speed: finite.optional(), loop: nullable(z.boolean()) }),
   z.strictObject({ op: z.literal("look.set"), look: z.union([raw, z.null()]) }),
@@ -62,6 +64,8 @@ export const EditOpSchema = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("clip.create"), id: z.string().min(1).max(64), refs: z.array(TrackAddressSchema).max(1000).optional(), tracks: z.array(raw).max(1000).optional(), startMs: time.optional(), label: z.string().max(80).optional() }),
   z.strictObject({ op: z.literal("clip.update"), id: z.string().min(1).max(64), startMs: time.optional(), speed: nullable(finite), inMs: nullable(time), durationMs: nullable(finite.positive()),
     loop: nullable(z.union([z.literal(false), z.number().int().min(1)])), ease: nullable(EasingSchema), mode: nullable(z.enum(["replace", "add"])), label: nullable(z.string().max(80)) }),
+  // Upsert one whole root clip (behaviors, camera moves and presets apply and re-apply as one step).
+  z.strictObject({ op: z.literal("clip.set"), clip: raw.and(z.strictObject({ id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/) }).passthrough()) }),
   z.strictObject({ op: z.literal("clip.dissolve"), id: z.string().min(1).max(64), bake: z.strictObject({ samplesPerSecond: finite.min(1).max(240) }).optional() }),
   z.strictObject({ op: z.literal("stagger.set"), clipId: z.string().min(1).max(64), members: z.array(z.string().min(1)).min(1).max(256), eachMs: finite.nonnegative(),
     order: z.union([z.enum(STAGGER_ORDERS), z.strictObject({ random: z.number().int().nonnegative() })]).optional(), ease: EasingSchema.optional() }),
@@ -219,12 +223,12 @@ function refsByTrack(refs: { track: TrackAddress; atMs: number }[]) {
   }
   return [...groups.values()];
 }
-function retime(draft: Draft, refs: { track: TrackAddress; atMs: number }[], map: (atMs: number, times: number[]) => number) {
+function retime(draft: Draft, refs: { track: TrackAddress; atMs: number }[], map: (atMs: number, times: number[], address: TrackAddress) => number) {
   for (const group of refsByTrack(refs)) {
     const { track } = draft.findTrack(group.track)!;
     draft.track(group.track);
     const frames = group.times.map(atMs => frameAt(track, atMs, group.track));
-    const next = frames.map(frame => map(frame.timeMs, group.times));
+    const next = frames.map(frame => map(frame.timeMs, group.times, group.track));
     if (next.some(value => !Number.isFinite(value) || value < 0)) throw new EditFault("ERR_EDIT_INVALID", `Keyframe times on ${describeTrack(group.track)} would become negative.`);
     frames.forEach((frame, i) => { frame.timeMs = next[i]; });
     const times = (track.keyframes as Doc[]).map(frame => frame.timeMs);
@@ -243,8 +247,25 @@ function trackTargets(doc: Doc, id: string): boolean {
 }
 const linkKey = (ref: { target: { kind: string; id?: string }; property: string }) => `${ref.target.kind}:${ref.target.id ?? ""}.${ref.property}`;
 
+/** Hand edits of a generated clip's tracks drop its provenance (and its ancestors'): the clip no longer
+ * equals what its behavior, shot or preset would generate. Recorded in the inverse. */
+function dropProvenance(draft: Draft, op: EditOp) {
+  const ids = "track" in op && op.track && typeof op.track === "object" && "target" in op.track ? [(op.track as TrackAddress).clip]
+    : "refs" in op && Array.isArray(op.refs) && op.op.startsWith("keys.") ? (op.refs as { track: TrackAddress }[]).map(ref => ref.track.clip)
+      : op.op === "path.fromAxes" ? [op.clip] : [];
+  const clips = definition(draft.doc).motion?.clips as Doc[] | undefined;
+  for (const id of new Set(ids)) {
+    if (!id) continue;
+    const path: Doc[] = [];
+    const walk = (list: Doc[] | undefined): boolean => (list ?? []).some(clip => { path.push(clip); if (clip.id === id || walk(clip.clips)) return true; path.pop(); return false; });
+    if (!walk(clips) || !path.some(clip => clip.source)) continue;
+    draft.clip(path[0].id);
+    for (const clip of path) delete clip.source;
+  }
+}
 function applyOne(draft: Draft, op: EditOp) {
   const doc = draft.doc;
+  dropProvenance(draft, op);
   switch (op.op) {
     case "key.set": {
       const existing = draft.findTrack(op.track, false);
@@ -288,6 +309,11 @@ function applyOne(draft: Draft, op: EditOp) {
     case "keys.shift": return retime(draft, op.refs, atMs => atMs + op.deltaMs);
     case "keys.scale": return retime(draft, op.refs, atMs => op.pivotMs + (atMs - op.pivotMs) * op.factor);
     case "keys.reverse": return retime(draft, op.refs, (atMs, times) => Math.min(...times) + Math.max(...times) - atMs);
+    case "keys.retime": {
+      const times = new Map(op.refs.map(ref => [JSON.stringify([trackKey(ref.track), ref.atMs]), ref.toMs]));
+      if (times.size !== op.refs.length) throw new EditFault("ERR_EDIT_INVALID", "Specify each keyframe to retime once.");
+      return retime(draft, op.refs, (atMs, _, track) => times.get(JSON.stringify([trackKey(track), atMs]))!);
+    }
     case "track.add": {
       if (draft.findTrack(op.track, false)) throw new EditFault("ERR_EDIT_INVALID", `Track ${describeTrack(op.track)} already exists.`);
       draft.track(op.track);
@@ -322,6 +348,13 @@ function applyOne(draft: Draft, op: EditOp) {
       if (nodes.some(node => node.id === op.id)) return;
       draft.node(op.id);
       nodes.push({ id: op.id, ...(op.parentId ? { parentId: op.parentId } : {}) });
+      return;
+    }
+    case "node.parent": {
+      const node = (scene(doc).nodes as Doc[]).find(entry => entry.id === op.id);
+      if (!node) throw new EditFault("ERR_EDIT_TARGET", `No layer "${op.id}" to reparent.`);
+      draft.node(op.id);
+      set(node, "parentId", op.parentId);
       return;
     }
     case "node.remove": {
@@ -385,19 +418,37 @@ function applyOne(draft: Draft, op: EditOp) {
       for (const key of ["startMs", "speed", "inMs", "durationMs", "loop", "ease", "mode", "label"] as const) set(found.clip, key, op[key]);
       return;
     }
+    case "clip.set": {
+      const d = definition(doc);
+      const id = op.clip.id as string;
+      const existing = findClip(d.motion?.clips, id);
+      if (existing && existing.root.id !== id) throw new EditFault("ERR_EDIT_INVALID", `Clip "${id}" is nested in "${existing.root.id}"; clip.set replaces root clips.`);
+      draft.container({}, true);
+      if (!d.motion.clips) draft.field("definition.motion.clips");
+      draft.clip(id);
+      const clip = clone(op.clip) as Doc;
+      const visit = (entry: Doc) => {
+        for (const track of (entry.tracks ?? []) as Doc[]) if (track.target && typeof track.target === "object") draft.ensureNode(track.target as TrackAddress["target"]);
+        for (const member of (entry.members ?? []) as string[]) draft.ensureNode({ kind: "surface", id: member });
+        for (const nested of (entry.clips ?? []) as Doc[]) visit(nested);
+      };
+      visit(clip);
+      d.motion.clips ??= [];
+      const index = (d.motion.clips as Doc[]).findIndex(entry => entry.id === id);
+      if (index < 0) d.motion.clips.push(clip); else d.motion.clips[index] = clip;
+      return;
+    }
     case "clip.dissolve": {
       const d = definition(doc);
       const clips = d.motion?.clips as Doc[] | undefined;
       const index = clips?.findIndex(clip => clip.id === op.id) ?? -1;
       if (index < 0) throw new EditFault("ERR_EDIT_TARGET", `No root clip "${op.id}" (dissolve nested clips by dissolving their parents first).`);
       const clip = clips![index];
-      const simple = (clip.speed ?? 1) === 1 && clip.inMs === undefined && clip.durationMs === undefined && !clip.loop && clip.ease === undefined
-        && (clip.mode ?? "replace") === "replace" && !clip.clips?.length && !clip.members;
-      if (!simple && !op.bake) throw new EditFault("ERR_EDIT_INVALID", `Clip "${op.id}" remaps time (speed, trim, loop, ease, nesting, stagger or add mode); pass bake: {samplesPerSecond} to sample it into keyframes.`);
-      if (!simple && (clip.mode ?? "replace") === "add") throw new EditFault("ERR_EDIT_INVALID", `Clip "${op.id}" is additive; baking would replace its owner. Change mode first.`);
+      const exact = exactDissolveTracks(clip);
+      if (!exact && !op.bake) throw new EditFault("ERR_EDIT_INVALID", `Clip "${op.id}" remaps time; pass bake: {samplesPerSecond} to sample it into keyframes.`);
+      if (!exact && (clip.mode ?? "replace") === "add") throw new EditFault("ERR_EDIT_INVALID", `Clip "${op.id}" is additive; baking would replace its owner. Change mode first.`);
       draft.clip(op.id);
-      const tracks = simple ? (clip.tracks ?? []).map((track: Doc) => ({ ...clone(track), keyframes: (track.keyframes as Doc[]).map(frame => ({ ...clone(frame), timeMs: frame.timeMs + clip.startMs })) }))
-        : bakeClip(d, clip, op.bake!.samplesPerSecond);
+      const tracks = exact ?? bakeClip(d, clip, op.bake!.samplesPerSecond);
       const root = draft.container({}, true)!;
       for (const track of tracks) {
         const address = { target: track.target, property: track.property } as TrackAddress;
@@ -523,11 +574,31 @@ function restore(doc: Doc, op: Extract<EditOp, { op: "restore" }>) {
   if (!list) { if (op.value == null) return; throw new EditFault("ERR_EDIT_TARGET", `No container for ${describeTrack(address)}.`); }
   placeAt(list, index, op.value, track => sameTarget(track.target ?? {}, address.target) && track.property === address.property);
 }
+/** Transform clip-local times when the root tracks can represent the same curve exactly. */
+export function exactDissolveTracks(clip: Doc): Doc[] | undefined {
+  if ((clip.loop || 1) > 1 || (clip.ease !== undefined && clip.ease !== "linear") || clip.mode === "add" || clip.clips?.length || clip.members) return;
+  const start = clip.inMs ?? 0, end = start + (clip.durationMs ?? Infinity), speed = clip.speed ?? 1;
+  const result: Doc[] = [];
+  for (const track of (clip.tracks ?? []) as Doc[]) {
+    const frames = track.keyframes as Doc[];
+    if (start === 0 && end === Infinity && speed === 1 && clip.startMs === 0) { result.push(clone(track)); continue; }
+    if (track.noise) return;
+    const first = frames[0].timeMs, last = frames[frames.length - 1].timeMs;
+    const cropped = start > first || end < last;
+    if (cropped && (track.interpolation === "smooth" || track.rove || track.property === "position")) return;
+    if ([start, end].some(bound => bound > first && bound < last && !frames.some(frame => frame.timeMs === bound))) return;
+    const kept = end < first ? [frames[0]] : start > last ? [frames[frames.length - 1]] : frames.filter(frame => frame.timeMs >= start && frame.timeMs <= end);
+    result.push({ ...clone(track), keyframes: kept.map(frame => ({ ...clone(frame), timeMs: clip.startMs + Math.max(0, Math.min(end, frame.timeMs) - start) / speed })) });
+  }
+  return result;
+}
+
 /** Sample a clip into plain root keyframes (linear) at a fixed rate over its scene span. */
 function bakeClip(d: Doc, clip: Doc, samplesPerSecond: number): Doc[] {
   const motion = { durationMs: d.motion.durationMs, speed: 1, tracks: [], clips: [clone(clip)] };
   const probe = evaluateMotion(motion, 0);
   if (probe.issues.length) throw new EditFault("ERR_EDIT_INVALID", `Clip "${clip.id}" is invalid: ${probe.issues[0].message}`);
+  if (probe.additive) throw new EditFault("ERR_EDIT_INVALID", `Clip "${clip.id}" contains additive tracks. Split or change their blend mode before baking.`);
   if (probe.styles || probe.colorChannels) throw new EditFault("ERR_EDIT_INVALID", `Clip "${clip.id}" animates styles or colors, which bake does not sample; dissolve it by hand.`);
   const step = 1000 / samplesPerSecond, end = d.motion.durationMs as number;
   const times = Array.from({ length: Math.floor(end / step) + 1 }, (_, k) => Math.round(k * step * 1000) / 1000);
@@ -556,17 +627,20 @@ const describeOps: Record<string, (op: any) => string> = { // eslint-disable-lin
   "keys.shift": op => `Shift ${op.refs.length} keyframe${op.refs.length === 1 ? "" : "s"} by ${op.deltaMs >= 0 ? "+" : ""}${ms(op.deltaMs)}`,
   "keys.scale": op => `Scale ${op.refs.length} keyframes ×${op.factor} around ${ms(op.pivotMs)}`,
   "keys.reverse": op => `Reverse ${op.refs.length} keyframes`,
+  "keys.retime": op => `Retime ${op.refs.length} keyframes`,
   "track.add": op => `Add track ${describeTrack(op.track)}`,
   "track.remove": op => `Remove track ${describeTrack(op.track)}`,
   "track.options": op => `Change options of ${describeTrack(op.track)}`,
   "camera.set": op => op.value === null ? `Clear camera ${op.property}` : `Set camera ${op.property} to ${op.value}`,
   "focus.set": op => op.value === null ? `Clear focus ${op.property}` : `Set focus ${op.property} to ${op.value}`,
   "node.ensure": op => `Add layer ${op.id}`,
+  "node.parent": op => `Reparent layer ${op.id}`,
   "node.remove": op => `Remove layer ${op.id}`,
   "motion.set": op => `Set motion ${Object.entries(op).filter(([k]) => k !== "op").map(([k, v]) => `${k} ${v}`).join(", ")}`,
   "look.set": op => op.look === null ? "Remove look" : "Set look",
   "clip.create": op => `Group ${(op.refs?.length ?? 0) + (op.tracks?.length ?? 0)} tracks into clip ${op.id}`,
   "clip.update": op => `Update clip ${op.id}`,
+  "clip.set": op => `Apply clip ${String(op.clip.id)}${op.clip.source && typeof op.clip.source === "object" ? ` (${Object.entries(op.clip.source as Record<string, unknown>).find(([key]) => key !== "version" && key !== "params")?.join(" ") ?? "generated"})` : ""}`,
   "clip.dissolve": op => `Dissolve clip ${op.id}${op.bake ? ` (baked at ${op.bake.samplesPerSecond}/s)` : ""}`,
   "stagger.set": op => `Stagger ${op.members.length} layers in ${op.clipId} by ${ms(op.eachMs)}`,
   "link.set": op => `Link ${linkKey(op.link.to)}`,

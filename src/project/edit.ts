@@ -2,12 +2,15 @@ import { z } from "zod";
 import { applyEdits, describeOp, lineDiff, parseTrackShorthand, type EditOp, type EditIssue, type TrackAddress } from "../core/edit";
 import { formatJsonDocument, parseJsonDocument } from "../core/json";
 import { SceneRecipeIdSchema, SCENE_RECIPE_DIRECTORY } from "../core/recipes";
-import { evaluateMotion } from "../core/motion";
+import { MotionSchema, clipTiming, evaluateMotion } from "../core/motion";
+import { CameraSchema, FocusSchema, TransformSchema } from "../core/scene";
 import { parseClipboard, pasteOps } from "../core/clipboard";
 import { normalizeIssue, nextForIssues, type CliIssue } from "../core/cli-schema";
 import * as services from "./services";
 import { startEditBridge, createBridgeToken, watchProjectFiles, BridgeStartError, BRIDGE_MAX_BODY_BYTES, type BridgeServer, type BridgeReply } from "./services/bridge";
 import { executeProjectCommand } from "./commands";
+import { discoverPresets, PRESET_DIRECTORY } from "./discovery";
+import { PresetSchema, applyPreset, presetFromTracks, presetTargetKind, type Preset } from "../core/presets";
 
 /** SOURCE OF TRUTH: executeEditCommand.
  * WHAT: velora edit (ls, apply, key, ease and the edit bridge): read a scene recipe, apply EditOp batches
@@ -18,7 +21,7 @@ import { executeProjectCommand } from "./commands";
  * WHERE: cli/index parses flags; core/edit and core/json own the reducer and writer; services own file I/O
  * (scoped paths, atomic writes); services/bridge owns the loopback transport and watcher.
  */
-export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "bridge";
+export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "bridge" | "preset";
 export type EditCommandResult =
   | { success: true; command: "edit"; data: Record<string, unknown>; warnings?: CliIssue[]; next?: string[]; server?: BridgeServer }
   | { success: false; command: "edit"; issues: CliIssue[]; next: string[] };
@@ -40,6 +43,13 @@ const EditInputSchema = z.strictObject({
   label: z.string().max(200).optional(),
   from: z.string().optional(),
   onto: z.string().min(1).max(128).optional(),
+  // Presets (velora edit preset ls|show|save|apply)
+  action: z.enum(["ls", "show", "save", "apply"]).optional(),
+  preset: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use a kebab-case preset id.").max(64).optional(),
+  to: z.string().min(1).max(128).optional(),
+  layer: z.string().min(1).max(128).optional(),
+  title: z.string().min(1).max(80).optional(),
+  values: z.enum(["absolute", "relative"]).optional(),
   // Bridge
   port: z.number().int().min(0).max(65535).optional(),
   readOnly: z.boolean().optional(),
@@ -113,6 +123,48 @@ function listing(recipe: Doc, at: number | undefined) {
 
 /** The editor URL: the verified studio route plus scene, edit flag, and the bridge in the fragment
  * (fragments never reach servers or logs). */
+const presetPath = (id: string) => `${PRESET_DIRECTORY}/${id}.preset.json`;
+async function readPreset(root: string, id: string): Promise<{ text: string; sha: string; preset: Preset } | EditCommandResult> {
+  const text = await services.readText(root, presetPath(id), 1_000_000);
+  if (text === undefined) return failure([{ code: "ERR_PRESET_NOT_FOUND", path: "preset", message: `No preset ${presetPath(id)}.`, hint: "List presets with velora edit preset ls --json." }]);
+  let value: unknown;
+  try { value = parseJsonDocument(text); } catch { return failure([{ code: "ERR_PRESET_INVALID", path: presetPath(id), message: "The preset is not valid JSON." }]); }
+  const parsed = PresetSchema.safeParse(value);
+  if (!parsed.success) return failure(parsed.error.issues.map(issue => ({ code: "ERR_PRESET_INVALID", path: issue.path.join("."), message: issue.message })));
+  return { text, sha: services.textSha256(text), preset: parsed.data };
+}
+/** The value a relative preset builds on: the target property's evaluated value at atMs (authored), else its rest value. */
+function restBase(recipe: Doc, atMs: number) {
+  const { motion, scene } = recipe.definition;
+  const parsed = MotionSchema.safeParse(motion);
+  const state = parsed.success ? evaluateMotion(parsed.data, atMs / parsed.data.speed) : undefined;
+  const camera = CameraSchema.parse(scene.camera ?? {}), focus = FocusSchema.parse(scene.focus ?? {});
+  return ({ target, property }: { target: { kind: string; id?: string }; property: string }): number | number[] | undefined => {
+    const read = (key: string) => {
+      if (target.kind === "camera") return ((state?.camera as Record<string, number> | undefined)?.[key] ?? (camera as Record<string, number>)[key]) + (state?.additive?.camera?.[key] ?? 0);
+      if (target.kind === "focus") return ((state?.focus as Record<string, number> | undefined)?.[key] ?? (focus as Record<string, number>)[key]) + (state?.additive?.focus?.[key] ?? 0);
+      if (target.kind === "surface" && target.id) {
+        const base = TransformSchema.parse(scene.nodes.find((node: Doc) => node.id === target.id)?.transform ?? {}) as Record<string, number>;
+        const rest = ["opacity", "brightness", "contrast", "saturate"].includes(key) ? 1 : key === "clipRadius" ? 150 : 0;
+        return ((state?.surfaces[target.id] as Record<string, number> | undefined)?.[key] ?? base[key] ?? rest) + (state?.additive?.surfaces?.[target.id]?.[key] ?? 0);
+      }
+      if (target.kind === "style" && target.id) {
+        const style = state?.styles?.[target.id]?.[key];
+        return typeof style === "number" ? style : undefined;
+      }
+    };
+    return property === "position" ? ["x", "y", "z"].map(key => read(key) ?? 0) : read(property);
+  };
+}
+/** Preset write policy shared by the CLI and the bridge: create (expected undefined) or compare-and-swap. */
+async function writePresetFile(root: string, preset: Preset, expectSha: string | undefined | null): Promise<{ ok: true; sha: string; text: string } | { ok: false; status: number; body: Record<string, unknown> }> {
+  const current = await services.readText(root, presetPath(preset.id), 1_000_000);
+  const currentSha = current === undefined ? null : services.textSha256(current);
+  if ((expectSha ?? null) !== currentSha) return { ok: false, status: 409, body: { sha: currentSha, ...(current !== undefined ? { text: current } : {}) } };
+  const text = current === undefined ? JSON.stringify(preset, null, 2) + "\n" : formatJsonDocument(current, preset);
+  await services.atomicWrite(root, presetPath(preset.id), text, current);
+  return { ok: true, sha: services.textSha256(text), text };
+}
 export function editorUrl(previewUrl: string, scene: string | undefined, port: number, token: string): string {
   const url = new URL(previewUrl);
   if (scene) url.searchParams.set("velora-scene", scene);
@@ -128,7 +180,26 @@ export async function startSceneBridge(root: string, options: { origin: string; 
   const sameValue = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   const handlers = {
     hello: () => ({ protocol: 1, version: options.version, ...(options.projectId ? { projectId: options.projectId } : {}), readOnly: options.readOnly,
-      capabilities: ["scenes", "edits", "events"], fileKinds: ["scene"] }),
+      capabilities: ["scenes", "edits", "events", "presets"], fileKinds: ["scene", "preset"] }),
+    async listPresets(): Promise<BridgeReply> {
+      return { status: 200, body: { presets: await discoverPresets(root) } };
+    },
+    async readPreset(id: string): Promise<BridgeReply> {
+      const read = await readPreset(root, id);
+      if ("success" in read) { const issues = read.success ? [] : read.issues; return { status: issues[0]?.code === "ERR_PRESET_NOT_FOUND" ? 404 : 422, body: { issues } }; }
+      return { status: 200, body: { text: read.text, sha256: read.sha, preset: read.preset } };
+    },
+    async writePreset(id: string, body: unknown): Promise<BridgeReply> {
+      const request = z.strictObject({ baseSha: z.union([z.string().regex(/^[0-9a-f]{64}$/), z.null()]), preset: z.unknown() }).safeParse(body);
+      if (!request.success) return { status: 422, body: { issues: [{ code: "ERR_PRESET_INVALID", message: "Send {baseSha (null to create), preset}." }] } };
+      const parsed = PresetSchema.safeParse(request.data.preset);
+      if (!parsed.success) return { status: 422, body: { issues: parsed.error.issues.map(issue => ({ code: "ERR_PRESET_INVALID", path: issue.path.join("."), message: issue.message })) } };
+      if (parsed.data.id !== id) return { status: 422, body: { issues: [{ code: "ERR_PRESET_INVALID", path: "id", message: "The preset id must match the URL." }] } };
+      const written = await writePresetFile(root, parsed.data, request.data.baseSha);
+      if (!written.ok) return { status: written.status, body: written.body };
+      options.log?.({ event: "write", path: presetPath(id), after: written.sha, labels: [`Save preset ${id}`] });
+      return { status: 200, body: { sha: written.sha } };
+    },
     async readScene(id: string): Promise<BridgeReply> {
       const read = await readScene(root, id);
       if ("success" in read) return { status: 404, body: { error: "Scene not found." } };
@@ -161,13 +232,7 @@ export async function startSceneBridge(root: string, options: { origin: string; 
       return { status: 200, body: { sha, inverse: result.inverse } };
     },
   };
-  // Scoped-path refusals (symlinks, protected paths) are a 403, never a generic failure.
-  const guarded = <A extends unknown[]>(run: (...args: A) => Promise<BridgeReply>) => async (...args: A): Promise<BridgeReply> => {
-    try { return await run(...args); }
-    catch (error) { if ((error as { code?: string }).code === "denied-path") return { status: 403, body: { error: "That project path is not allowed." } }; throw error; }
-  };
-  const safe = { hello: handlers.hello, readScene: guarded(handlers.readScene), applySceneEdits: guarded(handlers.applySceneEdits) };
-  const server = await startEditBridge({ token, origins: [options.origin], readOnly: options.readOnly, handlers: safe, ...(options.port !== undefined ? { port: options.port } : {}), ...(options.log ? { log: options.log } : {}) });
+  const server = await startEditBridge({ token, origins: [options.origin], readOnly: options.readOnly, handlers, ...(options.port !== undefined ? { port: options.port } : {}), ...(options.log ? { log: options.log } : {}) });
   const watcher = watchProjectFiles(root, change => server.broadcast("file-changed", change));
   const stop = server.stop;
   return { token, server: { ...server, stop: async () => { watcher.close(); await stop(); } } };
@@ -191,6 +256,50 @@ export async function executeEditCommand(operation: EditOperation, input: EditIn
       if (options.launch) await services.openBrowser(root, url);
       return { success: true, command: "edit", server, data: { bridge: server.origin, url, readOnly: options.readOnly ?? false, ...(options.scene ? { scene: options.scene } : {}) } };
     }
+    const write = { write: options.write ?? false, ...(options.expectSha ? { expectSha: options.expectSha } : {}), ...(options.label ? { label: options.label } : {}) };
+    if (operation === "preset") {
+      const action = options.action ?? "ls";
+      if (action === "ls") return { success: true, command: "edit", data: { presets: await discoverPresets(root) } };
+      if (!options.preset) return failure([{ code: "ERR_MISSING_VALUE", path: "preset", message: `edit preset ${action} needs --preset <id>.` }]);
+      if (action === "show") {
+        const read = await readPreset(root, options.preset);
+        if ("success" in read) return read;
+        return { success: true, command: "edit", data: { path: presetPath(options.preset), sha: read.sha, preset: read.preset } };
+      }
+      if (!options.scene) return failure([{ code: "ERR_MISSING_VALUE", path: "scene", message: `edit preset ${action} needs --scene <id>.` }]);
+      const scene = await readScene(root, options.scene);
+      if ("success" in scene) return scene;
+      let recipe: Doc;
+      try { recipe = parseJsonDocument(scene.text) as Doc; } catch { return failure([{ code: "ERR_SCENE_INVALID", path: scene.target, message: "The recipe is not valid JSON." }]); }
+      if (action === "save") {
+        if (!options.layer) return failure([{ code: "ERR_MISSING_VALUE", path: "layer", message: "edit preset save needs --layer <surface|camera> (its root tracks become the preset)." }]);
+        const tracks = ((recipe?.definition?.motion?.tracks ?? []) as Doc[]).filter(track => options.layer === "camera" ? track.target?.kind === "camera" : (track.target?.kind === "surface" || track.target?.kind === "style") && track.target?.id === options.layer);
+        if (!tracks.length) return failure([{ code: "ERR_EDIT_TARGET", path: "layer", message: `${options.layer} has no root tracks in ${options.scene}.` }]);
+        let preset: Preset;
+        try { preset = presetFromTracks(tracks as never, { id: options.preset, title: options.title ?? options.preset, ...(options.values ? { values: options.values } : {}) }); }
+        catch (error) { return failure([{ code: "ERR_PRESET_INVALID", path: "layer", message: error instanceof Error ? error.message : String(error) }]); }
+        if (!options.write) return { success: true, command: "edit", data: { path: presetPath(preset.id), written: false, preset } };
+        const written = await writePresetFile(root, preset, options.expectSha ?? null);
+        if (!written.ok) return failure([{ code: "ERR_EDIT_CONFLICT", path: presetPath(preset.id), message: "The preset exists or changed; pass --expect-sha with its current sha256 to replace it.", hint: `Current sha: ${String(written.body.sha)}` }]);
+        return { success: true, command: "edit", data: { path: presetPath(preset.id), written: true, sha: written.sha, preset } };
+      }
+      // apply
+      if (!options.to) return failure([{ code: "ERR_MISSING_VALUE", path: "to", message: "edit preset apply needs --to <layer|camera|animatable id>." }]);
+      const read = await readPreset(root, options.preset);
+      if ("success" in read) return read;
+      const atMs = options.at ?? 0;
+      const kind = presetTargetKind(read.preset) === "animatable" ? "animatable" : options.to === "camera" ? "camera" : "surface";
+      const target = kind === "camera" ? { camera: true as const } : kind === "animatable" ? { animatable: options.to } : { surface: options.to };
+      if (kind === "surface" && !recipe.definition?.scene?.nodes?.some((node: Doc) => node.id === options.to))
+        return failure([{ code: "ERR_PRESET_TARGET", path: "to", message: `Scene ${options.scene} has no layer named ${options.to}.` }]);
+      const applied = applyPreset(read.preset, target, { atMs, base: restBase(recipe, atMs) });
+      if (!applied.ok) return failure([{ code: applied.code, path: "to", message: applied.message }]);
+      const durationMs = Math.ceil(clipTiming(applied.clip).endMs);
+      const ops: EditOp[] = [];
+      if (durationMs > (recipe.definition.motion?.durationMs ?? 0)) ops.push({ op: "motion.set", durationMs });
+      ops.push({ op: "clip.set", clip: applied.clip });
+      return await editScene(root, options.scene, ops, { ...write, expectSha: write.expectSha ?? scene.sha, ...(options.label ? {} : { label: `Apply preset ${options.preset} to ${options.to}` }) });
+    }
     if (!options.scene) return failure([{ code: "ERR_MISSING_VALUE", path: "scene", message: `edit ${operation} needs --scene <id>.` }]);
     if (operation === "ls") {
       const read = await readScene(root, options.scene);
@@ -199,7 +308,6 @@ export async function executeEditCommand(operation: EditOperation, input: EditIn
       try { recipe = parseJsonDocument(read.text) as Doc; } catch { return failure([{ code: "ERR_SCENE_INVALID", path: read.target, message: "The recipe is not valid JSON." }]); }
       return { success: true, command: "edit", data: { scene: options.scene, path: read.target, sha: read.sha, ...listing(recipe, options.at) } };
     }
-    const write = { write: options.write ?? false, ...(options.expectSha ? { expectSha: options.expectSha } : {}), ...(options.label ? { label: options.label } : {}) };
     if (operation === "apply") {
       let text = options.opsText;
       if (text === undefined) {

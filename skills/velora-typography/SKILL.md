@@ -82,6 +82,12 @@ Preset choice: `word-cascade` staggers depth plus opacity across words; `fade-sl
 
 Kit `Title`, `Counter`, `Typewriter` and `Callout` accept an optional `id`. When the recipe has a channel track `<id>.reveal` (0..1), that track scrubs the component's own reveal span (stagger, personality and easing included) instead of the `startMs`/`durationMs` props. Without the track, behavior is unchanged. Use it to land a headline exactly on a camera beat: give the Title `id="headline"` and keyframe `headline.reveal` from 0 to 1 over the move.
 
+## TextAnimator range selectors
+
+Use `TextAnimator` inside a Surface leaf for per-character, per-word, or per-line motion. Keyframe `<id>.selector.start`, `<id>.selector.end`, and `<id>.selector.offset` as percentages. Use shape, ease, and wrap to weight the range. An opacity amount of `0` and a start moving from `0` to `100` with end at `100` reveal the text.
+
+The editor raises a reading-time advisory when the scene is shorter than 1 second plus 0.3 seconds per word. Check the readable interval in captured frames when copy fades or moves out early.
+
 ## Related Skills
 
 - `velora-scenes`: Surface ownership and camera framing.

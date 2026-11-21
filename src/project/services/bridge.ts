@@ -22,6 +22,10 @@ export type BridgeHandlers = {
   hello(): unknown;
   readScene(id: string): Promise<BridgeReply>;
   applySceneEdits(id: string, body: unknown): Promise<BridgeReply>;
+  /** Project presets (07.6): list, read and create/update with compare-and-swap. */
+  listPresets?(): Promise<BridgeReply>;
+  readPreset?(id: string): Promise<BridgeReply>;
+  writePreset?(id: string, body: unknown): Promise<BridgeReply>;
 };
 export type BridgeOptions = {
   host?: string;
@@ -107,6 +111,20 @@ export async function startEditBridge(options: BridgeOptions): Promise<BridgeSer
       clients.add(response);
       request.on("close", () => { clients.delete(response); lastActivity = Date.now(); });
       return;
+    }
+    const preset = /^\/v1\/presets(?:\/([a-z0-9]+(?:-[a-z0-9]+)*))?$/.exec(url.pathname);
+    if (preset && request.method === "GET" && options.handlers.listPresets && options.handlers.readPreset) {
+      const reply = preset[1] ? await options.handlers.readPreset(preset[1]) : await options.handlers.listPresets();
+      return json(response, reply.status, reply.body, origin);
+    }
+    if (preset && preset[1] && request.method === "POST" && options.handlers.writePreset) {
+      if (options.readOnly) return json(response, 405, { error: "This bridge is read-only." }, origin);
+      if (!/^application\/json(?:;\s*charset=utf-8)?$/i.test(request.headers["content-type"] ?? "")) return json(response, 415, { error: "Send application/json." }, origin);
+      let body: unknown;
+      try { body = JSON.parse(await readBody(request)); }
+      catch (error) { return json(response, (error as { status?: number }).status === 413 ? 413 : 400, { error: (error as { status?: number }).status === 413 ? "Body exceeds 1 MB." : "Body is not JSON." }, origin); }
+      const reply = await options.handlers.writePreset(preset[1], body);
+      return json(response, reply.status, reply.body, origin);
     }
     if (scene && !scene[2] && request.method === "GET") { const reply = await options.handlers.readScene(scene[1]); return json(response, reply.status, reply.body, origin); }
     if (scene && scene[2] && request.method === "POST") {

@@ -14,8 +14,8 @@ export type Binding = {
   transform?: TransformInput;
 };
 /** A declared animatable as consumers (the inspector) see it: specs only, never component instances. */
-export type AnimatableEntry = { readonly id: string; readonly spec: AnimatableSpec; readonly owner?: string };
-type AnimatableDeclaration = { id: string; spec: AnimatableSpec; key: string; owner?: symbol };
+export type AnimatableEntry = { readonly id: string; readonly spec: AnimatableSpec; readonly owner?: string; readonly readingTimeMs?: number };
+type AnimatableDeclaration = { id: string; spec: AnimatableSpec; key: string; owner?: symbol; readingTimeMs?: number };
 function sameObject(a: object | undefined, b: object | undefined) {
   if (a === b) return true;
   if (!a || !b) return false;
@@ -79,7 +79,8 @@ export function createRegistry() {
       if (known === undefined) {
         keys.set(declaration.id, declaration.key);
         const owner = declaration.owner ? entries.get(declaration.owner)?.id : undefined;
-        view.set(declaration.id, Object.freeze({ id: declaration.id, spec: declaration.spec, ...(owner ? { owner } : {}) }));
+        view.set(declaration.id, Object.freeze({ id: declaration.id, spec: declaration.spec, ...(owner ? { owner } : {}),
+          ...(declaration.readingTimeMs ? { readingTimeMs: declaration.readingTimeMs } : {}) }));
       } else if (known !== declaration.key && !issues.some(issue => issue.path === "animatable." + declaration.id))
         issues.push({ path: "animatable." + declaration.id, message: `Animatable ${declaration.id} is declared twice with different specs. Give each component its own id or share one spec.` });
     }
@@ -142,7 +143,7 @@ export function createRegistry() {
     get animatableIssues(): SceneIssue[] { return animatableIssues; },
     declareAnimatable(token: symbol, declaration: AnimatableDeclaration) {
       const previous = declarations.get(token);
-      if (previous && previous.id === declaration.id && previous.key === declaration.key && previous.owner === declaration.owner) return;
+      if (previous && previous.id === declaration.id && previous.key === declaration.key && previous.owner === declaration.owner && previous.readingTimeMs === declaration.readingTimeMs) return;
       declarations.set(token, declaration);
       if (rebuildAnimatables()) publish();
     },

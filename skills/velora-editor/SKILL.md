@@ -114,6 +114,13 @@ the same ops you make, through the same bridge:
 - While the editor is open, always pass `--expect-sha`: the editor saves after every gesture. If you write, it
   rebases its pending edits or shows **Changed on disk**; it never overwrites yours.
 
+## Motion design in Edit mode
+
+- Shift-click layers to build an ordered selection. Ctrl/⌘+G groups their root tracks into a clip at the first key. When keys are selected, the clip takes the tracks those keys belong to.
+- Use **Clip ease**, **Clip speed**, **Play count**, and **Layer this on top** in the Inspector. Alt-drag the clip bar to retime it. Ctrl/⌘+Shift+G opens the ungroup dialog. For nonlinear time remapping, check the maximum sampled deviation before choosing **Bake and ungroup**.
+- Find **Stagger layers** and **Timing tools** through the command palette. Drag the gold stagger handle to adjust member spacing, or type the delay in the Clip Inspector. The timing tools sequence root layer tracks and align, distribute, reverse, or stretch selected keys.
+- **Behaviors**, **Camera moves**, and **Presets** are available on the toolbar. Saving a preset requires an edit bridge. Project easing presets appear under **Project** in the easing library.
+
 ## Anti-Patterns
 
 - Rewriting the whole recipe to change one keyframe: noisy diffs and lost author formatting.

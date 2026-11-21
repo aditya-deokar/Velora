@@ -38,7 +38,7 @@ The default Vite build ships only the product entry. Demo applications, gallerie
 
 ## Current scope
 
-Velora 1.0 joins installation (React hosts, the starter and any-site mode), agent handoff, templates, kit, brand and looks, editorial tools, studio, master rendering and launch delivery. v2.1 adds the motion model v3, structure and constraints, the edit-op vocabulary and edit bridge, and the studio editor (Edit mode: shell, timeline and graph editor). Viewport gizmos, codemods, the Three.js entry, a hosted connection, product accounts and licensing are not implemented. Future adapters must call the existing operation boundaries rather than copy their policy. Previous demo/trial evidence remains in Morphite history; its old routes and application directories are retired.
+Velora 1.0 covers React hosts, the starter, any-site mode, agent handoff, templates, kit, brand and looks, editorial tools, studio, master rendering, and launch delivery. v2.1 adds motion model v3, constraints, typed edit operations, a local edit bridge, and studio tools for editing the timeline, graph, and viewport. Motion design tools compile behavior and camera presets into the same clips and tracks used for preview and capture. The edit bridge and CLI share the project preset file policy. Previous demo and trial evidence remains in Morphite history.
 
 ## Source recipe catalog and library
 

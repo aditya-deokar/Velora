@@ -8659,31 +8659,88 @@
           "additionalProperties": false
         },
         "source": {
-          "type": "object",
-          "properties": {
-            "behavior": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 64
-            },
-            "version": {
-              "type": "integer",
-              "exclusiveMinimum": 0,
-              "maximum": 9007199254740991
-            },
-            "params": {
+          "anyOf": [
+            {
               "type": "object",
-              "propertyNames": {
-                "type": "string"
+              "properties": {
+                "behavior": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "version": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "params": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
               },
-              "additionalProperties": {}
+              "required": [
+                "behavior",
+                "version"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "shot": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "version": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "params": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "shot"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "preset": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "version": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "params": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "preset",
+                "version"
+              ],
+              "additionalProperties": false
             }
-          },
-          "required": [
-            "behavior",
-            "version"
-          ],
-          "additionalProperties": false
+          ]
         }
       },
       "required": [

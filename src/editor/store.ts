@@ -29,6 +29,7 @@ export type EditorState = {
   transient: EditOp[];
   draft: Doc;
   issues: EditIssue[];
+  notice?: { message: string };
   undo: HistoryEntry[];
   redo: HistoryEntry[];
   selection: Selection;
@@ -131,6 +132,12 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
     if (!ops.length) return [];
     const result = applyEdits(committed(), ops);
     if (!result.ok) { set({ transient: [], ...(derive(state.pending, []) ?? {}), issues: result.issues }); return result.issues; }
+    const restored = result.inverse.filter(op => op.op === "restore" && "clip" in op.at);
+    const after = new Map<string, Doc>();
+    const collect = (clips?: Doc[]) => (clips ?? []).forEach(clip => { after.set(clip.id, clip); collect(clip.clips); });
+    if (restored.length) collect((result.recipe as Doc).definition?.motion?.clips);
+    const detached = (clip?: Doc): boolean => !!clip && (after.has(clip.id) && !!clip.source && !after.get(clip.id)?.source || (clip.clips ?? []).some(detached));
+    const notice = restored.some(op => op.op === "restore" && detached(op.value as Doc | undefined)) ? { message: "Editing the generated tracks cleared their clip source." } : undefined;
     const entry: HistoryEntry = { label: label ?? ops.map(describeOp).join("; "), ops, inverse: result.inverse, at: now() };
     let undo = [...state.undo, entry];
     // Rapid single-op edits of one target (arrow nudges, typed values) are one history step.
@@ -140,7 +147,7 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
       if (joined) undo = [...state.undo.slice(0, -1), { label: describeOp(joined), ops: [joined], inverse: [...result.inverse, ...previous.inverse], at: entry.at }];
     }
     const pending = [...state.pending, ops];
-    set({ pending, transient: [], undo: undo.slice(-HISTORY_LIMIT), redo: [], issues: [], ...(derive(pending, []) ?? {}), save: state.readOnly ? "unsaved" : state.save === "conflict" ? "conflict" : "saving" });
+    set({ pending, transient: [], undo: undo.slice(-HISTORY_LIMIT), redo: [], issues: [], ...(derive(pending, []) ?? {}), notice, save: state.readOnly ? "unsaved" : state.save === "conflict" ? "conflict" : "saving" });
     pump();
     return [];
   };

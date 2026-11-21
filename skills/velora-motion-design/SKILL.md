@@ -140,6 +140,12 @@ overshoot. The easing library (E) offers Velora, After Effects, CSS, Penner, spr
 ease-out with a little overshoot for UI arrivals, and keep overshoot off camera tracks (the camera-overshoot
 advisory flags it).
 
+## Behaviors, project presets and graphics
+
+- `buildBehavior(id, params, { surface })` compiles ordinary clip tracks with behavior provenance. Start at subtle intensity. To regenerate a behavior clip in the studio, select it and choose **Edit behavior parameters**. Editing a generated track directly clears its source.
+- Save and reuse project motion from **Presets** or `velora edit preset ls|show|save|apply`. Presets live under `src/velora/presets/`. Use `$target` for a layer, and choose relative values to apply numeric or position offsets to the destination pose.
+- `DrawPath` keys normalized `start`, `end`, `offset`, `strokeWidth`, and `color`. `Shape` provides rect, ellipse, line, and polygon geometry with animatable size, radius, sides, fill, and stroke. Place each component inside a Surface leaf so it shares camera, focus, and capture.
+
 ## Related Skills
 
 - `velora-brand`: tokens and motion personality.

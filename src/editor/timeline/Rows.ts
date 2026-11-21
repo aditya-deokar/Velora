@@ -1,4 +1,4 @@
-import { staggerOffsets, type TrackAddress } from "../../core";
+import { clipTiming, staggerOffsets, type MotionClipOutput, type TrackAddress } from "../../core";
 import type { SceneSnapshot } from "../../react";
 import type { Doc } from "../store";
 import { addressOf, trackKey } from "../model";
@@ -12,7 +12,7 @@ export type RowKey = { atMs: number; time: number; value: unknown; easing: unkno
 export type TimelineRow =
   | { kind: "layer"; id: string; label: string; summary: number[] }
   | { kind: "property"; id: string; label: string; layer: string; address: TrackAddress; keys: RowKey[]; smooth: boolean; static: boolean; toTime(authoredLocal: number): number; fromTime(time: number): number }
-  | { kind: "clip"; id: string; label: string; clipId: string; start: number; end: number; speed: number; loop?: number; ease?: string; mode: string; members?: { id: string; offset: number }[]; depth: number }
+  | { kind: "clip"; id: string; label: string; clipId: string; start: number; end: number; speed: number; parentRate: number; loop?: number; ease?: string; mode: string; members?: { id: string; offset: number }[]; staggerHandle?: { offset: number; rate: number }; depth: number }
   | { kind: "badge"; id: string; label: string };
 export function glyphOf(easing: unknown): KeyGlyph {
   if (easing === undefined || easing === "cinematic" || easing === "easeInOut") return "ease";
@@ -23,12 +23,6 @@ export function glyphOf(easing: unknown): KeyGlyph {
   return "ease";
 }
 type Clip = Doc & { id: string; startMs: number };
-function clipSpan(clip: Clip): number {
-  const tracks = (clip.tracks ?? []) as Doc[];
-  const offsets = clip.members && clip.stagger ? staggerOffsets(clip as never) : [0];
-  const natural = Math.max(0, ...tracks.map(track => track.keyframes[track.keyframes.length - 1].timeMs), ...((clip.clips ?? []) as Clip[]).map(child => child.startMs + clipSpan(child) / (child.speed ?? 1))) + Math.max(0, ...offsets);
-  return clip.durationMs ?? Math.max(0, natural - (clip.inMs ?? 0));
-}
 const describe = (address: TrackAddress) => address.target.kind === "style" || address.target.kind === "channel" ? `${address.property === "value" ? address.target.id : address.property}` : address.property;
 export function buildRows(doc: Doc, snapshot: SceneSnapshot | undefined, options: { collapsed: readonly string[]; labels?: Record<string, string> }): TimelineRow[] {
   const motion = doc?.definition?.motion;
@@ -72,14 +66,18 @@ export function buildRows(doc: Doc, snapshot: SceneSnapshot | undefined, options
       const clipSpeed = (clip.speed ?? 1) * parentSpeed;
       const start = offset + clip.startMs / parentSpeed;
       const plays = clip.loop || 1;
-      const end = start + (clipSpan(clip) * plays) / clipSpeed;
-      const offsets = clip.members && clip.stagger ? staggerOffsets(clip as never) : undefined;
-      rows.push({ kind: "clip", id: `clip:${clip.id}`, label: clip.label ?? clip.id, clipId: clip.id, start: start / speed, end: end / speed, speed: clip.speed ?? 1, mode: clip.mode ?? "replace", depth,
+      const parsed = clip as MotionClipOutput;
+      const end = start + (clipTiming(parsed).span * plays) / clipSpeed;
+      const offsets = clip.members && clip.stagger ? staggerOffsets(parsed) : undefined;
+      const staggerRate = parsed.stagger && (parsed.members?.length ?? 0) > 1
+        ? Math.max(...staggerOffsets({ members: parsed.members, stagger: { ...parsed.stagger, eachMs: 1 } })) / (clipSpeed * speed) : 0;
+      rows.push({ kind: "clip", id: `clip:${clip.id}`, label: clip.label ?? clip.id, clipId: clip.id, start: start / speed, end: end / speed, speed: clip.speed ?? 1, parentRate: parentSpeed * speed, mode: clip.mode ?? "replace", depth,
+        ...(staggerRate > 0 ? { staggerHandle: { offset: clip.stagger.eachMs * staggerRate, rate: staggerRate } } : {}),
         ...(clip.loop ? { loop: clip.loop } : {}), ...(clip.ease ? { ease: typeof clip.ease === "string" ? clip.ease : "custom" } : {}),
         ...(offsets ? { members: (clip.members as string[]).map((id, i) => ({ id, offset: offsets[i] / clipSpeed / speed })) } : {}) });
       if (!options.collapsed.includes(`clip:${clip.id}`))
         for (const track of (clip.tracks ?? []) as Doc[]) rows.push(property(track, `clip:${clip.id}`, { start, speed: clipSpeed, id: clip.id, inMs: clip.inMs ?? 0 }));
-      visit(clip.clips as Clip[] | undefined, start, clipSpeed, depth + 1);
+      visit(clip.clips as Clip[] | undefined, start - (clip.inMs ?? 0) / clipSpeed, clipSpeed, depth + 1);
     }
   };
   visit(motion.clips as Clip[] | undefined, 0, 1, 0);

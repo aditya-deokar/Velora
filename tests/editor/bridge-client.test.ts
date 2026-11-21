@@ -41,3 +41,20 @@ describe("bridge client", () => {
     expect((await writer(store.getState().sha!, [op(9999, 1)], "invalid")).status).toBe("invalid");
   });
 });
+describe("bridge presets (v2.1 Phase 07.6)", () => {
+  it("lists, creates with CAS, reads and updates presets; refuses invalid ones", async () => {
+    const client = createBridgeClient({ port: bridge.server.port, token: bridge.token }, browserFetch);
+    expect((await client.hello()).capabilities).toContain("presets");
+    expect(await client.listPresets()).toEqual([]);
+    const preset = { version: 1, id: "lift", title: "Lift", kind: "motion", body: { values: "relative", tracks: [{ target: { kind: "surface", id: "$target" }, property: "y", keyframes: [{ timeMs: 0, value: 20 }, { timeMs: 500, value: 0 }] }] } };
+    const created = await client.writePreset(preset, null);
+    expect(created.status).toBe("ok");
+    expect((await client.writePreset(preset, null)).status).toBe("conflict");
+    const read = await client.readPreset("lift");
+    expect(read.sha).toBe(created.status === "ok" ? created.sha : "");
+    expect((await client.writePreset({ ...preset, title: "Lift 2" }, read.sha)).status).toBe("ok");
+    expect((await client.listPresets())[0]).toMatchObject({ id: "lift", title: "Lift 2", kind: "motion" });
+    const invalid = await client.writePreset({ ...preset, id: "bad", body: { values: "relative", tracks: [{ target: { kind: "surface", id: "card" }, property: "y", keyframes: [{ timeMs: 0, value: 0 }] }] } }, null);
+    expect(invalid.status).toBe("invalid");
+  });
+});

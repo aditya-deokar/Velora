@@ -233,12 +233,18 @@ export type TrackRef = z.output<typeof TrackRefSchema>;
 export const STAGGER_ORDERS = Object.freeze(["forward", "reverse", "center-out", "edges-in"] as const);
 export const MEMBER_PLACEHOLDER = "$member";
 const clipId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/, "Use a clip id of letters, digits, _ and - (up to 64).");
+/** Provenance of a generated clip: a behavior (07.4), a camera move from buildShot (07.5) or a project
+ * preset (07.6). Re-applying regenerates the clip; hand edits of its tracks drop the provenance. */
+export type ClipSource =
+  | { behavior: string; version: number; params?: Record<string, unknown> }
+  | { shot: string; version?: number; params?: Record<string, unknown> }
+  | { preset: string; version: number; params?: Record<string, unknown> };
 export type MotionClipInput = {
   id: string; label?: string; startMs: number; speed?: number; inMs?: number; durationMs?: number;
   loop?: false | number; ease?: z.input<typeof EasingSchema>; mode?: "replace" | "add";
   tracks?: z.input<typeof MotionTrackSchema>[]; clips?: MotionClipInput[];
   members?: string[]; stagger?: { eachMs: number; order?: (typeof STAGGER_ORDERS)[number] | { random: number }; ease?: z.input<typeof EasingSchema> };
-  source?: { behavior: string; version: number; params?: Record<string, unknown> };
+  source?: ClipSource;
 };
 /** Clips group animation in time: the group moves, retimes, eases and loops as one unit. */
 export const MotionClipSchema: z.ZodType<MotionClipOutput, MotionClipInput> = z.lazy(() => z.strictObject({
@@ -265,14 +271,18 @@ export const MotionClipSchema: z.ZodType<MotionClipOutput, MotionClipInput> = z.
     ease: EasingSchema.optional(),
   }).optional(),
   // Provenance of a generated clip (behaviors and presets, Phase 07).
-  source: z.strictObject({ behavior: z.string().min(1).max(64), version: z.number().int().positive(), params: z.record(z.string(), z.unknown()).optional() }).optional(),
+  source: z.union([
+    z.strictObject({ behavior: z.string().min(1).max(64), version: z.number().int().positive(), params: z.record(z.string(), z.unknown()).optional() }),
+    z.strictObject({ shot: z.string().min(1).max(64), version: z.number().int().positive().optional(), params: z.record(z.string(), z.unknown()).optional() }),
+    z.strictObject({ preset: z.string().min(1).max(64), version: z.number().int().positive(), params: z.record(z.string(), z.unknown()).optional() }),
+  ]).optional(),
 }));
 export type MotionClipOutput = {
   id: string; label?: string; startMs: number; speed?: number; inMs?: number; durationMs?: number;
   loop?: false | number; ease?: Easing; mode?: "replace" | "add";
   tracks?: MotionTrack[]; clips?: MotionClipOutput[];
   members?: string[]; stagger?: { eachMs: number; order?: (typeof STAGGER_ORDERS)[number] | { random: number }; ease?: Easing };
-  source?: { behavior: string; version: number; params?: Record<string, unknown> };
+  source?: ClipSource;
 };
 /** Declarative drivers (no expressions): to(t) = from(t - delayMs) * scale + offset. */
 export const MotionLinkSchema = z.strictObject({
@@ -475,9 +485,9 @@ function flatten(motion: Pick<MotionDefinition, "tracks" | "clips">): Virtual[] 
     const members = clip.members, offsets = staggerOffsets(clip);
     for (const [index, track] of (clip.tracks ?? []).entries()) {
       const owner = `${path}.tracks.${index}`;
-      const memberTrack = track.target.kind === "surface" && track.target.id === MEMBER_PLACEHOLDER;
+      const memberTrack = (track.target.kind === "surface" || track.target.kind === "style") && track.target.id === MEMBER_PLACEHOLDER;
       if (memberTrack && members) members.forEach((member, i) => virtual.push({
-        track: { ...track, target: { kind: "surface", id: member } } as MotionTrack, owner: `${owner}[${i}]`, add: additive,
+        track: { ...track, target: { kind: track.target.kind, id: member } } as MotionTrack, owner: `${owner}[${i}]`, add: additive,
         map: time => map(time) - offsets[i],
       }));
       else virtual.push({ track, owner, add: additive, map });
@@ -502,7 +512,7 @@ function structureIssues(motion: MotionDefinition): StructureIssue[] {
     ids.add(clip.id);
     if ((clip.members === undefined) !== (clip.stagger === undefined)) issues.push({ path, message: "A stagger clip needs both members and stagger." });
     for (const [index, track] of (clip.tracks ?? []).entries()) {
-      if (track.target.kind === "surface" && track.target.id === MEMBER_PLACEHOLDER && !clip.members)
+      if ((track.target.kind === "surface" || track.target.kind === "style") && track.target.id === MEMBER_PLACEHOLDER && !clip.members)
         issues.push({ path: [...path, "tracks", index, "target", "id"], message: `${MEMBER_PLACEHOLDER} targets need a stagger clip with members.` });
       if ((clip.mode === "add") && track.keyframes.some(frame => typeof frame.value === "string"))
         issues.push({ path: [...path, "tracks", index], message: "Additive clips sum numbers; put color tracks in a replace clip." });

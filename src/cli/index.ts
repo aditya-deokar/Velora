@@ -531,11 +531,15 @@ async function runEditCommand(args: string[], environment: Environment, manager:
     ease: { values: ["--scene", "--track", "--at", "--ease", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
     paste: { values: ["--scene", "--from", "--at", "--onto", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
     bridge: { values: ["--scene", "--port", "--url", "--project"], booleans: ["--read-only", "--no-open", "--json"] },
+    preset: { values: ["--scene", "--preset", "--to", "--layer", "--title", "--values", "--at", "--expect-sha", "--label", "--project"], booleans: ["--write", "--json"] },
   };
   const sub = args[0] && !args[0].startsWith("--") ? args[0] : "bridge";
   if (sub === "bridge" && args[0] && !args[0].startsWith("--")) return fail(`Unknown edit subcommand: ${args[0]}.`, "ERR_UNKNOWN_COMMAND", "edit");
-  if (!Object.hasOwn(grammar, sub) || (sub === "bridge" && args[0] === "bridge")) return fail(`Unknown edit subcommand: ${sub}. Expected ls, apply, key, ease, paste, or flags to start the bridge.`, "ERR_UNKNOWN_COMMAND", "edit");
-  const rest = sub === "bridge" ? args : args.slice(1);
+  if (!Object.hasOwn(grammar, sub) || (sub === "bridge" && args[0] === "bridge")) return fail(`Unknown edit subcommand: ${sub}. Expected ls, apply, key, ease, paste, preset, or flags to start the bridge.`, "ERR_UNKNOWN_COMMAND", "edit");
+  // velora edit preset ls|show|save|apply [flags]
+  const action = sub === "preset" ? (args[1] && !args[1].startsWith("--") ? args[1] : "ls") : undefined;
+  if (action !== undefined && !["ls", "show", "save", "apply"].includes(action)) return fail(`Unknown preset action: ${action}. Expected ls, show, save or apply.`, "ERR_UNKNOWN_COMMAND", "edit");
+  const rest = sub === "bridge" ? args : args.slice(sub === "preset" && args[1] && !args[1].startsWith("--") ? 2 : 1);
   const spec = grammar[sub];
   const flags = new Map<string, string | true>();
   for (let i = 0; i < rest.length; i++) {
@@ -563,6 +567,8 @@ async function runEditCommand(args: string[], environment: Environment, manager:
     ...(text("--ease") ? { ease: text("--ease") } : {}), ...(text("--label") ? { label: text("--label") } : {}),
     ...(text("--from") ? { from: text("--from") } : {}), ...(text("--onto") ? { onto: text("--onto") } : {}),
     ...(flags.has("--port") ? { port: Number(text("--port")) } : {}), ...(flags.has("--read-only") ? { readOnly: true } : {}),
+    ...(action ? { action: action as "ls" | "show" | "save" | "apply" } : {}), ...(text("--preset") ? { preset: text("--preset") } : {}), ...(text("--to") ? { to: text("--to") } : {}),
+    ...(text("--layer") ? { layer: text("--layer") } : {}), ...(text("--title") ? { title: text("--title") } : {}), ...(text("--values") ? { values: text("--values") as "absolute" | "relative" } : {}),
     ...(sub === "bridge" ? { launch: !flags.has("--no-open"), url: text("--url") ?? `http://127.0.0.1:${environment.port ?? "5173"}` } : {}),
   };
   const log = sub === "bridge" && json && environment.emit ? (entry: Record<string, unknown>) => environment.emit!(JSON.stringify({ log: entry }) + "\n") : undefined;
@@ -579,6 +585,7 @@ async function runEditCommand(args: string[], environment: Environment, manager:
     return { code: exit === 0 || exit === null ? 0 : 1, stdout: "", stderr: "" };
   }
   if (json) return { code: 0, stdout: JSON.stringify(envelope) + "\n", stderr: "" };
+
   if (sub === "ls") {
     const tracks = data.tracks as { track: { target: { kind: string; id?: string }; property: string; clip?: string }; keyframes: { atMs: number; value: unknown }[] }[];
     const lines = tracks.map(entry => `${entry.track.target.id ?? entry.track.target.kind}.${entry.track.property}${entry.track.clip ? "@" + entry.track.clip : ""}\t${entry.keyframes.map(frame => `${frame.atMs}ms=${JSON.stringify(frame.value)}`).join("  ")}`);

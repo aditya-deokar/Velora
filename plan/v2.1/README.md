@@ -228,6 +228,7 @@ Full matrix and sources: `OPEN-SOURCE-EVALUATION.md`.
 | 04 | `PHASE-04-editor-shell.md` | Editor shell | Edit mode, layers, inspector with stopwatches, history, save states, command palette | 03 |
 | 05 | `PHASE-05-timeline-and-graph-editor.md` | Timeline and graph editor | Dope sheet, clip bars, snapping, graph editor, easing library | 04, 02 |
 | 06 | `PHASE-06-viewport-and-camera-tools.md` | Viewport | Picking, gizmos, motion paths, onion skin, camera tools, director view, focus tools | 04, 02 |
+| 07 | `PHASE-07-groups-presets-motion-design.md` | Groups and motion design | Group/stagger/sequence tools, behaviors, camera moves, presets, text animator, trim paths, shapes | 05, 06 |
 | 09 | `PHASE-09-threejs-full-control.md` | Three.js | `/three` entry: deterministic R3F, 3D animatables, GLTF clips, unified camera, 3D gizmos | 04, 06 |
 | 10 | `PHASE-10-composition-editing.md` | The cut | Composition lanes, trim tools, transitions, waveforms, beat snapping | 05 |
 | 11 | `PHASE-11-agent-parity-quality-release.md` | Parity, quality, release | Parity audit, skills, guide v4, performance/a11y/security gates, 1.1.0 | all |
@@ -312,4 +313,5 @@ on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 | 04 | done | Edit mode shell: store, bridge client, layers, inspector, history, palette; scripted journey byte-exact with undo; time to first keyframe 1.5 s (`artifacts/phase-04-exit.md`). |
 | 05 | done (budgets partly) | Dope sheet, snapping, clip bars, graph editor, easing library, `edit paste`; 200×1000 timeline with no long tasks; drag/graph budgets not yet met (`artifacts/phase-05-exit.md`). |
 | 06 | implemented, viewport budget open | Picking, gizmos, motion paths, director view, and focus tools ([exit report](artifacts/phase-06-exit.md)). |
-| 07–16 | not started | — |
+| 07 | implemented, CI gate open | Clip grouping and timing, stagger drag, behavior and camera libraries, project presets, and keyframeable text, paths, and shapes ([exit report](artifacts/phase-07-exit.md)). |
+| 08–16 | not started | — |

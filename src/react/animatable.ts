@@ -21,6 +21,8 @@ import { useSceneContext } from "./index";
 export type AnimatableOptions<S> = {
   /** Map a prop to an existing channel id (for example { x: "cursor-x" }) so old channel names keep working. */
   channels?: Partial<Record<keyof S & string, string>>;
+  /** Minimum readable time for the component's on-screen copy, for authoring review. */
+  readingTimeMs?: number;
 };
 const useLayout = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -35,9 +37,9 @@ export function useAnimatableState<const S extends Record<string, AnimatableProp
   const registry = context.registry;
   const registrable = id !== undefined && ANIMATABLE_ID_PATTERN.test(id);
   useLayout(() => {
-    if (registrable) registry.declareAnimatable(token, { id, spec: parsed.data, key, owner: parent });
+    if (registrable) registry.declareAnimatable(token, { id, spec: parsed.data, key, owner: parent, readingTimeMs: options.readingTimeMs });
     else registry.releaseAnimatable(token);
-  }, [registry, token, registrable, id, key, parent]);
+  }, [registry, token, registrable, id, key, parent, options.readingTimeMs]);
   useLayout(() => () => registry.releaseAnimatable(token), [registry, token]);
   const values: Record<string, number | string | boolean> = {};
   const animated = new Set<keyof S & string>();

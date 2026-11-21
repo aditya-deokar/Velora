@@ -6,6 +6,13 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
 
 ## [Unreleased]
 
+### Added — Motion design (v2.1 Phase 07)
+
+- Group animation into clips and edit clip easing, speed, play count, and blend mode. Ungrouping previews the sampled deviation when baking is required.
+- Stagger selected layers, drag the spacing handle, and sequence, align, distribute, reverse, or stretch keyframes.
+- Apply editable behavior and camera clips, review camera framing, and save project presets through the studio or `velora edit preset`.
+- Keyframe `TextAnimator`, `DrawPath`, and `Shape` inside Surface leaves on the scene clock.
+
 ### Added — Motion Model v3 (v2.1 Phase 01, additive; recipes using it need Velora ≥ 1.1)
 - **Auto-bezier keyframes:** keyframe `easing: "auto"` evaluates the outgoing segment as a monotone cubic
   Hermite through its neighbors (continuous velocity, no overshoot). Smooth tracks and auto segments share

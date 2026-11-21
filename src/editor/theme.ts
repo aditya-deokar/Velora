@@ -49,4 +49,9 @@ export const editorTheme = `
 [data-velora-layout=editor] .ve-menu button:hover,[data-velora-layout=editor] .ve-menu button:focus-visible{background:#24425c}
 [data-velora-layout=editor] .ve-kbd{color:var(--ve-dim);font:11px ui-monospace,monospace}
 [data-velora-layout=editor] .ve-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+[data-velora-layout=editor] .ve-motion-fields{display:grid;gap:8px;padding:8px}
+[data-velora-layout=editor] .ve-motion-fields label{display:flex;align-items:center;justify-content:space-between;gap:8px}
+[data-velora-layout=editor] .ve-motion-fields .ve-input{width:min(58%,220px)}
+[data-velora-layout=editor] .ve-motion-fields p{margin:0;color:var(--ve-dim)}
+[data-velora-layout=editor] .ve-motion-fields .ve-preset{justify-content:flex-start;gap:10px}
 `;

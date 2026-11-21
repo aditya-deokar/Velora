@@ -40,13 +40,16 @@ const owners = new Map([
   // v2.1 Phase 04 owners: the editor store, intents, command registry and the Scene inspector hook.
   ['createEditorStore','src/editor/store.ts'], ['intentToOps','src/editor/intents.ts'], ['EDITOR_COMMANDS','src/editor/commands.ts'], ['useSceneInspector','src/react/inspector.ts'],
   ['EditOpSchema','src/core/edit.ts'], ['applyEdits','src/core/edit.ts'], ['formatJsonDocument','src/core/json.ts'], ['executeEditCommand','src/project/edit.ts'],
+  // v2.1 Phase 07 owners: behaviors, presets, the text animator math and the motion-graphics kit.
+  ['buildBehavior','src/core/behaviors.ts'], ['BEHAVIOR_CATALOG','src/core/behaviors.ts'], ['PresetSchema','src/core/presets.ts'], ['textAnimatorAt','src/core/typography.ts'],
+  ['TextAnimator','src/kit/text-animator.tsx'], ['DrawPath','src/kit/draw-path.tsx'], ['Shape','src/kit/shape.tsx'],
   ['NoiseSchema','src/core/noise.ts'], ['sampleNoise','src/core/noise.ts'],
   ...['perspectiveForFocalLength','focalLengthForPerspective','lensFor'].map(name=>[name,'src/core/lens.ts']),
   ['evaluateScene', 'src/core/spatial.ts'], ['transformToCss', 'src/core/spatial.ts'],
 ]);
 // Inert identity records are frozen object literals rather than schemas or functions.
 // Frozen catalogs (an array literal, possibly under `satisfies`/`as`) count the same way.
-const frozenMetadata = new Set(['VELORA_BRAND', 'VELORA_PACKAGE', 'EDITOR_COMMANDS']);
+const frozenMetadata = new Set(['VELORA_BRAND', 'VELORA_PACKAGE', 'EDITOR_COMMANDS', 'BEHAVIOR_CATALOG']);
 const layers = {
   core: { local: ['core'], external: ['zod'] },
   runtime: { local: ['core', 'runtime'], external: ['zod'] },

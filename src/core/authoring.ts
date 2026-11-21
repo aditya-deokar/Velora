@@ -220,32 +220,36 @@ export default function PageSurvey() {
     },
   });
 }
-export const AuthoringReviewInputSchema=z.strictObject({scene:SceneSchema,motion:MotionSchema});
+export const AuthoringReviewInputSchema=z.strictObject({scene:SceneSchema,motion:MotionSchema,
+ textReadings:z.array(z.strictObject({id:z.string(),minMs:z.number().finite().positive()})).optional()});
 const ReviewIssueSchema=z.strictObject({code:z.string(),path:z.string(),message:z.string()});
 export const AuthoringReviewSchema=z.strictObject({valid:z.boolean(),issues:z.array(ReviewIssueSchema),advice:z.array(ReviewIssueSchema),requiresVisualReview:z.literal(true)});
 export type AuthoringReview=z.infer<typeof AuthoringReviewSchema>;
 export function reviewAuthoring(input:unknown):AuthoringReview {
  const parsed=AuthoringReviewInputSchema.safeParse(input);
  if(!parsed.success)return {valid:false,issues:parsed.error.issues.map(i=>({code:"invalid-input",path:i.path.join('.'),message:i.message})),advice:[],requiresVisualReview:true};
- const {scene,motion}=parsed.data;
+ const {scene,motion,textReadings}=parsed.data;
  const issues:AuthoringReview['issues']=[],advice:AuthoringReview['advice']=[];
  const ids=new Set(scene.nodes.map(n=>n.id));
- for(const [i,track] of motion.tracks.entries()) {
-  if((track.target.kind==='surface'||track.target.kind==='style')&&!ids.has(track.target.id))issues.push({code:'unknown-surface',path:`motion.tracks.${i}.target.id`,message:`No supplied surface ${track.target.id}. Compare with actual React registration too.`});
-  if(track.property.startsWith('rotate')&&track.keyframes.some((f,k)=>k>0&&Math.abs(Number(f.value)-Number(track.keyframes[k-1].value))>90))advice.push({code:'rotation-sweep',path:`motion.tracks.${i}`,message:'A rotation segment over 90 degrees may show the edge/back or hide the UI. Inspect the path; retain it only when intentional.'});
-  if(track.target.kind==='camera'&&(track.interpolation==='smooth'?track.ease!==undefined&&easingOvershoots(track.ease):track.keyframes.some((f,k)=>k<track.keyframes.length-1&&easingOvershoots(f.easing as Parameters<typeof easingOvershoots>[0]))))advice.push({code:'camera-overshoot',path:`motion.tracks.${i}`,message:'An overshooting easing (back, elastic, under-damped spring) on a camera track reads as a jolt. Keep it only for an intentional snap; prefer cinematic or an out curve.'});
-  if(track.interpolation==='smooth'&&track.keyframes.slice(0,-1).some(f=>f.easing!=='cinematic'))advice.push({code:'smooth-easing-ignored',path:`motion.tracks.${i}`,message:'Smooth tracks ignore per-keyframe easing; set the track-level ease instead.'});
-  if(track.interpolation!=='smooth'&&track.keyframes.some((f,k)=>k<track.keyframes.length-1&&f.easing==='linear'&&f.value!==track.keyframes[k+1].value))advice.push({code:'linear-motion',path:`motion.tracks.${i}`,message:'Linear movement has no gentle start/finish. Confirm that this override serves the intended shot.'});
+ const expanded=motionTracks(motion);
+ for(const {track,owner} of expanded) {
+  const path=`motion.${owner}`;
+  if((track.target.kind==='surface'||track.target.kind==='style')&&!ids.has(track.target.id))issues.push({code:'unknown-surface',path:`${path}.target.id`,message:`No supplied surface ${track.target.id}. Compare with actual React registration too.`});
+  if(track.property.startsWith('rotate')&&track.keyframes.some((f,k)=>k>0&&Math.abs(Number(f.value)-Number(track.keyframes[k-1].value))>90))advice.push({code:'rotation-sweep',path,message:'A rotation segment over 90 degrees may show the edge/back or hide the UI. Inspect the path; retain it only when intentional.'});
+  if(track.target.kind==='camera'&&(track.interpolation==='smooth'?track.ease!==undefined&&easingOvershoots(track.ease):track.keyframes.some((f,k)=>k<track.keyframes.length-1&&easingOvershoots(f.easing as Parameters<typeof easingOvershoots>[0]))))advice.push({code:'camera-overshoot',path,message:'An overshooting easing (back, elastic, under-damped spring) on a camera track reads as a jolt. Keep it only for an intentional snap; prefer cinematic or an out curve.'});
+  if(track.interpolation==='smooth'&&track.keyframes.slice(0,-1).some(f=>f.easing!=='cinematic'))advice.push({code:'smooth-easing-ignored',path,message:'Smooth tracks ignore per-keyframe easing; set the track-level ease instead.'});
+  if(track.interpolation!=='smooth'&&track.keyframes.some((f,k)=>k<track.keyframes.length-1&&f.easing==='linear'&&f.value!==track.keyframes[k+1].value))advice.push({code:'linear-motion',path,message:'Linear movement has no gentle start/finish. Confirm that this override serves the intended shot.'});
  }
- // Clip, stagger and link targets must be supplied surfaces too; paths advise on uneven speed.
- for(const {track,owner} of motionTracks(motion)) if(owner.startsWith('clips.')&&(track.target.kind==='surface'||track.target.kind==='style')&&!ids.has(track.target.id))issues.push({code:'unknown-surface',path:`motion.${owner}.target.id`,message:`No supplied surface ${track.target.id}. Compare with actual React registration too.`});
  for(const [i,link] of (motion.links??[]).entries()) for(const ref of [link.to,link.from]) if('target' in ref&&(ref.target.kind==='surface'||ref.target.kind==='style')&&!ids.has(ref.target.id))issues.push({code:'unknown-surface',path:`motion.links.${i}`,message:`No supplied surface ${ref.target.id}.`});
  for(const {owner,speeds,rove} of pathSpeeds(motion)){const moving=speeds.filter(v=>v>1e-9);if(!rove&&moving.length>1&&Math.max(...moving)/Math.min(...moving)>4)advice.push({code:'path-speed-spike',path:`motion.${owner}`,message:'Path segments change speed more than 4x between keyframes, which reads as a lurch. Even out keyframe times, ease the segments or set rove: true for constant speed.'});}
- const changes=(track:typeof motion.tracks[number])=>track.keyframes.some(f=>f.value!==track.keyframes[0].value);
- const cameraTravels=motion.tracks.some(t=>t.target.kind==='camera'&&['x','y','z'].includes(t.property)&&changes(t));
+ const changes=(track:typeof motion.tracks[number])=>!!track.noise?.amplitude||track.keyframes.some(f=>f.value!==track.keyframes[0].value);
+ const tracks=expanded.map(({track})=>track);
+ const cameraTravels=tracks.some(t=>t.target.kind==='camera'&&['x','y','z'].includes(t.property)&&changes(t));
  const surfacesMove=motion.tracks.some(t=>t.target.kind==='surface'&&['x','y','z','rotateX','rotateY','rotateZ','scale'].includes(t.property)&&changes(t));
  if(surfacesMove&&!cameraTravels)advice.push({code:'camera-travel-missing',path:'motion.tracks',message:'Surfaces move but the camera has no translational travel. Default dramatic shots establish a close oblique camera and a surface-aligned rail. Keep this stationary-camera variation only when intentional; element movement alone does not prove the requested shot.'});
- if(!motion.tracks.some(changes))advice.push({code:'static-scene',path:'motion',message:'There is no changing track. A static composition is valid, but does it meet a request for cinematic motion?'});
+ if(!tracks.some(changes))advice.push({code:'static-scene',path:'motion',message:'There is no changing track. A static composition is valid, but does it meet a request for cinematic motion?'});
+ const duration=motionDuration(motion);
+ for(const {id,minMs} of textReadings??[])if(duration>0&&duration<minMs)advice.push({code:'reading-time',path:`animatable.${id}`,message:`Text animator ${id} needs about ${minMs} ms of readable time. The full scene is ${Math.round(duration)} ms.`});
  if(motion.loop&&loopSeam(motion)>1e-6)advice.push({code:'loop-seam',path:'motion.loop',message:'This loop does not return to its first frame, so playback will jump at the seam. End every track on its starting value.'});
  if(scene.focus.maxBlur===0)advice.push({code:'sharp-scene',path:'scene.focus.maxBlur',message:'Focus softness is disabled initially. This can be intentional; inspect whether the composition still directs attention.'});
  if(motionDuration(motion)>0&&!CaptureManifestSchema.safeParse({version:1,durationMs:motionDuration(motion),selector:'[data-velora-capture="scene"]'}).success)advice.push({code:'export-duration',path:'motion.durationMs',message:'This timeline exceeds the current MP4 capture duration limit. Shorten it or present it without that export adapter.'});
