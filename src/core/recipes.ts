@@ -3,6 +3,7 @@ import {OpenPreviewSchema} from "./project";
 import { PreviewDefinitionSchema, presentPreview } from "./preview";
 import { motionDuration } from "./motion";
 import type { SceneIssue } from "./scene";
+import { StagePresetSchema } from "./stage";
 
 /** SOURCE OF TRUTH: SceneRecipeSchema, loadSceneRecipes, SCENE_RECIPE_DIRECTORY,
  * ListScenesSchema, LoadSceneSchema, OpenSceneSchema, SnapshotSceneSchema, SceneSnapshotSchema, sceneMetadata.
@@ -49,6 +50,7 @@ export const SceneRecipeSchema = z.strictObject({
     id: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
     version: z.number().int().positive(),
     aspect: z.enum(["16:9", "21:9", "1:1", "4:5", "9:16"]),
+    stage: StagePresetSchema.optional(),
     params: z.record(z.string(), z.union([z.string(), z.number(), z.strictObject({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })])),
   }).optional(),
   definition: PreviewDefinitionSchema,

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { SceneSchema, type SceneIssue } from "./scene";
 import { MotionSchema } from "./motion";
 import { reviewAuthoring } from "./authoring";
+import { StageSchema } from "./stage";
 
 /** SOURCE OF TRUTH: PreviewDefinitionSchema, presentPreview.
  * WHAT: validate a source-authored preview revision using existing scene/motion owners.
@@ -14,6 +15,7 @@ export const PreviewDefinitionSchema = z.strictObject({
   motion: MotionSchema.optional(),
   // Finishing look: grade/grain/vignette/letterbox in the browser layer, the rest at export.
   look: LookSchema.optional(),
+  stage: StageSchema.optional(),
   width: z.number().finite().positive().max(7680).default(1400),
   height: z.number().finite().positive().max(7680).default(980),
 });

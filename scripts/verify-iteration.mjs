@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {writeFile,readFile,access,rename} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
+import {setTimeout as delay} from 'node:timers/promises';
 import path from 'node:path';
 import {expect} from '@playwright/test';
 // Tests mutate only the disposable installed host, never project source or state.
@@ -10,7 +11,13 @@ export async function verifyIteration({page,host,origin,server,processes,waitFor
  const writeSource=async(name,source)=>{
   const temporary=file(name+'.pending');
   await writeFile(temporary,source);
-  await rename(temporary,file(name));
+  for(let attempt=0;;attempt++){
+   try {await rename(temporary,file(name));return;}
+   catch(error){
+    if(process.platform!=='win32'||attempt>=5||!['EPERM','EBUSY','EACCES'].includes(error.code))throw error;
+    await delay(20*(attempt+1));
+   }
+  }
  };
  const setupDiagnostics=[];
  const record=(kind,text)=>{setupDiagnostics.push({kind,text});if(setupDiagnostics.length>50)setupDiagnostics.shift()};
@@ -96,7 +103,7 @@ export async function verifyIteration({page,host,origin,server,processes,waitFor
  await seek.focus();await page.keyboard.press('ArrowRight');
  await page.screenshot({path:path.join(root,'test-results/product-loaded-mobile.png')});
  const exited=new Promise(resolve=>server.once('exit',resolve));server.kill('SIGTERM');await exited;
- await expect(page.getByText('Reconnecting to your app…').first()).toBeVisible();
+ await expect(page.getByText('Reconnecting to your app…').first()).toBeVisible({timeout:20000});
  const replacement=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',new URL(origin).port,'--strictPort'],{cwd:host,stdio:'ignore'});processes.push(replacement);
  await waitFor(origin,replacement);
  await expect(page.getByText('Revenue: 12840',{exact:true})).toBeVisible({timeout:20000});

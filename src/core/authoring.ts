@@ -7,7 +7,8 @@ import { MotionSchema, MotionTrackSchema, MotionKeyframeSchema, SURFACE_VISUAL_P
 import { EASING_NAMES, easingOvershoots } from "./easing";
 import { perspectiveForFocalLength } from "./lens";
 import { CascadeSchema } from "./choreography";
-import { SUPPORTED_EXPORT_FPS, CaptureManifestSchema, QUALITY_PRESETS, CODEC_CONTAINERS, ALPHA_CODECS } from "./export";
+import { SUPPORTED_EXPORT_FPS, CaptureManifestSchema, QUALITY_PRESETS, CODEC_CONTAINERS, ALPHA_CODECS, resolveFinishing } from "./export";
+import { DEFAULT_STAGE, StageSchema, STAGE_PRESETS, STAGE_DPRS, sceneStageBudget } from "./stage";
 import { DELIVERY_PRESETS } from "./delivery";
 import { PROMPT_LIBRARY } from "./prompts";
 
@@ -126,6 +127,12 @@ const concepts: z.infer<typeof ConceptSchema>[] = [
  choices:"Preview first and revise code through the existing development server. Export only when requested, choosing the requested output cadence. The installed CLI does not need an AI login and does not infer a page's private data. Existing coding agents inspect the host project and use their own credentials/subscription tooling.",
  pitfalls:"Start with velora guide. reviewAuthoring checks supplied scene and motion metadata. Confirm actual registration, framing and readability in the browser. Templates scaffold editable source and the Studio edits that source through a local bridge.",
  verify:"Run host types/build, inspect Scene diagnostics and actual registered IDs, scrub several frames, test interaction/reduced motion/mobile and measure playback. Register capture before exporting; use a fresh relative MP4 output path. Compare exported frames with preview and confirm duration/cadence. Record unresolved limits honestly."},
+ {id:"app-stage",title:"App stage and output frame",
+ meaning:"The app lays out at a concrete CSS viewport. Export dimensions choose the video pixels independently.",
+ mechanism:"AppStage creates a named size container. RouteFrame without width or height inherits that box, so viewport media queries see its logical dimensions.",
+ choices:"Start new app shots at laptop-14 (1512 × 982 @2×). Choose laptop-13 for compact layouts or use the Studio to save the actual viewport.",
+ pitfalls:"Use RouteFrame for window media queries and AppStage container queries for in-tree UI. A raster close-up can exceed the available DPR even when the layout is correct.",
+ verify:"Run velora inspect --scene ID --json for the stage budget and test a close-up with velora shot."},
  {id:"editor",title:"Studio edits and agent handoff",
  meaning:"Studio and coding agents edit the same scene or composition JSON. A gesture is an EditOp batch with a diff and an inverse.",
  mechanism:"Open a running project with velora edit --scene ID or velora edit --composition FILE. The authenticated loopback bridge writes validated text using SHA-256 compare-and-swap. Scene batches use velora edit apply and composition batches use velora compose edit.",
@@ -229,6 +236,7 @@ export default function PageSurvey() {
       prompts:{list:"velora prompts ls --json",show:"velora prompts show --id <id> --json",ids:PROMPT_LIBRARY.map(prompt=>prompt.id)},
       editorial:{beats:"velora audio beats --composition FILE [--write-markers] --json",snap:"velora compose snap --composition FILE --to beats|downbeats [--write] --json",review:"velora review --composition FILE [--platform ID] --json",transitions:"velora transitions ls --json"},
       editor:{scene:"velora edit --scene ID",composition:"velora edit --composition FILE",sceneOps:"velora edit apply --scene ID --ops FILE --json",compositionOps:"velora compose edit --composition FILE --ops FILE --json",source:"velora edit source outline --scene ID --json",presets:"velora edit preset ls --json"},
+      stages:{presets:STAGE_PRESETS,dprs:STAGE_DPRS,default:DEFAULT_STAGE,custom:"--stage WxH@DPR",edit:"velora edit stage --scene ID --preset laptop-13"},
       brandAndLooks:{brand:"velora brand init [--from-css FILE] --json; velora brand check --json",finishPreview:"velora shot --scene ID --time MS --finish --out PNG --json"},
       presets:"velora render --composition FILE --out VIDEO --preset <id>; the delivery list below names each preset.",
       deliver:"velora deliver --composition FILE --targets youtube,x,linkedin,reels,tiktok,shorts,website-hero,readme-gif,og-image,product-hunt [--out DIR] --json: every platform file within its size budget, website-hero embed snippets, stills and deliverables.json.",
@@ -259,6 +267,7 @@ export default function PageSurvey() {
   });
 }
 export const AuthoringReviewInputSchema=z.strictObject({scene:SceneSchema,motion:MotionSchema,
+ stage:StageSchema.optional(), width:z.number().positive().optional(), height:z.number().positive().optional(),
  textReadings:z.array(z.strictObject({id:z.string(),minMs:z.number().finite().positive()})).optional()});
 const ReviewIssueSchema=z.strictObject({code:z.string(),path:z.string(),message:z.string()});
 export const AuthoringReviewSchema=z.strictObject({valid:z.boolean(),issues:z.array(ReviewIssueSchema),advice:z.array(ReviewIssueSchema),requiresVisualReview:z.literal(true)});
@@ -287,6 +296,11 @@ export function reviewAuthoring(input:unknown):AuthoringReview {
  if(surfacesMove&&!cameraTravels)advice.push({code:'camera-travel-missing',path:'motion.tracks',message:'Surfaces move but the camera has no translational travel. Default dramatic shots establish a close oblique camera and a surface-aligned rail. Keep this stationary-camera variation only when intentional; element movement alone does not prove the requested shot.'});
  if(!tracks.some(changes))advice.push({code:'static-scene',path:'motion',message:'There is no changing track. A static composition is valid, but does it meet a request for cinematic motion?'});
  const duration=motionDuration(motion);
+ if(parsed.data.stage) {
+  const stage = parsed.data.stage, frame = { width: parsed.data.width ?? 1400, height: parsed.data.height ?? 980 };
+  const budget = sceneStageBudget({ stage, frame, scene, motion, effectiveDpr: resolveFinishing({}, frame, stage).supersample });
+  if(budget.undersampled) advice.push({code:"stage-undersampled",path:"definition.stage",message:`Raster content may soften near ${Math.round(budget.timeMs)}ms (${budget.pixelsPerCssPixel.toFixed(2)} output pixels per CSS pixel at ${budget.effectiveDpr}× capture). Use a higher stage DPR, master quality, a longer lens from farther away, or a lower fill.`});
+ }
  for(const {id,minMs} of textReadings??[])if(duration>0&&duration<minMs)advice.push({code:'reading-time',path:`animatable.${id}`,message:`Text animator ${id} needs about ${minMs} ms of readable time. The full scene is ${Math.round(duration)} ms.`});
  if(motion.loop&&loopSeam(motion)>1e-6)advice.push({code:'loop-seam',path:'motion.loop',message:'This loop does not return to its first frame, so playback will jump at the seam. End every track on its starting value.'});
  if(scene.focus.maxBlur===0)advice.push({code:'sharp-scene',path:'scene.focus.maxBlur',message:'Focus softness is disabled initially. This can be intentional; inspect whether the composition still directs attention.'});

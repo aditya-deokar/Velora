@@ -67,7 +67,9 @@ Op table (`{"op": …}`):
 |---|---|
 | Keyframes | `key.set {track, atMs, value, easing?}` (upsert), `key.remove`, `key.move {track, fromMs, toMs}`, `key.ease`, `keys.shift {refs, deltaMs}`, `keys.scale {refs, pivotMs, factor}`, `keys.reverse {refs}`, `keys.retime {refs}` (`toMs` per reference) |
 | Tracks | `track.add {track, keyframes, …options}`, `track.remove`, `track.options` (null clears an option) |
-| Scene | `camera.set` and `focus.set {property, value or null}`, `node.ensure {id}`, `node.parent {id, parentId}`, `node.remove`, `motion.set {durationMs?, speed?, loop?}`, `look.set` |
+| Scene | `camera.set` and `focus.set {property, value or null}`, `node.ensure {id}`, `node.parent {id, parentId}`, `node.remove`, `motion.set {durationMs?, speed?, loop?}`, `look.set`, `stage.set {preset?, width, height, dpr, physicalWidthMm?, detected?}` |
+
+Use `velora edit stage --scene home-hero --preset laptop-13 --json` to preview a stage change. The Studio's **Use as stage** button applies one undoable edit. Record the returned SHA when applying a reviewed edit with `--expect-sha`.
 | Structure | `clip.create {id, refs or tracks, startMs?}`, `clip.update`, `clip.set {clip}`, `clip.dissolve {id, bake?}`, `stagger.set`, `link.set`, `link.remove`, `constraint.set`, `constraint.remove`, `path.fromAxes`, `path.tangent` |
 | Metadata | `editor.set {labels?, colors?, locked?, markers?}` |
 | Undo | `restore {at, value, index?}` (what inverses use) |

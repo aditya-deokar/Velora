@@ -44,6 +44,10 @@ Preview and capture run through the app dev server; rendering proofs use `velora
 
 ## Workflow
 
+### Size the app viewport
+
+Render new app UI inside a laptop stage. Use `laptop-14` (1512×982 at 2×), `laptop-13` (1440×900 at 2×), or the user's detected viewport. Use `desktop-1080` at 1× only when requested. Keep the concrete size in `definition.stage` and use `AppStage` inside the app's Surface. Components in that tree can use `@container velora-app-stage` or `useAppStage()`. Use `RouteFrame` inside `AppStage` for apps that depend on window media queries.
+
 1. Run `velora guide --json` and read the workflow plus `capabilities.api`.
 2. Choose a shot family and state the near edge, subject, camera distance, one travel axis, focus region, and depth references.
 3. Approve the opening still visually: near and far size difference, intentional crop, identifiable detail, black void.

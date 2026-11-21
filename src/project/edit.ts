@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { applyEdits, describeOp, lineDiff, parseTrackShorthand, type EditOp, type EditIssue, type TrackAddress } from "../core/edit";
+import { stageFromSpec } from "../core/stage";
 import { formatJsonDocument, parseJsonDocument } from "../core/json";
 import { SceneRecipeIdSchema, SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 import { MotionSchema, clipTiming, evaluateMotion } from "../core/motion";
@@ -23,7 +24,7 @@ import { compositionBridgeHandlers, readCompositionEdit } from "./composition-ed
  * WHERE: cli/index parses flags; core/edit and core/json own the reducer and writer; services own file I/O
  * (scoped paths, atomic writes); services/bridge owns the loopback transport and watcher.
  */
-export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "bridge" | "preset" | "source";
+export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "stage" | "bridge" | "preset" | "source";
 export type EditCommandResult =
   | { success: true; command: "edit"; data: Record<string, unknown>; warnings?: CliIssue[]; next?: string[]; server?: BridgeServer }
   | { success: false; command: "edit"; issues: CliIssue[]; next: string[] };
@@ -47,6 +48,7 @@ const EditInputSchema = z.strictObject({
   at: z.number().finite().nonnegative().optional(),
   ops: z.string().optional(),
   opsText: z.string().max(BRIDGE_MAX_BODY_BYTES).optional(),
+  size: z.string().max(80).optional(),
   expectSha: z.string().regex(/^[0-9a-f]{64}$/, "Use the 64-character hex sha256 printed by a previous command.").optional(),
   write: z.boolean().optional(),
   track: z.string().optional(),
@@ -369,6 +371,14 @@ export async function executeEditCommand(operation: EditOperation, input: EditIn
       // Accept either an op array or the inverse/ops envelope another command printed.
       if (ops && typeof ops === "object" && !Array.isArray(ops)) ops = (ops as Doc).ops ?? (ops as Doc).inverse ?? (ops as Doc).data?.inverse;
       return await editScene(root, options.scene, ops, write);
+    }
+    if (operation === "stage") {
+      const { size, preset } = options;
+      if (size && preset && preset !== "user-native" && preset !== "custom")
+        return failure([{ code: "ERR_INVALID_FLAG_COMBINATION", path: "stage", message: "Use a named preset by itself or pass an explicit WxH@DPR size." }]);
+      const stage = size ? stageFromSpec(size, preset === "user-native" ? "user-native" : "custom") : preset && stageFromSpec(preset);
+      if (!stage) return failure([{ code: "ERR_EDIT_INVALID", path: "stage", message: "Choose a stage preset or pass --size WxH@DPR, such as 1512x982@2. Use the Studio for viewport detection." }]);
+      return await editScene(root, options.scene, [{ op: "stage.set", ...stage }], write);
     }
     if (operation === "paste") {
       if (!options.from || options.at === undefined) return failure([{ code: "ERR_MISSING_VALUE", path: options.from ? "at" : "from", message: "edit paste needs --from <clipboard file> and --at <ms>." }]);

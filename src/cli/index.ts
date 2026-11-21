@@ -19,6 +19,7 @@ import { executeRecipeCommand, type RecipeCommandResult } from "../project/recip
 import { executeEditCommand, type EditOperation } from "../project/edit";
 import { executeCompositionEdit } from "../project/composition-edit";
 import type { ProjectResult } from "../core/project";
+import { StageDprSchema } from "../core/stage";
 
 /** SOURCE OF TRUTH: runCli adapter.
  * WHAT: translate terminal arguments into canonical project operations and format results.
@@ -68,13 +69,13 @@ velora assets ls [--project DIR] [--json]
 velora assets check [--project DIR] [--json]
 velora assets add --as SOURCE --id ID [--project DIR] [--json]
 velora assets rm --id ID --yes [--project DIR] [--json]
-velora export --url URL --output FILE [--fps 24|25|30|50|60|120] [--width N --height N] [--quality draft|standard|master] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG] [--transparent] [--poster MS] [--audio FILE] [--captions FILE] [--project DIR] [--json]
+velora export --url URL --output FILE [--fps 24|25|30|50|60|120] [--width N --height N] [--quality draft|standard|master] [--stage-dpr DPR] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG] [--transparent] [--poster MS] [--audio FILE] [--captions FILE] [--project DIR] [--json]
 velora doctor [--project DIR] [--url ORIGIN] [--json]
 velora render --composition FILE --frame N --out PNG [--url ORIGIN] [--no-cache] [--project DIR] [--json]
-velora render --composition FILE --out VIDEO [--preset ID] [--quality Q] [--codec C] [--motion-blur DEG] [--aspects 16:9,9:16] [--poster MS] [--parallel N] [--fps N] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]
+velora render --composition FILE --out VIDEO [--preset ID] [--quality Q] [--stage-dpr DPR] [--codec C] [--motion-blur DEG] [--aspects 16:9,9:16] [--poster MS] [--parallel N] [--fps N] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]
 velora frames --composition FILE --out DIR [--every N | --at MS,...] [--contact-sheet [--columns N]] [--url ORIGIN] [--project DIR] [--json]
-velora deliver --composition FILE --targets youtube,reels,website-hero,... [--out DIR] [--quality Q] [--parallel N] [--url ORIGIN] [--project DIR] [--json]
-velora shot --scene ID --time MS --out PNG [--quality Q] [--motion-blur DEG] [--fps N] [--transparent] [--finish] [--url ORIGIN] [--project DIR] [--json]
+velora deliver --composition FILE --targets youtube,reels,website-hero,... [--out DIR] [--quality Q] [--stage-dpr DPR] [--parallel N] [--url ORIGIN] [--project DIR] [--json]
+velora shot --scene ID --time MS --out PNG [--quality Q] [--stage-dpr DPR] [--motion-blur DEG] [--fps N] [--transparent] [--finish] [--url ORIGIN] [--project DIR] [--json]
 velora check --frames DIR [--budget-ms MS] [--project DIR] [--json]
 velora check --video FILE [--manifest FILE] [--budget-ms MS] [--project DIR] [--json]
 velora audio ls --composition FILE [--project DIR] [--json]
@@ -90,8 +91,8 @@ velora brand check [--project DIR] [--json]
 velora templates ls [--category C] [--tag T] [--aspect A] [--json]
 velora templates show --id ID [--json]
 velora templates check [--id ID] [--json]
-velora new scene --template ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--set KEY=VALUE]... [--aspect A] [--duration MS] [--title T] [--project DIR] [--json]
-velora new video --blueprint ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--aspect A] [--title T] [--project DIR] [--json]
+velora new scene --template ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--set KEY=VALUE]... [--aspect A] [--stage PRESET|WxH@DPR] [--duration MS] [--title T] [--project DIR] [--json]
+velora new video --blueprint ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--aspect A] [--stage PRESET|WxH@DPR] [--title T] [--project DIR] [--json]
 velora transitions ls [--json]
 velora transitions describe --type TYPE [--json]
 velora prompts ls [--json]
@@ -131,11 +132,11 @@ const commandUsage: Record<string, string> = {
   inspect: "velora inspect [--project DIR] [--scene ID | --composition FILE] [--json]\n\nInspect the project, one scene or one composition file without mutating anything.\nWithout flags, report project identity plus recipe/asset counts.",
   assets: "velora assets ls [--project DIR] [--json]\nvelora assets check [--project DIR] [--json]\nvelora assets add --as SOURCE --id ID [--project DIR] [--json]\nvelora assets rm --id ID --yes [--project DIR] [--json]\n\nManage project assets in assets/ (list, check, add a file under an ID, remove with confirmation).",
   snapshot: "velora snapshot --scene ID --url ORIGIN [--time MS] [--project DIR] [--json]\n\nCapture one frame PNG into the scene recipe at --time milliseconds (default midpoint).",
-  export: "velora export --url URL --output FILE [--fps 24|25|30|50|60|120] [--width N --height N] [--quality draft|standard|master] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG [--motion-samples N]] [--transparent] [--gif-fps N] [--poster MS] [--audio FILE] [--captions FILE] [--project DIR] [--json]\n\nRender the live scene to a project-relative video through the capture bridge.\n--quality master supersamples 2x and adds 180-degree motion blur; --codec picks the container (.mp4 .webm .mov .gif); --transparent needs vp9 or prores4444.\nOutput is BT.709-tagged.\n--audio mixes a project-relative audio file; --captions burns a project-relative .srt/.vtt file.\nRequires FFmpeg and Playwright Chromium; does not start the app server.",
+  export: "velora export --url URL --output FILE [--fps 24|25|30|50|60|120] [--width N --height N] [--quality draft|standard|master] [--stage-dpr DPR] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG [--motion-samples N]] [--transparent] [--gif-fps N] [--poster MS] [--audio FILE] [--captions FILE] [--project DIR] [--json]\n\nRender the live scene to a project-relative video through the capture bridge.\n--quality master supersamples 2x and adds 180-degree motion blur; --codec picks the container (.mp4 .webm .mov .gif); --transparent needs vp9 or prores4444.\nOutput is BT.709-tagged.\n--audio mixes a project-relative audio file; --captions burns a project-relative .srt/.vtt file.\nRequires FFmpeg and Playwright Chromium; does not start the app server.",
   doctor: "velora doctor [--project DIR] [--url ORIGIN] [--json]\n\nCheck Node, npm package, React, toolkit, scene catalog, FFmpeg and Chromium.\n--url also probes dev-server reachability. Exit 0 when every check passes, 1 otherwise.",
-  render: "velora render --composition FILE [--frame N | --time MS] --out PNG [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\nvelora render --composition FILE --out VIDEO [--preset ID] [--quality draft|standard|master] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG [--motion-samples N]] [--transparent] [--gif-fps N] [--aspects 16:9,9:16,1:1] [--poster MS] [--parallel 1-8] [--fps 24|25|30|50|60|120] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]\n\nRender one exact timeline frame to PNG plus a manifest, or the whole timeline to video.\nFrame mode needs exactly one of --frame/--time with a .png --out; video mode needs a .mp4, .webm, .mov or .gif --out.\n--preset applies a delivery target (explicit flags win) and reports budget warnings.\n--json streams newline-delimited progress lines ending with the result envelope (--no-stream prints only the envelope).",
+  render: "velora render --composition FILE [--frame N | --time MS] --out PNG [--stage-dpr DPR] [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\nvelora render --composition FILE --out VIDEO [--preset ID] [--quality draft|standard|master] [--stage-dpr DPR] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG [--motion-samples N]] [--transparent] [--gif-fps N] [--aspects 16:9,9:16,1:1] [--poster MS] [--parallel 1-8] [--fps 24|25|30|50|60|120] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]\n\nRender one exact timeline frame to PNG plus a manifest, or the whole timeline to video.\nFrame mode needs exactly one of --frame/--time with a .png --out; video mode needs a .mp4, .webm, .mov or .gif --out.\n--preset applies a delivery target (explicit flags win) and reports budget warnings.\n--json streams newline-delimited progress lines ending with the result envelope (--no-stream prints only the envelope).",
   frames: "velora frames --composition FILE --out DIR [--every N | --at MS,...] [--contact-sheet [--columns N]] [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\n\nExtract a PNG sequence plus manifest.json. Defaults to one frame per second.\nExactly one of --every (frame step) or --at (comma-separated milliseconds) may be given.",
-  shot: "velora shot --scene ID --time MS --out PNG [--quality draft|standard|master] [--motion-blur DEG [--motion-samples N]] [--fps N] [--transparent] [--finish] [--url ORIGIN] [--project DIR] [--json]\n\nCapture one still from a single scene without a composition.\n--quality and --motion-blur preview export finishing on one frame; --finish adds the look's export finishing (bloom, halation, aberration, sharpen, LUT).",
+  shot: "velora shot --scene ID --time MS --out PNG [--quality draft|standard|master] [--stage-dpr DPR] [--motion-blur DEG [--motion-samples N]] [--fps N] [--transparent] [--finish] [--url ORIGIN] [--project DIR] [--json]\n\nCapture one still from a single scene without a composition.\n--quality and --motion-blur preview export finishing on one frame; --finish adds the look's export finishing (bloom, halation, aberration, sharpen, LUT).",
   check: "velora check --frames DIR [--budget-ms MS] [--project DIR] [--json]\nvelora check --video FILE [--manifest FILE] [--budget-ms MS] [--project DIR] [--json]\n\nRun automated visual checks over rendered evidence (technical checks only, never artistic scores).\nExactly one of --frames or --video is required; --manifest cross-checks video records.",
   audio: "velora audio ls --composition FILE [--project DIR] [--json]\nvelora audio check --composition FILE [--project DIR] [--json]\nvelora audio beats (--file AUDIO | --composition FILE) [--write-markers] [--project DIR] [--json]\n\nbeats detects tempo, beats and 4/4 downbeats in a music bed; --write-markers stores them on the composition for compose snap.\nList composition audio tracks with frame-snapped placement, or validate them\nagainst discovered assets (existence, type, size, codec, fades, ducking).",
   captions: "velora captions validate --file FILE [--project DIR] [--json]\nvelora captions check --composition FILE [--project DIR] [--json]\n\nValidate a .srt/.vtt file, or check a composition's captions against its timeline span.",
@@ -143,11 +144,11 @@ const commandUsage: Record<string, string> = {
   review: "velora review --composition FILE [--platform ID] [--project DIR] [--json]\n\nAdvisory editorial review: hook in the first 2 s, shot length for the platform's pacing, reading time, end-card hold,\neye-trace and match-cut continuity, camera direction, loop seams and off-beat cuts. Findings are advice for a human, never errors.",
   brand: "velora brand init [--from-css FILE] [--name NAME] [--project DIR] [--json]\nvelora brand check [--project DIR] [--json]\n\nScaffold velora.brand.json (colors, gradients, fonts, radius, voice, motion personality calm|crisp|playful|bold), optionally seeded from a stylesheet's CSS custom properties, or validate it.\nEvery kit component and motion-graphics template reads these tokens at render time.",
   templates: "velora templates ls [--category C] [--tag T] [--aspect A] [--json]\nvelora templates show --id ID [--json]\nvelora templates check [--id ID] [--json]\n\nBrowse the shipped camera templates and blueprints, show one with its params and craft notes, or certify framing for every aspect and intensity.\nTemplates are starting points: velora new copies plain, editable source into your project.",
-  new: "velora new scene --template ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--set KEY=VALUE]... [--aspect 16:9|21:9|1:1|4:5|9:16] [--duration MS] [--title T] [--project DIR] [--json]\nvelora new video --blueprint ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--aspect A] [--title T] [--project DIR] [--json]\n\nScaffold a templated scene (recipe JSON + binding) or a blueprint composition with its scene pairs. Create-only: existing files are never overwritten.\n--component slots a real component (default export when #EXPORT is omitted); --route frames a page of the running app; neither writes a placeholder.\n--set may repeat (for example --set intensity=dramatic --set lens=35).",
+  new: "velora new scene --template ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--set KEY=VALUE]... [--aspect 16:9|21:9|1:1|4:5|9:16] [--stage PRESET|WxH@DPR] [--duration MS] [--title T] [--project DIR] [--json]\nvelora new video --blueprint ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--aspect A] [--stage PRESET|WxH@DPR] [--title T] [--project DIR] [--json]\n\nScaffold a templated scene (recipe JSON + binding) or a blueprint composition with its scene pairs. Create-only: existing files are never overwritten.\n--component slots a real component (default export when #EXPORT is omitted); --route frames a page of the running app; neither writes a placeholder.\n--set may repeat (for example --set intensity=dramatic --set lens=35).",
   transitions: "velora transitions ls [--json]\nvelora transitions describe --type TYPE [--json]\n\nList the entering-side transition catalog, or show one transition with example tracks.\nTransitions declare segment entrances; builders emit tracks to paste into recipe motion.",
-  deliver: "velora deliver --composition FILE --targets LIST [--out DIR] [--quality draft|standard|master] [--parallel N] [--no-cache] [--no-stream] [--url ORIGIN] [--project DIR] [--json]\n\nRender every launch asset from one composition into a fresh directory (default deliverables/<id>).\nTargets: youtube, x, x-square, linkedin, reels, instagram-feed, tiktok, shorts, website-hero, readme-gif, og-image, product-hunt (or any delivery preset id).\nEach video uses its preset (size, codec, quality, loudness) and steps rate control until it fits the preset's size budget; website-hero adds an MP4 fallback,\na JPEG poster, embed.html and HeroVideo.tsx; og-image and product-hunt add exact-size stills. deliverables.json records files, SHAs, sizes and warnings.",
+  deliver: "velora deliver --composition FILE --targets LIST [--out DIR] [--quality draft|standard|master] [--stage-dpr DPR] [--parallel N] [--no-cache] [--no-stream] [--url ORIGIN] [--project DIR] [--json]\n\nRender every launch asset from one composition into a fresh directory (default deliverables/<id>).\nTargets: youtube, x, x-square, linkedin, reels, instagram-feed, tiktok, shorts, website-hero, readme-gif, og-image, product-hunt (or any delivery preset id).\nEach video uses its preset (size, codec, quality, loudness) and steps rate control until it fits the preset's size budget; website-hero adds an MP4 fallback,\na JPEG poster, embed.html and HeroVideo.tsx; og-image and product-hunt add exact-size stills. deliverables.json records files, SHAs, sizes and warnings.",
   studio: "velora studio --site URL [--port P] [--check] [--project DIR] [--json]\nvelora studio init --site URL [--project DIR] [--json]\n\nAny-site mode for non-React sites (Astro, SvelteKit, Rails, Django, static HTML): a managed studio in your user cache\n(React and Vite never enter your project) served at <origin>/__velora/, with every other path proxied to your site's\nloopback dev server so routes frame same-origin. Scenes, compositions and assets stay in this project.\nRuns in the foreground until Ctrl-C; --check starts it, verifies studio, proxy and framing, then stops.\nRoute-level shots only: the site's own animations are frozen; drive states through routes or query params.",
-  edit: "velora edit ls --scene ID [--at MS] [--project DIR] [--json]\nvelora edit apply --scene ID --ops FILE|- [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit key --scene ID --track REF --at MS --value V [--ease E] [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit ease --scene ID --track REF --at MS --ease E [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit paste --scene ID --from FILE --at MS [--onto SURFACE] [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit source outline [--scene ID] [--file FILE] [--json]\nvelora edit source wrap --file FILE --node PATH --id ID [--scene ID] [--content] [--write]\nvelora edit source group --file FILE --nodes PATH,PATH --id ID [--scene ID] [--write]\nvelora edit source expose --file FILE --node PATH --id ID --prop NAME [--options A,B] [--scene ID] [--write]\nvelora edit [--scene ID | --composition FILE] [--port P] [--read-only] [--no-open] [--url ORIGIN] [--project DIR] [--json]\n\nSurgical, diffable scene edits with exact undo, through the same EditOp vocabulary the studio editor uses.\nls lists tracks, clips, links, constraints and keyframes (--at adds evaluated values). apply, key and ease are dry runs:\nthey print the diff, labels and the inverse batch; --write writes once, compare-and-swap guarded (--expect-sha fails fast if the file changed).\nTrack refs: camera.z, focus.distance, <surface>.<prop>, style:<surface>.--name, channel:<id>, each with an optional @<clip>.\npaste applies a keyframe clipboard copied in the studio editor (application/x-velora-keyframes+json) at --at, optionally onto another surface.\nSource mutations show diffs by default. On --write, --expect-sha and --expect-recipe-sha can pin the reviewed revisions.\n--ops - reads the batch from stdin; an envelope's inverse can be applied directly to undo.\nWithout a subcommand, edit verifies the dev server, starts the loopback edit bridge (token in the URL fragment) and opens the editor; Ctrl-C stops it.",
+  edit: "velora edit stage --scene ID (--preset PRESET | --size WxH@DPR) [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit ls --scene ID [--at MS] [--project DIR] [--json]\nvelora edit apply --scene ID --ops FILE|- [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit key --scene ID --track REF --at MS --value V [--ease E] [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit ease --scene ID --track REF --at MS --ease E [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit paste --scene ID --from FILE --at MS [--onto SURFACE] [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit source outline [--scene ID] [--file FILE] [--json]\nvelora edit source wrap --file FILE --node PATH --id ID [--scene ID] [--content] [--write]\nvelora edit source group --file FILE --nodes PATH,PATH --id ID [--scene ID] [--write]\nvelora edit source expose --file FILE --node PATH --id ID --prop NAME [--options A,B] [--scene ID] [--write]\nvelora edit [--scene ID | --composition FILE] [--port P] [--read-only] [--no-open] [--url ORIGIN] [--project DIR] [--json]\n\nSurgical, diffable scene edits with exact undo, through the same EditOp vocabulary the studio editor uses.\nls lists tracks, clips, links, constraints and keyframes (--at adds evaluated values). apply, key and ease are dry runs:\nthey print the diff, labels and the inverse batch; --write writes once, compare-and-swap guarded (--expect-sha fails fast if the file changed).\nTrack refs: camera.z, focus.distance, <surface>.<prop>, style:<surface>.--name, channel:<id>, each with an optional @<clip>.\npaste applies a keyframe clipboard copied in the studio editor (application/x-velora-keyframes+json) at --at, optionally onto another surface.\nSource mutations show diffs by default. On --write, --expect-sha and --expect-recipe-sha can pin the reviewed revisions.\n--ops - reads the batch from stdin; an envelope's inverse can be applied directly to undo.\nWithout a subcommand, edit verifies the dev server, starts the loopback edit bridge (token in the URL fragment) and opens the editor; Ctrl-C stops it.",
   create: "velora create DIR [--name NAME] [--blueprint ID] [--json]\n\nWrite a starter launch studio into a new directory: a blank Vite React host with a branded landing page, velora.brand.json,\nand npm scripts (velora:setup runs init, installs the skills and scaffolds the blueprint, default launch-film-30s).\nFor teams without a React app; film an existing non-React site with velora studio --site.",
   prompts: "velora prompts ls [--json]\nvelora prompts show --id ID [--json]\n\nList the agent prompt library (launch film, feature drop, website hero loop, vertical teaser, cinematic dashboard, changelog, Product Hunt kit),\nor print one prompt to paste into your coding agent. Replace each <placeholder> before sending it.",
   skills: "velora skills install --dir PATH [--agent claude|codex|cursor|generic] [--source PATH] [--json]\nvelora skills ls [--dir PATH] [--source PATH] [--json]\nvelora skills check [--dir PATH] [--source PATH] [--json]\n\nInstall the Velora skills library (idempotent; differing files are ERR_SKILL_CONFLICT), list available/installed skills with version drift, or check front-matter and cross-links.\n--agent prints the registration snippet for that agent without writing config files.",
@@ -406,7 +407,7 @@ async function runTemplatesCommand(args: string[], environment: Environment, man
     (data: { templates: { id: string }[] }) => `Certified ${data.templates.length} template${data.templates.length === 1 ? "" : "s"} across every supported aspect and intensity: ${data.templates.map(t => t.id).join(", ")}.`);
 }
 async function runNewCommand(args: string[], environment: Environment, manager: TemplateManager, fail: (message: string, code?: string, name?: string) => CliResult): Promise<CliResult> {
-  const shared = ["--id", "--component", "--route", "--aspect", "--title", "--project", "--json"];
+  const shared = ["--id", "--component", "--route", "--aspect", "--stage", "--title", "--project", "--json"];
   const parsed = parseTemplateArgs("new", args, { scene: ["--template", "--set", "--duration", ...shared], video: ["--blueprint", ...shared] }, fail);
   if ("failed" in parsed) return parsed.failed;
   const { sub, flags, sets } = parsed;
@@ -419,7 +420,8 @@ async function runNewCommand(args: string[], environment: Environment, manager: 
   if (duration !== undefined && !/^\d+$/.test(duration)) return fail("--duration expects whole milliseconds.", "ERR_MISSING_VALUE", "new");
   const context = { root: value("--project") ?? environment.root };
   const common = { id: value("--id"), ...(flags.has("--component") ? { component: value("--component") } : {}), ...(flags.has("--route") ? { route: value("--route") } : {}),
-    ...(flags.has("--aspect") ? { aspect: value("--aspect") } : {}), ...(flags.has("--title") ? { title: value("--title") } : {}) };
+    ...(flags.has("--aspect") ? { aspect: value("--aspect") } : {}), ...(flags.has("--stage") ? { stage: value("--stage") } : {}),
+    ...(flags.has("--title") ? { title: value("--title") } : {}) };
   const result = sub === "scene"
     ? await manager("new-scene", { template: value("--template"), ...common, set: sets, ...(duration !== undefined ? { durationMs: Number(duration) } : {}) }, context)
     : await manager("new-video", { blueprint: value("--blueprint"), ...common }, context);
@@ -531,6 +533,7 @@ async function runEditCommand(args: string[], environment: Environment, manager:
     apply: { values: ["--scene", "--ops", "--expect-sha", "--label", "--project"], booleans: ["--write", "--json"] },
     key: { values: ["--scene", "--track", "--at", "--value", "--ease", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
     ease: { values: ["--scene", "--track", "--at", "--ease", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
+    stage: { values: ["--scene", "--preset", "--size", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
     paste: { values: ["--scene", "--from", "--at", "--onto", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
     bridge: { values: ["--scene", "--composition", "--port", "--url", "--project"], booleans: ["--read-only", "--no-open", "--json"] },
     preset: { values: ["--scene", "--preset", "--to", "--layer", "--title", "--values", "--at", "--expect-sha", "--label", "--project"], booleans: ["--write", "--json"] },
@@ -538,7 +541,7 @@ async function runEditCommand(args: string[], environment: Environment, manager:
   };
   const sub = args[0] && !args[0].startsWith("--") ? args[0] : "bridge";
   if (sub === "bridge" && args[0] && !args[0].startsWith("--")) return fail(`Unknown edit subcommand: ${args[0]}.`, "ERR_UNKNOWN_COMMAND", "edit");
-  if (!Object.hasOwn(grammar, sub) || (sub === "bridge" && args[0] === "bridge")) return fail(`Unknown edit subcommand: ${sub}. Expected ls, apply, key, ease, paste, preset, source, or flags to start the bridge.`, "ERR_UNKNOWN_COMMAND", "edit");
+  if (!Object.hasOwn(grammar, sub) || (sub === "bridge" && args[0] === "bridge")) return fail(`Unknown edit subcommand: ${sub}. Expected ls, apply, key, ease, paste, stage, preset, source, or flags to start the bridge.`, "ERR_UNKNOWN_COMMAND", "edit");
   // velora edit preset ls|show|save|apply [flags]
   const action = sub === "preset" ? (args[1] && !args[1].startsWith("--") ? args[1] : "ls") : undefined;
   if (action !== undefined && !["ls", "show", "save", "apply"].includes(action)) return fail(`Unknown preset action: ${action}. Expected ls, show, save or apply.`, "ERR_UNKNOWN_COMMAND", "edit");
@@ -566,6 +569,7 @@ async function runEditCommand(args: string[], environment: Environment, manager:
   }
   const input = {
     ...(text("--composition") ? { composition: text("--composition") } : {}),
+    ...(text("--size") ? { size: text("--size") } : {}),
     ...(text("--scene") ? { scene: text("--scene") } : {}), ...(flags.has("--at") ? { at: Number(text("--at")) } : {}),
     ...(text("--ops") && text("--ops") !== "-" ? { ops: text("--ops") } : {}), ...(opsText !== undefined ? { opsText } : {}),
     ...(text("--expect-sha") ? { expectSha: text("--expect-sha") } : {}), ...(flags.has("--write") ? { write: true } : {}),
@@ -881,6 +885,7 @@ function humanCheck(checks: { id: string; pass: boolean; detail: string }[], uni
 // Finishing flags shared by export and render (validated by the core schemas).
 function finishingInput(flags: Map<string, string | true>) {
   return {
+    ...stageDprInput(flags),
     ...(flags.has("--quality") ? { quality: flags.get("--quality") as string } : {}),
     ...(flags.has("--codec") ? { codec: flags.get("--codec") as string } : {}),
     ...(flags.has("--transparent") ? { transparent: true } : {}),
@@ -889,6 +894,9 @@ function finishingInput(flags: Map<string, string | true>) {
     ...(flags.has("--gif-fps") ? { gifFps: Number(flags.get("--gif-fps")) } : {}),
     ...(flags.has("--poster") ? { poster: Number(flags.get("--poster")) } : {}),
   } as Record<string, never>;
+}
+function stageDprInput(flags: Map<string, string | true>) {
+  return flags.has("--stage-dpr") ? { stageDpr: StageDprSchema.parse(Number(flags.get("--stage-dpr"))) } : {};
 }
 function progressCollector(json: boolean, noStream: boolean): { lines: string[]; onProgress?: (done: number, total: number) => void; flush: (body: string) => string } {
   const lines: string[] = [];
@@ -967,12 +975,12 @@ export async function runCli(argv: string[], environment: Environment, execute: 
   if (command === "assets") return runAssetsCommand(args, environment, assetsManager ?? executeAssetsCommand, fail);
   const flagSets: Record<string, string[]> = {
     snapshot: ["--project","--url","--scene","--time","--json"],
-    export: ["--project", "--url", "--output", "--fps", "--width", "--height", "--audio", "--captions", "--quality", "--codec", "--transparent", "--motion-blur", "--motion-samples", "--gif-fps", "--poster", "--json"],
+    export: ["--project", "--url", "--output", "--fps", "--width", "--height", "--audio", "--captions", "--quality", "--stage-dpr", "--codec", "--transparent", "--motion-blur", "--motion-samples", "--gif-fps", "--poster", "--json"],
     doctor: ["--project", "--url", "--json"],
-    render: ["--composition", "--frame", "--time", "--out", "--url", "--no-cache", "--cache-dir", "--parallel", "--fps", "--width", "--height", "--no-stream", "--quality", "--codec", "--transparent", "--motion-blur", "--motion-samples", "--gif-fps", "--poster", "--preset", "--aspects", "--project", "--json"],
+    render: ["--composition", "--frame", "--time", "--out", "--url", "--no-cache", "--cache-dir", "--parallel", "--fps", "--width", "--height", "--no-stream", "--quality", "--stage-dpr", "--codec", "--transparent", "--motion-blur", "--motion-samples", "--gif-fps", "--poster", "--preset", "--aspects", "--project", "--json"],
     frames: ["--composition", "--out", "--every", "--at", "--contact-sheet", "--columns", "--url", "--no-cache", "--cache-dir", "--project", "--json"],
-    deliver: ["--composition", "--targets", "--out", "--quality", "--parallel", "--no-cache", "--no-stream", "--url", "--project", "--json"],
-    shot: ["--scene", "--time", "--out", "--url", "--quality", "--motion-blur", "--motion-samples", "--fps", "--transparent", "--finish", "--project", "--json"],
+    deliver: ["--composition", "--targets", "--out", "--quality", "--stage-dpr", "--parallel", "--no-cache", "--no-stream", "--url", "--project", "--json"],
+    shot: ["--scene", "--time", "--out", "--url", "--quality", "--stage-dpr", "--motion-blur", "--motion-samples", "--fps", "--transparent", "--finish", "--project", "--json"],
     check: ["--frames", "--video", "--manifest", "--budget-ms", "--project", "--json"],
   };
   const allowed: string[] = flagSets[command] ?? ["--project", "--package", "--url", "--no-open", "--json", "--scene", "--adapter", "--composition"];
@@ -989,6 +997,8 @@ export async function runCli(argv: string[], environment: Environment, execute: 
     }
   }
   if (flags.has("--adapter") && command !== "init") return fail("--adapter is only valid for init.", "ERR_INVALID_FLAG_COMBINATION", command);
+  if (flags.has("--stage-dpr") && !StageDprSchema.safeParse(Number(flags.get("--stage-dpr"))).success)
+    return fail("--stage-dpr must be 1, 1.25, 1.5, 1.75, 2 or 3.", "ERR_UNKNOWN_OPTION", command);
   if (flags.has("--package") && command !== "init") return fail("--package is only valid for init.", "ERR_INVALID_FLAG_COMBINATION", command);
   if (flags.has("--composition") && !["validate", "render", "frames", "deliver"].includes(command)) return fail("--composition is only valid for validate, render, frames or deliver.", "ERR_INVALID_FLAG_COMBINATION", command);
   if (flags.has("--scene") && !["load", "open", "snapshot", "shot"].includes(command)) return fail("--scene is only valid for load, open, shot or snapshot.", "ERR_INVALID_FLAG_COMBINATION", command);
@@ -1023,6 +1033,7 @@ export async function runCli(argv: string[], environment: Environment, execute: 
           composition: flags.get("--composition") as string,
           ...(flags.has("--frame") ? { frame: Number(flags.get("--frame")) } : { timeMs: Number(flags.get("--time")) }),
           out,
+          ...stageDprInput(flags),
           ...(flags.has("--cache-dir") ? { cacheDir: flags.get("--cache-dir") as string } : {}),
           ...(flags.has("--no-cache") ? { noCache: true as const } : {}),
         }, {
@@ -1078,6 +1089,7 @@ export async function runCli(argv: string[], environment: Environment, execute: 
       const result = await deliver({
         composition: flags.get("--composition") as string,
         targets: String(flags.get("--targets")).split(",").map((value) => value.trim()).filter(Boolean),
+        ...stageDprInput(flags),
         ...(flags.has("--out") ? { out: flags.get("--out") as string } : {}),
         ...(flags.has("--quality") ? { quality: flags.get("--quality") as "draft" } : {}),
         ...(flags.has("--parallel") ? { parallel: Number(flags.get("--parallel")) } : {}),
@@ -1136,6 +1148,7 @@ export async function runCli(argv: string[], environment: Environment, execute: 
         scene: flags.get("--scene") as string,
         timeMs: Number(flags.get("--time")),
         out: flags.get("--out") as string,
+        ...stageDprInput(flags),
         ...(flags.has("--quality") ? { quality: flags.get("--quality") as "master" } : {}),
         ...(flags.has("--motion-blur") ? { motionBlur: Number(flags.get("--motion-blur")) } : {}),
         ...(flags.has("--motion-samples") ? { motionSamples: Number(flags.get("--motion-samples")) } : {}),

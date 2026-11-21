@@ -22,6 +22,8 @@ import { parseCube, resolveLook, type LookInput } from "../core/looks";
 import { encodeBase64Url } from "../core/quickshot";
 import { LoudnessSchema, SfxEntrySchema, sfxStartMs, type Loudness, type SfxEntry } from "../core/sound";
 import { isOverlapTransition } from "../core/transitions";
+import { stageLineage, type StageLineage } from "../core/export";
+import type { Stage, StageDpr } from "../core/stage";
 import type { LoudnessMeasurement } from "./services";
 
 /** SOURCE OF TRUTH: executeVideoExport, executeSceneSnapshot, executeFrameRender trusted operations.
@@ -29,6 +31,17 @@ import type { LoudnessMeasurement } from "./services";
  * WHY: CLI and other callers must share the same export policy and canonical scene clock.
  * WHERE: cli/index adapts arguments; services owns all browser/filesystem/process effects.
  */
+const stageCheck = (stage: StageLineage, sceneId?: string) => ({
+  id: "stage-dpr", pass: !stage.dprCapped,
+  detail: `${sceneId ? sceneId + ": " : ""}Captured at ${stage.effectiveDpr}× DPR${stage.dprCapped ? " (3840 px capture cap)" : ""}.`,
+});
+const timelineStageFields = (stages: readonly (StageLineage & { sceneId: string })[]) => {
+  if (!stages.length) return { fields: {}, checks: [] };
+  const { sceneId: _, ...stage } = stages[0];
+  const same = stages.every(({ sceneId: _, ...value }) => JSON.stringify(value) === JSON.stringify(stage));
+  return { fields: same ? { stage } : { stages }, checks: stages.map(value => stageCheck(value, value.sceneId)) };
+};
+
 export async function executeVideoExport(input: unknown, context: { root: string; signal?: AbortSignal }): Promise<ExportVideoResult> {
   let session: Awaited<ReturnType<typeof services.openCapture>> | undefined;
   try {
@@ -36,21 +49,26 @@ export async function executeVideoExport(input: unknown, context: { root: string
     if (!parsed.success) return { success: false, issues: parsed.error.issues.map(i => ({ code: "invalid-export", message: `${i.path.join(".")}: ${i.message}` })) };
     services.validateTarget(parsed.data.output);
     const scope = await services.prepareScope(context.root, parsed.data.output);
-    const finishing = resolveFinishing(parsed.data, parsed.data);
-    await requireEncoder(finishing.codec);
-    session = await services.openCapture({ ...parsed.data, scale: finishing.supersample, transparent: finishing.transparent }, context.signal);
+    const initial = resolveFinishing(parsed.data, parsed.data);
+    await requireEncoder(initial.codec);
+    session = await services.openCapture({ ...parsed.data, scale: initial.supersample, transparent: initial.transparent,
+      stageScale: stage => resolveFinishing(parsed.data, parsed.data, stage).supersample }, context.signal);
     const manifest = CaptureManifestSchema.safeParse(await session.manifest());
     if (!manifest.success) throw fault("invalid-capture", "Scene capture bridge must use version 1, the scene viewport selector and a duration between 0 and 120 seconds.");
     if(manifest.data.durationMs===0)throw fault("invalid-capture","Video export needs a scene with a nonzero duration. Static scenes support snapshots.");
+    const finishing = resolveFinishing(parsed.data, parsed.data, manifest.data.stage);
+    const stage = manifest.data.stage && stageLineage(manifest.data.stage, finishing, parsed.data.stageDpr);
     const frames = Math.ceil(manifest.data.durationMs * parsed.data.fps / 1000);
     const data: { output: string; fps: number; frames: number; durationMs: number; codec: string; quality: string; poster?: string } & {
       audio?: { file: string; codec: string; driftMs: number; peakDb: number | null };
       captions?: { file: string; cues: number; burnIn: boolean };
-    } = { output: parsed.data.output, fps: parsed.data.fps, frames, durationMs: frames * 1000 / parsed.data.fps, codec: finishing.codec, quality: finishing.quality };
+      stage?: StageLineage; checks?: ReturnType<typeof stageCheck>[];
+    } = { output: parsed.data.output, fps: parsed.data.fps, frames, durationMs: frames * 1000 / parsed.data.fps, codec: finishing.codec, quality: finishing.quality,
+      ...(stage ? { stage, checks: [stageCheck(stage)] } : {}) };
     // Every output frame goes through the shared finisher (motion blur, supersample downscale).
     const durationMs = manifest.data.durationMs;
     const exportLook = await loadExportLook(context.root, manifest.data.look);
-    const produce: services.FrameProducer = async (_index, timeMs, shoot) => (await finishFrame(timeMs, parsed.data.fps, durationMs, finishing, shoot, exportLook)).png;
+    const produce: services.FrameProducer = async (_index, timeMs, shoot) => (await finishFrame(timeMs, parsed.data.fps, durationMs, finishing, shoot, exportLook, parsed.data)).png;
     const posterFrame = parsed.data.poster === undefined ? undefined : Math.min(frames - 1, frameAt(Math.min(parsed.data.poster, durationMs), parsed.data.fps));
     let posterPng: Buffer | undefined;
     const onFrame = (index: number, png: Buffer) => { if (index === posterFrame) posterPng = png; };
@@ -159,14 +177,15 @@ export async function loadExportLook(root: string, input: LookInput | undefined)
   catch (error) { throw fault("ERR_LOOK_INVALID", `LUT ${look.lut} is invalid: ${error instanceof Error ? error.message : "unreadable"}`, "look.lut"); }
 }
 export async function finishFrame(timeMs: number, fps: number, endMs: number, finishing: Pick<ResolvedFinishing, "motionBlur" | "motionSamples" | "supersample">,
-  sample: (timeMs: number) => Promise<Buffer>, exportLook: ExportLook = {}): Promise<{ png: Buffer; subFrames?: string[] }> {
+  sample: (timeMs: number) => Promise<Buffer>, exportLook: ExportLook = {}, size?: { width: number; height: number }): Promise<{ png: Buffer; subFrames?: string[] }> {
   const times = shutterSamples(timeMs, fps, finishing.motionBlur, finishing.motionSamples, endMs);
   const shots: Buffer[] = [];
   for (const time of times) shots.push(await sample(time));
   const shas = shots.map(services.sha256Hex);
   const distinct = new Set(shas).size > 1;
   const factor = finishing.supersample >= 2 ? Math.floor(finishing.supersample) : 1;
-  const png = finishLook(composite(distinct ? shots : [shots[0]], factor), exportLook.look, exportLook.lut);
+  const fractionalSize = finishing.supersample > 1 && !Number.isInteger(finishing.supersample) ? size : undefined;
+  const png = finishLook(composite(distinct ? shots : [shots[0]], factor, fractionalSize), exportLook.look, exportLook.lut);
   return { png, ...(distinct ? { subFrames: shas } : {}) };
 }
 // Probe once per render: a missing encoder fails before any frame is captured.
@@ -192,6 +211,7 @@ async function renderTimelineFrames(options: {
   signal?: AbortSignal; onProgress?: ProgressFn;
   spill?: (frame: number, png: Buffer) => Promise<void>;
   finishing?: ResolvedFinishing;
+  stageDpr?: StageDpr;
   /** Composition default look for scenes that declare none. */
   look?: LookInput;
   /** V2/V3 overlay tracks, composited over V1 in order (transparent capture, own local time). */
@@ -200,7 +220,7 @@ async function renderTimelineFrames(options: {
   captions?: CaptionLayer;
   /** Where layer frames wait for compositing (disk in video mode, memory otherwise). */
   layerStore?: LayerStore;
-}): Promise<Map<number, RenderedFrame>> {
+}) {
   const { root, url, version, fps, width, height, seed, catalog, timeline, wanted, noCache, parallel, signal, onProgress, spill } = options;
   const finishing = options.finishing ?? resolveFinishing({}, { width, height });
   const output = capturedSize(width, height, finishing.supersample);
@@ -210,6 +230,7 @@ async function renderTimelineFrames(options: {
   const caching = hostSha !== undefined;
   const sorted = [...wanted].sort((a, b) => a.frame - b.frame);
   const frames = new Map<number, RenderedFrame>();
+  const stageEvidence = new Map<string, StageLineage & { sceneId: string }>();
   // With a spill sink, results keep metadata only; the sink owns the PNG bytes.
   const results = { set: async (frame: number, entry: RenderedFrame) => {
     if (spill && entry.png) { await spill(frame, entry.png); const { png: _spilled, ...meta } = entry; frames.set(frame, meta); }
@@ -246,7 +267,7 @@ async function renderTimelineFrames(options: {
   const layerMeta = new Map<string, LayerResult>();
   // Capture one unit (a V1 segment, an overlay or the captions layer) at its items' local times.
   const captureUnit = async (entry: CaptureUnit): Promise<void> => {
-    let opened: string, recipeSha: string, bindingSha: string, durationLook: LookInput | undefined;
+    let opened: string, recipeSha: string, bindingSha: string, durationLook: LookInput | undefined, authoredStage: Stage | undefined;
     let sceneId = entry.recipeId ?? "captions";
     if (entry.captions) {
       const captions = entry.captions;
@@ -267,14 +288,17 @@ async function renderTimelineFrames(options: {
       recipeSha = services.sha256Hex(recipeText) + (inherited ? `;look=${services.sha256Hex(JSON.stringify(options.look))}` : "");
       bindingSha = services.sha256Hex(bindingText);
       durationLook = recipe.definition.look ?? (entry.inheritLook ? options.look : undefined);
+      authoredStage = recipe.definition.stage;
     }
+    const unitFinishing = { ...finishing, supersample: resolveFinishing({ quality: finishing.quality, stageDpr: options.stageDpr }, { width, height }, authoredStage).supersample };
     const transparent = finishing.transparent || entry.transparent;
-    const variant = finishing.supersample !== 1 || transparent ? `scale=${finishing.supersample};alpha=${transparent ? 1 : 0}` : undefined;
+    const variant = unitFinishing.supersample !== 1 || transparent ? `scale=${unitFinishing.supersample};alpha=${transparent ? 1 : 0}` : undefined;
     const exportLook = await loadExportLook(root, durationLook);
-    const session = await services.openCapture({ url: opened, width, height, scale: finishing.supersample, transparent }, signal);
+    const session = await services.openCapture({ url: opened, width, height, scale: unitFinishing.supersample, transparent }, signal);
     try {
       const bridge = CaptureManifestSchema.safeParse(await session.manifest());
       if (!bridge.success) throw fault("invalid-capture", "Scene capture bridge must use version 1, the scene viewport selector and a duration between 0 and 120 seconds.");
+      if (authoredStage) stageEvidence.set(sceneId, { sceneId, ...stageLineage(authoredStage, unitFinishing, options.stageDpr) });
       for (const item of entry.items) {
         if (signal?.aborted) throw fault("export-cancelled", "Render cancelled; no output was published.");
         const started = Date.now();
@@ -290,7 +314,7 @@ async function renderTimelineFrames(options: {
           if (caching) await services.frameCacheStore(root, cacheDir, key, png);
           return png;
         };
-        const finished = await finishFrame(item.localMs, fps, bridge.data.durationMs, finishing, sample, exportLook);
+        const finished = await finishFrame(item.localMs, fps, bridge.data.durationMs, unitFinishing, sample, exportLook, { width, height });
         const result: LayerResult = { sha: services.sha256Hex(finished.png), cached: caching && allCached, clamped, renderMs: Date.now() - started, ...(finished.subFrames ? { subFrames: finished.subFrames } : {}) };
         if (item.layered) { await store.write(`${entry.key}:${item.frame}`, finished.png); layerMeta.set(`${entry.key}:${item.frame}`, result); }
         else await results.set(item.frame, { frame: item.frame, timeMs: item.timeMs, sceneId, segmentId: entry.segmentId, png: finished.png, ...result });
@@ -341,7 +365,7 @@ async function renderTimelineFrames(options: {
       png, sha: services.sha256Hex(png), cached: parts.length > 0 && cached, clamped, renderMs: renderMs + Date.now() - started, ...(parts.length > 1 ? { layers: parts } : {}) });
     if (!layers.segments.length && !layered) tick();
   }
-  return frames;
+  return { rendered: frames, stages: [...stageEvidence.values()].sort((a, b) => a.sceneId.localeCompare(b.sceneId)) };
 }
 
 /** Render one exact timeline frame from a composition to PNG plus a manifest.
@@ -385,13 +409,14 @@ export async function executeFrameRender(
     const catalog = await discoverRecipes(root);
     const sourceText = await readText(root, parsed.data.composition, 256_000);
     if (sourceText === undefined) throw fault("source-changed", "Composition source disappeared. Restore it and retry.");
-    const rendered = await renderTimelineFrames({
+    const { rendered, stages } = await renderTimelineFrames({
       root, url: context.url ?? "http://127.0.0.1:5173", version,
       fps, width: composition.width, height: composition.height, seed: composition.seed, look: composition.look, overlays: composition.overlays, captions: await captionLayerFor(root, composition),
-      catalog, timeline, wanted: [{ frame, timeMs }], cacheDir, noCache, parallel: 1, signal: context.signal,
+      catalog, timeline, wanted: [{ frame, timeMs }], cacheDir, noCache, parallel: 1, signal: context.signal, stageDpr: parsed.data.stageDpr,
     });
     const entry = rendered.get(frame);
     if (!entry) throw fault("export-failed", "Frame render produced no output.");
+    const evidence = timelineStageFields(stages);
     const manifest = RenderManifestSchema.parse({
       version: 1 as const, kind: "frame" as const, compositionId: composition.id,
       compositionSha: services.sha256Hex(sourceText),
@@ -399,8 +424,8 @@ export async function executeFrameRender(
       durationMs: timeline.durationMs,
       segments: timeline.segments.map((s) => ({ id: s.id, recipe: s.recipe, startMs: s.startMs, durationMs: s.durationMs, frames: frameAt(s.startMs + s.durationMs, fps) - frameAt(s.startMs, fps) })),
       frames: [{ frame: entry.frame, timeMs: entry.timeMs, sceneId: entry.sceneId, segmentId: entry.segmentId, file: parsed.data.out, sha: entry.sha, renderMs: entry.renderMs, ...(entry.cached ? { cached: true as const } : {}), ...(entry.clamped ? { clamped: true as const } : {}) }],
-      veloraVersion: version,
-      checks: [{ id: "bridge-present", pass: true, detail: entry.sceneId === "black-void" ? "Timeline gap renders black void without a browser." : "Capture bridge served this frame." }],
+      veloraVersion: version, ...evidence.fields,
+      checks: [{ id: "bridge-present", pass: true, detail: entry.sceneId === "black-void" ? "Timeline gap renders black void without a browser." : "Capture bridge served this frame." }, ...evidence.checks],
       createdAt: new Date().toISOString(),
     });
     await services.writeNewFile(scope, entry.png!);
@@ -482,11 +507,11 @@ export async function executeVideoRender(
     const layerDir = `${tmpDir}/layers`;
     // Layer frames (transitions, overlays, captions) wait on disk so long renders stay bounded in memory.
     const layerStore: LayerStore = { write: (key, png) => services.spillFile(layerDir, key, png), read: key => services.readSpilledFile(layerDir, key) };
-    const rendered = await renderTimelineFrames({
+    const { rendered, stages } = await renderTimelineFrames({
       root, url, version, fps, width, height, seed: composition.seed, look: composition.look, overlays: composition.overlays, captions: await captionLayerFor(root, composition),
       catalog: full.catalog, timeline, wanted, cacheDir, noCache, parallel,
       signal: context.signal, onProgress: context.onProgress,
-      spill: (frame, png) => services.spillFrame(frameDir, frame, png), finishing, layerStore,
+      spill: (frame, png) => services.spillFrame(frameDir, frame, png), finishing, layerStore, stageDpr: requested.stageDpr,
     });
     const ordered = wanted.map((w) => rendered.get(w.frame)!);
     const pngs = services.spilledFrames(frameDir, ordered.map((entry) => entry.frame));
@@ -584,10 +609,10 @@ export async function executeVideoRender(
       if (size.width === width && size.height === height) continue;
       const out = `${base}-${size.width}x${size.height}${extension}`;
       const variantDir = `${tmpDir}/variant-${variants.length}`;
-      const variantFrames = await renderTimelineFrames({
+      const { rendered: variantFrames } = await renderTimelineFrames({
         root, url, version, fps, ...size, seed: composition.seed, look: composition.look, overlays: composition.overlays, captions: await captionLayerFor(root, composition), catalog: full.catalog, timeline, wanted, cacheDir, noCache, parallel,
         signal: context.signal, onProgress: context.onProgress, spill: (index, png) => services.spillFrame(variantDir, index, png),
-        finishing: resolveFinishing(requested, size),
+        finishing: resolveFinishing(requested, size), stageDpr: requested.stageDpr,
       });
       await services.encodeFrameBuffers(services.spilledFrames(variantDir, wanted.map(w => variantFrames.get(w.frame)!.frame)), await services.resolveOutput(root, out), { ...encode, ...size });
       variants.push({ aspect, out, ...size });
@@ -598,6 +623,7 @@ export async function executeVideoRender(
       const bytes = await services.fileSize(finalAbs);
       warnings.push(...deliveryWarnings(target, { width, height, fps, durationMs: timeline.durationMs, ...(bytes !== undefined ? { bytes } : {}) }));
     }
+    const evidence = timelineStageFields(stages);
     const manifest = RenderManifestSchema.parse({
       version: 1 as const, kind: "video" as const, compositionId: composition.id,
       compositionSha: services.sha256Hex(sourceText),
@@ -612,8 +638,8 @@ export async function executeVideoRender(
       ffmpegArgs, veloraVersion: version,
       quality: finishing.quality, codec: finishing.codec, container: extension.slice(1), colorimetry: finishing.codec === "gif" ? undefined : "bt709",
       ...(finishing.motionBlur > 0 ? { motionBlur: { shutter: finishing.motionBlur, samples: finishing.motionSamples } } : {}),
-      supersample: finishing.supersample, transparent: finishing.transparent, workers: parallel, ...(poster ? { poster } : {}),
-      checks: [{ id: "bridge-present", pass: true, detail: "Segments captured through the capture bridge; gaps render black void." }],
+      supersample: Math.max(finishing.supersample, ...stages.map(stage => stage.effectiveDpr)), transparent: finishing.transparent, workers: parallel, ...(poster ? { poster } : {}),
+      ...evidence.fields, checks: [{ id: "bridge-present", pass: true, detail: "Segments captured through the capture bridge; gaps render black void." }, ...evidence.checks],
       createdAt: new Date().toISOString(),
     });
     await services.writeNewTextFile(await services.prepareFileOutput(root, manifestPath), JSON.stringify(manifest, null, 2) + "\n");
@@ -682,7 +708,7 @@ export async function executeFramesRender(
     await services.prepareFileOutput(root, manifestPath);
     const sourceText = await readText(root, parsed.data.composition, 256_000);
     if (sourceText === undefined) throw fault("source-changed", "Composition source disappeared. Restore it and retry.");
-    const rendered = await renderTimelineFrames({
+    const { rendered, stages } = await renderTimelineFrames({
       root, url, version, fps, width: composition.width, height: composition.height, seed: composition.seed, look: composition.look, overlays: composition.overlays, captions: await captionLayerFor(root, composition),
       catalog: full.catalog, timeline, wanted,
       cacheDir: parsed.data.cacheDir ?? await defaultFrameCacheDir(root), noCache: parsed.data.noCache ?? false,
@@ -697,6 +723,7 @@ export async function executeFramesRender(
       const scope = await services.prepareFileOutput(root, `${parsed.data.out}/${file}`);
       await services.writeNewFile(scope, entry.png!);
     }
+    const evidence = timelineStageFields(stages);
     const manifest = RenderManifestSchema.parse({
       version: 1 as const, kind: "frames" as const, compositionId: composition.id,
       compositionSha: services.sha256Hex(sourceText),
@@ -704,8 +731,8 @@ export async function executeFramesRender(
       durationMs: timeline.durationMs,
       segments: timeline.segments.map((s) => ({ id: s.id, recipe: s.recipe, startMs: s.startMs, durationMs: s.durationMs, frames: frameAt(s.startMs + s.durationMs, fps) - frameAt(s.startMs, fps) })),
       frames: frames.map(({ entry, file }) => ({ frame: entry.frame, timeMs: entry.timeMs, sceneId: entry.sceneId, segmentId: entry.segmentId, file, sha: entry.sha, renderMs: entry.renderMs, ...(entry.cached ? { cached: true as const } : {}), ...(entry.clamped ? { clamped: true as const } : {}) })),
-      veloraVersion: version,
-      checks: [{ id: "bridge-present", pass: true, detail: "Frames captured through the capture bridge; gaps render black void." }],
+      veloraVersion: version, ...evidence.fields,
+      checks: [{ id: "bridge-present", pass: true, detail: "Frames captured through the capture bridge; gaps render black void." }, ...evidence.checks],
       createdAt: new Date().toISOString(),
     });
     await services.writeNewTextFile(await services.prepareFileOutput(root, manifestPath), JSON.stringify(manifest, null, 2) + "\n");
@@ -746,7 +773,7 @@ export async function executeShotRender(
     const scope = await services.prepareFileOutput(root, parsed.data.out);
     const size = { width: selected.definition.width, height: selected.definition.height };
     // Still preview of export finishing: the same finisher as render and export.
-    const finishing = resolveFinishing(parsed.data, size);
+    const finishing = resolveFinishing(parsed.data, size, selected.definition.stage);
     session = await services.openCapture({ url: opened.data.url!, ...size, scale: finishing.supersample, transparent: finishing.transparent }, context.signal);
     const bridge = CaptureManifestSchema.safeParse(await session.manifest());
     if (!bridge.success) throw fault("invalid-capture", "Scene capture bridge must use version 1, the scene viewport selector and a duration between 0 and 120 seconds.");
@@ -754,10 +781,12 @@ export async function executeShotRender(
     const capture = session;
     const exportLook = parsed.data.finish ? await loadExportLook(root, bridge.data.look) : {};
     const { png } = await finishFrame(clamped ? bridge.data.durationMs : parsed.data.timeMs, parsed.data.fps ?? 60, bridge.data.durationMs, finishing,
-      async time => services.decodePngDataUrl(await capture.snapshot(time, bridge.data)), exportLook);
+      async time => services.decodePngDataUrl(await capture.snapshot(time, bridge.data)), exportLook, size);
     const sha = services.sha256Hex(png);
     await services.writeNewFile(scope, png);
-    return { success: true, data: { out: parsed.data.out, sceneId: selected.id, timeMs: parsed.data.timeMs, sha, ...(clamped ? { clamped: true as const } : {}) } };
+    const stage = selected.definition.stage && stageLineage(selected.definition.stage, finishing, parsed.data.stageDpr);
+    return { success: true, data: { out: parsed.data.out, sceneId: selected.id, timeMs: parsed.data.timeMs, sha, ...(clamped ? { clamped: true as const } : {}),
+      ...(stage ? { stage, checks: [stageCheck(stage)] } : {}) } };
   } catch (error) {
     const known = error as { code?: string; message?: string; target?: string };
     return { success: false, issues: [{ code: known.code ?? "export-failed", message: known.code && known.message ? known.message : `Shot capture failed${detailOf(error)}. Check the scene, server and retry.`, ...(typeof known.target === "string" ? { path: known.target } : {}) }] };
@@ -1132,7 +1161,8 @@ export async function executeDeliver(
   const scratch = `${outDir}/.velora-attempts`;
   const hero = heroTimeMs(composition);
   const durationMs = timelineDuration(composition.scenes);
-  const shared = { composition: options.composition, ...(options.parallel ? { parallel: options.parallel } : {}), ...(options.noCache ? { noCache: true } : {}) };
+  const shared = { composition: options.composition, ...(options.parallel ? { parallel: options.parallel } : {}), ...(options.noCache ? { noCache: true } : {}),
+    ...(options.stageDpr ? { stageDpr: options.stageDpr } : {}) };
   const manifestFor = (out: string) => out.toLowerCase().endsWith(".mp4") ? out.slice(0, -4) + ".manifest.json" : out + ".manifest.json";
   const report: DeliverablesManifest["targets"] = [];
   let attemptId = 0;
@@ -1176,7 +1206,8 @@ export async function executeDeliver(
   // One exact-size still: the composition frame at timeMs, cover-cropped to the preset (or given) size.
   async function deliverStill(name: string, timeMs: number, size: { width: number; height: number }, warnings: { code: string; message: string }[]): Promise<string> {
     const frameOut = `${scratch}/${attemptId++}-${name.replace(/\.[a-z]+$/i, "")}.png`;
-    const result = await still({ composition: options.composition, timeMs, out: frameOut, ...(options.noCache ? { noCache: true } : {}) }, { ...context, root });
+    const result = await still({ composition: options.composition, timeMs, out: frameOut, ...(options.noCache ? { noCache: true } : {}),
+      ...(options.stageDpr ? { stageDpr: options.stageDpr } : {}) }, { ...context, root });
     if (!result.success) throw fault(result.issues[0]?.code ?? "export-failed", `${name}: ${result.issues[0]?.message ?? "frame render failed"}`, `targets.${name}`);
     const png = await services.readRendered(root, frameOut);
     if (!png) throw fault("export-failed", `${name}: the rendered frame is missing.`);

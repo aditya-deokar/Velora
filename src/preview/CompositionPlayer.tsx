@@ -95,7 +95,7 @@ export function CompositionPlayer({ path, document, scenes, bindings, assetUrls,
   const captionStyle = composition?.captions?.style;
   const renderScene = (recipe: BoundRecipe, Component: ComponentType, timeMs: number, inheritLook: boolean) => {
     const localMs = editing && recipe.definition.motion ? Math.min(timeMs, motionDuration(recipe.definition.motion)) : timeMs;
-    const scene = <SceneErrorBoundary><Scene camera={recipe.definition.scene.camera} focus={recipe.definition.scene.focus} constraints={recipe.definition.scene.constraints}
+    const scene = <SceneErrorBoundary><Scene stage={recipe.definition.stage} camera={recipe.definition.scene.camera} focus={recipe.definition.scene.focus} constraints={recipe.definition.scene.constraints}
       motion={recipe.definition.motion} timeMs={localMs} style={{ width: composition!.width, height: composition!.height }}><Component/></Scene></SceneErrorBoundary>;
     const look = recipe.definition.look ?? (inheritLook ? composition?.look : undefined);
     return editing && look ? <LookLayer look={look} timeMs={localMs} width={composition!.width} height={composition!.height}>{scene}</LookLayer> : scene;

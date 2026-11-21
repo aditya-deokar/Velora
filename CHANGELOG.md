@@ -6,6 +6,11 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
 
 ## [Unreleased]
 
+### Added — App stage (v2.1 Phase 12)
+
+- New scene and blueprint scaffolds use a 1512×982 laptop viewport at 2×. Studio can save the current window or screen as the stage, and `velora edit stage` previews or writes the same edit.
+- `AppStage` gives the UI a named size container and lets a nested route inherit its logical viewport. HiDPI capture keeps the requested video dimensions and records the effective DPR and cap.
+
 ### Added — Composition editing and agent handoff (v2.1)
 
 - Cut whole compositions in Studio with ripples, rolls, slips, razor splits, overlap transitions, markers, overlays, styled captions and waveform lanes. `velora compose edit` and its helpers use the same validated batches and SHA-guarded writes.

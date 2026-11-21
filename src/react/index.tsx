@@ -34,6 +34,8 @@ import { SURFACE_VISUAL_PROPERTIES, motionFingerprint, type MotionInput, type Mo
 import { FocusFilter } from "./FocusFilter";
 import { createRegistry } from "./registry";
 import { ParentContext, SceneContext, type SurfaceVisuals, type ThreeSelection } from "./context";
+import { AppStageContext } from "./stage";
+import type { Stage } from "../core/stage";
 export { useSceneTime, type ThreeSelection } from "./context";
 import type { SceneInspector } from "./inspector";
 
@@ -75,6 +77,7 @@ const pick = (values: Record<string, number> | undefined, visual: boolean) =>
 const emptyMotion: MotionState = { surfaces: {}, camera: {}, focus: {}, channels: {}, issues: [] };
 const useLayout = typeof window === "undefined" ? useEffect : useLayoutEffect;
 export type SceneProps = {
+  stage?: Stage;
   motion?: MotionInput;
   timeMs?: number;
   children?: ReactNode;
@@ -109,6 +112,7 @@ export type SurfaceProps = {
 
 export function Scene({
   children,
+  stage: appStage,
   camera,
   focus,
   constraints,
@@ -292,7 +296,7 @@ export function Scene({
               transform: cameraToCss(validCamera),
             }}
           >
-            {children}
+            <AppStageContext.Provider value={appStage}>{children}</AppStageContext.Provider>
           </div>
         </div>
         {result.evaluation.issues.length > 0 && (
@@ -498,4 +502,5 @@ export { KineticText, kineticStyle, kineticWordIds, type KineticTextProps } from
 export { WebGLSurface, type WebGLSurfaceProps, type WebGLTime } from "./three-bridge";
 export { useAnimatable, useAnimatableState, type AnimatableOptions } from "./animatable";
 export { createSceneInspector, useSceneInspector, type SceneInspector, type SceneSnapshot, type InspectedBinding, type InspectedNode } from "./inspector";
+export { AppStage, useAppStage } from "./stage";
 export type { AnimatableEntry } from "./registry";

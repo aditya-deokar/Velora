@@ -117,7 +117,7 @@ export function SceneLibrary({sources=EMPTY_SOURCES,bindings=EMPTY_BINDINGS,hot,
   return <EditMode key={selected.id} sceneId={selected.id} title={selected.title} recipe={sources[selected.source]??selected} hot={hot} backHref={back} onBack={()=>go(back)}
    backLabel={route.fromComposition?'Back to composition':undefined} initialTimeMs={route.localTime}>{content}</EditMode>;
  }
- if(selected&&Component)return <ScenePreview key={selected.id} definition={selected.definition} title={selected.title} backHref={destination()} onBack={()=>{history.pushState({},'',destination());setSceneId(undefined)}} hot={hot} editHref={editHref(selected.id)}>{content}</ScenePreview>;
+ if(selected&&Component)return <ScenePreview key={selected.id} sceneId={selected.id} definition={selected.definition} title={selected.title} backHref={destination()} onBack={()=>{history.pushState({},'',destination());setSceneId(undefined)}} hot={hot} editHref={editHref(selected.id)}>{content}</ScenePreview>;
  const planeWidth=Math.min(940,Math.max(320,width-64));
  const {start,end}=visibleRows(scroll,height,catalog.scenes.length);
  return <main data-velora-library=""><style>{libraryTheme}</style>

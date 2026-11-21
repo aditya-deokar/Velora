@@ -302,3 +302,16 @@ export function compositePreview(definition: ShotDefinition | CompositeDefinitio
   const { width, height, scene, motion } = definition;
   return { width, height, scene, motion };
 }
+
+/** Keep authored layout boxes and resize the hosted route inside each box. */
+export function stageCompositeLayout(layout: readonly LayoutNode[]): LayoutNode[] {
+  const place = (element: LayoutElement | string): LayoutElement | string => {
+    if (typeof element === "string") return element;
+    if (element.type === "RouteFrame" && element.props) {
+      const { width, height, ...props } = element.props;
+      return el("AppStage", { fit: { width: Number(width), height: Number(height) } }, [el("RouteFrame", props)]);
+    }
+    return element.children ? { ...element, children: element.children.map(place) } : element;
+  };
+  return layout.map(node => ({ ...node, element: place(node.element) as LayoutElement }));
+}

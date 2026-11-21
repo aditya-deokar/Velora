@@ -303,6 +303,12 @@ Local installed-package checks exercise Next App Router on React 19, Pages Route
 
 `src/cli/terminal.ts` owns Amethyst lettering, color capability fallbacks and human setup formatting. It consumes canonical `ProjectResult` and `VELORA_BRAND`; it never discovers hosts or changes installation policy. `cli/main.ts` supplies TTY width/color support and a build-injected version from `package.json`. Interactive init prints a real pending message before the operation, followed by confirmed results; retries say verified rather than added. Unknown React hosts keep their explicit connection step. Pipes and NO_COLOR remain plain, narrow terminals use a compact wordmark, and JSON bypasses all presentation. CLI tests cover these alternate entry points and failed setup/open recovery.
 
+## App stage and output frame
+
+`definition.stage` holds authored CSS dimensions and a DPR. `AppStage` makes a size container inside a Surface. A nested `RouteFrame` can fill that container so its window media queries use the same CSS dimensions in preview and export. In-tree components can use container queries or `useAppStage()`.
+
+Capture uses the recipe or bridge stage DPR as a quality floor. The output frame sets the screenshot viewport and receives the linear-light downscale. A capture cap changes the device scale and is recorded in the stage lineage. When a recipe omits the stage, its existing layout and capture scaling apply.
+
 ## Editor and edit bridge
 
 - **One vocabulary.** Every edit is a typed `EditOp` (`src/core/edit.ts`) applied by the pure reducer `applyEdits`, which validates through `SceneRecipeSchema` and `presentPreview` and returns exact inverses. `formatJsonDocument` (`src/core/json.ts`) writes the result while keeping author layout. `velora edit` (`src/project/edit.ts`) applies batches from the CLI; dry runs print diffs, and `--write` is compare-and-swap.

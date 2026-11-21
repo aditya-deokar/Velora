@@ -132,10 +132,10 @@ export function linearToSrgb(linear: number): number {
  * Average sub-frames (motion blur) and box-downscale by an integer factor (supersampling), both in
  * linear light with premultiplied alpha. One frame at factor 1 returns the input bytes unchanged.
  */
-export function composite(pngs: readonly Buffer[], factor = 1): Buffer {
+export function composite(pngs: readonly Buffer[], factor = 1, size?: { width: number; height: number }): Buffer {
   if (!pngs.length) throw new Error("Compositing needs at least one frame.");
   if (!Number.isInteger(factor) || factor < 1 || factor > 4) throw new Error("Downscale factor must be an integer from 1 to 4.");
-  if (pngs.length === 1 && factor === 1) return pngs[0];
+  if (pngs.length === 1 && factor === 1 && !size) return pngs[0];
   const first = parsePng(pngs[0]);
   const { width, height } = first;
   if (width % factor || height % factor) throw new Error(`Supersampled frame ${width}x${height} is not divisible by ${factor}.`);
@@ -151,14 +151,21 @@ export function composite(pngs: readonly Buffer[], factor = 1): Buffer {
       sum[o] += TO_LINEAR[pixels[o]] * a; sum[o + 1] += TO_LINEAR[pixels[o + 1]] * a; sum[o + 2] += TO_LINEAR[pixels[o + 2]] * a; sum[o + 3] += a;
     }
   });
-  const outWidth = width / factor, outHeight = height / factor;
+  const outWidth = size?.width ?? width / factor, outHeight = size?.height ?? height / factor;
+  if (outWidth < 1 || outHeight < 1 || outWidth > width || outHeight > height)
+    throw new Error("Downscale target must fit inside the captured frame.");
+  if (pngs.length === 1 && width === outWidth && height === outHeight) return pngs[0];
+  const stepX = width / outWidth, stepY = height / outHeight;
   const out = Buffer.alloc(outWidth * outHeight * 4);
-  const weight = pngs.length * factor * factor;
+  const weight = pngs.length * stepX * stepY;
   for (let y = 0; y < outHeight; y++) for (let x = 0; x < outWidth; x++) {
     let r = 0, g = 0, b = 0, a = 0;
-    for (let dy = 0; dy < factor; dy++) for (let dx = 0; dx < factor; dx++) {
-      const o = ((y * factor + dy) * width + x * factor + dx) * 4;
-      r += sum[o]; g += sum[o + 1]; b += sum[o + 2]; a += sum[o + 3];
+    const left = x * stepX, right = Math.min(width, (x + 1) * stepX);
+    const top = y * stepY, bottom = Math.min(height, (y + 1) * stepY);
+    for (let dy = Math.floor(top); dy < bottom; dy++) for (let dx = Math.floor(left); dx < right; dx++) {
+      const o = (dy * width + dx) * 4;
+      const area = (Math.min(dx + 1, right) - Math.max(dx, left)) * (Math.min(dy + 1, bottom) - Math.max(dy, top));
+      r += sum[o] * area; g += sum[o + 1] * area; b += sum[o + 2] * area; a += sum[o + 3] * area;
     }
     const t = (y * outWidth + x) * 4;
     const alpha = a / weight;

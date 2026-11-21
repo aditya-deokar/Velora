@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SceneRecipeIdSchema } from "./recipes";
 import { AspectSchema, IntensitySchema, ShotKindSchema, buildShot, framingReport, projectPoints, ASPECT_FRAMES, type Aspect, type ShotDefinition, type ShotInput } from "./shots";
+import { fitStage, type Stage } from "./stage";
 import { SegmentTransitionSchema } from "./transitions";
 import { COMPOSITE_IDS, buildComposite, readingTimeMs, type CompositeDefinition } from "./composites";
 
@@ -362,17 +363,18 @@ export function templateShotInput(manifest: TemplateManifest, params: Record<str
 }
 export function templateDefinition(manifest: TemplateManifest, params: Record<string, ParamValue>, aspect: Aspect, subject?: { width: number; height: number }): ShotDefinition | CompositeDefinition {
   if (manifest.composite) return buildComposite(manifest.composite, aspect, params);
-  return buildShot(templateShotInput(manifest, params, aspect, subject));
+  return buildShot(templateShotInput(manifest, params, aspect, subject), { stageFit: !!subject });
 }
 /** Framing, title-safe placement and reading time for a layered or motion-graphics template. */
-function certifyComposite(manifest: TemplateManifest, definition: CompositeDefinition, aspect: Aspect): TemplateIssue[] {
+function certifyComposite(manifest: TemplateManifest, definition: CompositeDefinition, aspect: Aspect, stage?: Stage): TemplateIssue[] {
   const issues: TemplateIssue[] = [];
   const at = `${manifest.id}@${aspect}`;
   const node = definition.layout.find(entry => entry.id === definition.primary);
   if (!node) return [{ code: "ERR_TEMPLATE_FRAMING", path: at, message: `Primary node ${definition.primary} is missing from the layout.` }];
   const W = definition.width, H = definition.height;
   const cx = node.left + node.width / 2 - W / 2, cy = node.top + node.height / 2 - H / 2, z = node.transform?.z ?? 0;
-  const grid = Array.from({ length: 49 }, (_, i) => [cx + node.width * ((i % 7) / 6 - 0.5), cy + node.height * (Math.floor(i / 7) / 6 - 0.5), z] as const);
+  const subject = stage && node.element.type === "Slot" ? fitStage(stage, node) : node;
+  const grid = Array.from({ length: 49 }, (_, i) => [cx + subject.width * ((i % 7) / 6 - 0.5), cy + subject.height * (Math.floor(i / 7) / 6 - 0.5), z] as const);
   const duration = definition.motion.durationMs;
   const { minSubjectVisible, checkFrom } = manifest.certification;
   const safe = manifest.category === "motion-graphics" ? 0.9 : 1;
@@ -390,10 +392,16 @@ function certifyComposite(manifest: TemplateManifest, definition: CompositeDefin
   return issues;
 }
 /** Framing certification for one template configuration; failures name the gate and the time. */
-export function certifyTemplate(manifest: TemplateManifest, params: Record<string, ParamValue>, aspect: Aspect): TemplateIssue[] {
-  const subject = ASPECT_FRAMES[aspect].subject;
-  if (manifest.composite) return certifyComposite(manifest, buildComposite(manifest.composite, aspect, params), aspect);
-  const definition = templateDefinition(manifest, params, aspect);
+export function templateSubject(aspect: Aspect, stage?: Stage) {
+  const frame = ASPECT_FRAMES[aspect].subject;
+  if (!stage) return frame;
+  const { width, height } = fitStage(stage, frame);
+  return { width: Math.round(width), height: Math.round(height) };
+}
+export function certifyTemplate(manifest: TemplateManifest, params: Record<string, ParamValue>, aspect: Aspect, stage?: Stage): TemplateIssue[] {
+  const subject = templateSubject(aspect, stage);
+  if (manifest.composite) return certifyComposite(manifest, buildComposite(manifest.composite, aspect, params), aspect, stage);
+  const definition = templateDefinition(manifest, params, aspect, subject);
   // Without a chosen region, a rack pull lands on the far edge (centered 30% above the subject center).
   const focusRegion = typeof params.focusRegion === "object" ? params.focusRegion
     : manifest.shot === "rack-focus" ? { x: subject.width * 0.4, y: subject.height * 0.15, width: subject.width * 0.2, height: subject.height * 0.1 } : undefined;

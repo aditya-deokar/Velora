@@ -21,7 +21,8 @@ export function useAdvisories(): Advisory[] {
     const out: Advisory[] = [];
     const preview = presentPreview((doc as Doc).definition);
     if (preview.valid) {
-      const review = reviewAuthoring({ scene: preview.definition.scene, motion: preview.definition.motion ?? { durationMs: 0, tracks: [] }, textReadings: JSON.parse(textReadings) });
+      const { scene, stage, width, height, motion } = preview.definition;
+      const review = reviewAuthoring({ scene, stage, width, height, motion: motion ?? { durationMs: 0, tracks: [] }, textReadings: JSON.parse(textReadings) });
       out.push(...review.issues.map(entry => ({ ...entry, severity: "issue" as const })), ...review.advice.map(entry => ({ ...entry, severity: "advice" as const })));
     } else out.push(...preview.issues.map(issue => ({ code: "invalid", path: issue.path, message: issue.message, severity: "issue" as const })));
     out.push(...(JSON.parse(sceneIssues) as { path: string; message: string }[]).map(issue => ({ code: "scene", path: issue.path, message: issue.message, severity: "scene" as const })));

@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
 import { parsePng, pngChunk } from "./compositor";
 import type { Browser, Page } from "playwright";
-import type { CaptureBridge, CaptureManifest, ExportVideo, ResolvedFinishing, VideoCodec } from "../core/export";
+import { CaptureManifestSchema, type CaptureBridge, type CaptureManifest, type ExportVideo, type ResolvedFinishing, type VideoCodec } from "../core/export";
 import { AUDIO_DRIFT_BUDGET_MS, SUPPORTED_AUDIO_CODECS } from "../core/audio";
 import { DEFAULT_LOUDNESS, SFX_PRESETS, sfxGraph, type Loudness, type SfxEntry } from "../core/sound";
 import { formatSrt, parseCaptions } from "../core/captions";
@@ -33,6 +33,7 @@ export const TRANSPARENT_CAPTURE_CSS = "html,body,[data-velora-preview],.velora-
 export type CaptureOptions = Pick<ExportVideo, "url" | "width" | "height"> & {
   /** Device scale factor: 2 supersamples (downscaled later in linear light), 0.5 drafts. */
   scale?: number;
+  stageScale?: (stage: NonNullable<CaptureManifest["stage"]>) => number;
   transparent?: boolean;
 };
 // Frame finishing applied before encoding: sub-frame capture and compositing for one output frame.
@@ -58,6 +59,7 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
       browser = await chromium.launch({ headless: true, channel: "chromium" });
     } catch { throw fault("missing-chromium", "Install Playwright and its browser: npm install playwright && npx playwright install chromium."); }
     page = await browser.newPage({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: input.scale ?? 1 });
+    await page.addInitScript(() => { (window as Window & { __VELORA_CAPTURING__?: boolean }).__VELORA_CAPTURING__ = true; });
     const transparent = !!input.transparent;
     page.setDefaultTimeout(10_000);
     await page.route("**/*", route => {
@@ -66,38 +68,56 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
       if (request.isNavigationRequest() && (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.protocol !== 'http:')) return route.abort();
       return route.continue();
     });
-    await page.goto(input.url, { waitUntil: "load", timeout: 30_000 });
-    // Product chrome can visually overlap the capture rectangle. Hide its semantic
-    // marker and host development-tools portal only in this private export page; the user's preview stays untouched.
-    await page.addStyleTag({content:'[data-velora-preview-chrome],nextjs-portal{visibility:hidden!important}'});
-    if (transparent) await page.addStyleTag({ content: TRANSPARENT_CAPTURE_CSS });
     // Parallel renders load several copies of the app at once, so a Velora page that is still loading
     // gets the same 30 s window as the page load; a page with no Velora markup at all fails after 5 s.
-    const bridged = await page.waitForFunction((started) => {
+    const waitForBridge = () => page.waitForFunction((started) => {
       if (typeof (window as unknown as { __VELORA_CAPTURE__?: CaptureBridge }).__VELORA_CAPTURE__?.seek === "function") return "ready";
       const velora = document.querySelector("[data-velora-project],[data-velora-preview],[data-velora-library]") || /Loading your scenes/.test(document.body?.textContent ?? "");
       return !velora && Date.now() - started > 5000 ? "absent" : false;
     }, Date.now(), { timeout: 30_000, polling: 100 }).then(handle => handle.jsonValue(), () => "timeout");
-    if (bridged !== "ready") throw fault("missing-capture", "This page has no ready Velora capture bridge. Open a scene with capture enabled and retry.");
+    const manifest = () => page.evaluate(() => {
+      const bridge = (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__;
+      return { version: bridge.version, durationMs: bridge.durationMs, selector: bridge.selector,
+        ...(bridge.look ? { look: bridge.look } : {}), ...(bridge.stage ? { stage: bridge.stage } : {}) };
+    });
+    const assertBridge = async () => {
+      if (await waitForBridge() !== "ready") throw fault("missing-capture", "This page has no ready Velora capture bridge. Open a scene with capture enabled and retry.");
+    };
+    await page.goto(input.url, { waitUntil: "load", timeout: 30_000 });
+    await assertBridge();
+    if (input.stageScale) {
+      const initial = CaptureManifestSchema.safeParse(await manifest());
+      if (initial.success && initial.data.stage) {
+        const scale = input.stageScale(initial.data.stage);
+        if (scale !== (input.scale ?? 1)) {
+          const cdp = await page.context().newCDPSession(page);
+          await cdp.send("Emulation.setDeviceMetricsOverride", { width: input.width, height: input.height, deviceScaleFactor: scale, mobile: false });
+          await page.reload({ waitUntil: "load", timeout: 30_000 });
+          await assertBridge();
+          const reloaded = CaptureManifestSchema.safeParse(await manifest());
+          if (reloaded.success && (!reloaded.data.stage || input.stageScale(reloaded.data.stage) !== scale))
+            throw fault("invalid-capture", "The scene stage changed while capture was opening. Retry after the scene finishes reloading.");
+        }
+      }
+    }
+    // Hide product chrome only in this private export page.
+    await page.addStyleTag({content:'[data-velora-preview-chrome],nextjs-portal{visibility:hidden!important}'});
+    if (transparent) await page.addStyleTag({ content: TRANSPARENT_CAPTURE_CSS });
     await page.evaluate(async () => {
       await Promise.race([
         Promise.all([document.fonts.ready, ...Array.from(document.images).map(image => image.decode().catch(() => {}))]),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Scene assets did not become ready.")), 10_000)),
       ]);
     });
+    let networkSettle: Promise<void> | undefined;
     return {
       close,
-      manifest: () => page.evaluate(() => {
-        const bridge = (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__;
-        return { version: bridge.version, durationMs: bridge.durationMs, selector: bridge.selector, ...(bridge.look ? { look: bridge.look } : {}) };
-      }),
+      manifest,
       async snapshot(timeMs:number, manifest:CaptureManifest){
         check();
-        // Route frames load the dev app again inside the page; under parallel renders that can take a while.
-        // networkidle is a best-effort settle: a busy dev server (HMR, dependency optimizing, sibling workers)
-        // may never go quiet for 500 ms. Readiness is owned by the bridge: seek awaits every capture-settle
-        // hook (RouteFrame load, fonts, decoded images, video seeks), so a timeout here must not fail the render.
-        await page.waitForLoadState("networkidle",{timeout:15_000}).catch(()=>undefined);
+        // A busy dev server can keep the network active throughout capture. Try once at startup.
+        // Every seek still waits for RouteFrame load, fonts, decoded images and video timestamps.
+        await (networkSettle ??= page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined));
         await page.evaluate(()=>document.fonts.ready.then(()=>{}));
         const locator=page.locator(manifest.selector);
         if(await locator.count()!==1)throw fault("invalid-capture","Capture must identify exactly one scene viewport.");

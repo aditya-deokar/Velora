@@ -1,6 +1,7 @@
 import { CaptureManifestSchema, type CaptureBridge } from "../core/export";
 import { useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
+import type { Stage } from "../core/stage";
 /** SOURCE OF TRUTH: useSceneCapture, useCaptureSettle.
  * WHAT: expose a single explicitly registered live viewport to local frame capture, and let
  * components that paint asynchronously (iframes, lazy media) settle each seek before capture.
@@ -21,8 +22,8 @@ export function useCaptureSettle(settle: Settle, beforeSeek?: () => void): void 
     return () => { settlers.delete(entry); };
   }, []);
 }
-export function useSceneCapture({durationMs,seek,selector='[data-velora-capture="scene"]',look}:
-  {durationMs:number;seek:(elapsedMs:number)=>void;selector?:string;look?:unknown}) {
+export function useSceneCapture({durationMs,seek,selector='[data-velora-capture="scene"]',look,stage}:
+  {durationMs:number;seek:(elapsedMs:number)=>void;selector?:string;look?:unknown;stage?:Stage}) {
   const current=useRef(seek);
   current.current=seek;
   useEffect(()=>{
@@ -35,7 +36,8 @@ export function useSceneCapture({durationMs,seek,selector='[data-velora-capture=
       if(viewport?.matches('[data-velora-valid="false"]') || viewport?.querySelector('[data-velora-valid="false"]'))
         throw new Error("Correct scene diagnostics before exporting.");
     };
-    const bridge:CaptureBridge={...CaptureManifestSchema.parse({version:1,durationMs,selector,...(look?{look}:{})}),seek:(elapsedMs:number)=>{
+    const captureStage = stage && { width: stage.width, height: stage.height, dpr: stage.dpr, ...(stage.preset ? { preset: stage.preset } : {}) };
+    const bridge:CaptureBridge={...CaptureManifestSchema.parse({version:1,durationMs,selector,...(look?{look}:{}),...(captureStage ? {stage:captureStage} : {})}),seek:(elapsedMs:number)=>{
       if(!Number.isFinite(elapsedMs)||elapsedMs<0||elapsedMs>durationMs) throw new Error("Capture time is outside the scene.");
       settlers.forEach(entry => entry.current.beforeSeek?.());
       flushSync(()=>current.current(elapsedMs));
@@ -44,5 +46,5 @@ export function useSceneCapture({durationMs,seek,selector='[data-velora-capture=
     }};
     host.__VELORA_CAPTURE__=bridge;
     return ()=>{if(host.__VELORA_CAPTURE__===bridge)delete host.__VELORA_CAPTURE__};
-  },[durationMs,selector,look]);
+  },[durationMs,selector,look,stage]);
 }

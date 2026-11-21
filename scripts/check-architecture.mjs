@@ -47,10 +47,12 @@ const owners = new Map([
   ['NoiseSchema','src/core/noise.ts'], ['sampleNoise','src/core/noise.ts'],
   ...['perspectiveForFocalLength','focalLengthForPerspective','lensFor'].map(name=>[name,'src/core/lens.ts']),
   ['evaluateScene', 'src/core/spatial.ts'], ['transformToCss', 'src/core/spatial.ts'],
+  ...['StageSchema','STAGE_PRESETS','resolutionBudget'].map(name=>[name,'src/core/stage.ts']),
+  ['AppStage','src/react/stage.tsx'], ['useAppStage','src/react/stage.tsx'],
 ]);
 // Inert identity records are frozen object literals rather than schemas or functions.
 // Frozen catalogs (an array literal, possibly under `satisfies`/`as`) count the same way.
-const frozenMetadata = new Set(['VELORA_BRAND', 'VELORA_PACKAGE', 'EDITOR_COMMANDS', 'BEHAVIOR_CATALOG']);
+const frozenMetadata = new Set(['VELORA_BRAND', 'VELORA_PACKAGE', 'EDITOR_COMMANDS', 'BEHAVIOR_CATALOG', 'STAGE_PRESETS']);
 const layers = {
   core: { local: ['core'], external: ['zod'] },
   runtime: { local: ['core', 'runtime'], external: ['zod'] },

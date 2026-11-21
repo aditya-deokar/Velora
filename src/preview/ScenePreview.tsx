@@ -11,6 +11,8 @@ import { GettingStarted } from "./GettingStarted";
 import { previewTheme } from "./theme";
 import { OverlayMenu, StudioOverlays, useOverlays } from "./overlays";
 import { useTransportKeys } from "./transport";
+import { StageChip } from "./StageChip";
+import type { Stage } from "../core/stage";
 
 /** SOURCE OF TRUTH: ScenePreview.
  * WHAT: the product's shared browser viewport, playback, source recovery and export entry.
@@ -48,6 +50,8 @@ export type ScenePreviewProps = {
   slots?: { left?: ReactNode; right?: ReactNode; bottom?: ReactNode; toolbar?: ReactNode; overlay?: ReactNode };
   /** Shows an Edit link in the scene header (opens Edit mode). */
   editHref?: string;
+  sceneId?: string;
+  onStage?: (stage: Stage) => void;
   /** Editor-only director viewpoint (layout="editor"): replaces the camera for display only; the
    * capture viewport is marked data-velora-view="director" and exports refuse it. */
   viewCamera?: CameraInput;
@@ -81,8 +85,8 @@ function Glyph({kind}: {kind: "play" | "pause" | "restart" | "export"}) {
       kind === "restart" ? <path d="M5 9a8 8 0 1 1 0 7M5 3v6h6"/> : <path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4"/>}
   </svg>;
 }
-function Capture({durationMs, seek, look}: {durationMs: number; seek: (ms: number) => void; look?: LookInput}) {
-  useSceneCapture({durationMs, seek, look});
+function Capture({durationMs, seek, look, stage}: {durationMs: number; seek: (ms: number) => void; look?: LookInput; stage?: Stage}) {
+  useSceneCapture({durationMs, seek, look, stage});
   return null;
 }
 function ExportMenu({disabled, panelHost, size}: {disabled: boolean; panelHost: HTMLDivElement | null; size?: {width: number; height: number}}) {
@@ -132,7 +136,7 @@ function ExportMenu({disabled, panelHost, size}: {disabled: boolean; panelHost: 
     </details>;
 }
 
-export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, backLabel, initialTimeMs, revision, hot, timeline, fps = 60, exportSize, aside, layout, slots, editHref, viewCamera, threeSelection, peaking}: ScenePreviewProps) {
+export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, backLabel, initialTimeMs, revision, hot, timeline, fps = 60, exportSize, aside, layout, slots, editHref, sceneId, onStage, viewCamera, threeSelection, peaking}: ScenePreviewProps) {
   const editor = layout === "editor";
   const [inspector] = useState(() => editor ? createSceneInspector() : undefined);
   const session = usePreviewSession(input, revision, timeline, initialTimeMs);
@@ -157,6 +161,14 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
   }, [viewport]);
   const definition = session.definition;
   const blocked = !session.valid || !connection.connected || !!connection.error || !!renderError;
+  const outputScale = definition?.stage ? Math.min(1, 3840 / Math.max(definition.width, definition.height)) : 1;
+  const outputSize = exportSize ?? (definition?.stage ? {
+    width: Math.max(64, Math.round(definition.width * outputScale / 2) * 2),
+    height: Math.max(64, Math.round(definition.height * outputScale / 2) * 2),
+  } : undefined);
+  const stageChip = sceneId && definition && typeof window !== "undefined" &&
+    !(window as Window & { __VELORA_CAPTURING__?: boolean }).__VELORA_CAPTURING__ && !new URLSearchParams(location.search).has("velora-capture")
+    ? <StageChip sceneId={sceneId} stage={definition.stage} apply={onStage}/> : null;
   // A scene's own look wins; a composition render passes its default as velora-look (base64url JSON).
   const look = useMemo<LookInput | undefined>(() => {
     if (definition?.look) return definition.look;
@@ -185,7 +197,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
         data-velora-view={editor && viewCamera ? "director" : undefined} style={{width: "100%", height: "100%"}}>
         <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
           <LookLayer look={look} timeMs={session.timeMs} width={definition.width} height={definition.height}>
-            <Scene camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
+            <Scene stage={definition.stage} camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
               timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(inspector ? {inspector, threeSelection} : {})}
               {...(editor && viewCamera ? {viewCamera} : {})}>
               {children}
@@ -194,7 +206,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
           <StudioOverlays width={definition.width} height={definition.height} state={peaking && !overlays.peaking ? {...overlays, peaking: true} : overlays} root={frame} timeMs={session.timeMs}/>
           {slots?.overlay && <div data-velora-preview-chrome="" data-velora-editor-overlay="" style={{position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none"}}>{slots.overlay}</div>}
         </div>
-        <Capture durationMs={session.durationMs} seek={captureSeek} look={look}/>
+        <Capture durationMs={session.durationMs} seek={captureSeek} look={look} stage={definition.stage}/>
       </div>, viewport)}
   </SceneErrorBoundary>;
   const host = useMemo<PreviewHost | null>(() => editor && inspector ? {session, inspector, fps, frame: {width: definition?.width ?? 0, height: definition?.height ?? 0, scale}} : null,
@@ -210,10 +222,10 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
             }}>{backLabel ?? (onBack ? "Scenes" : "Back to app")}</a> : onBack && <button className="velora-control" onClick={onBack}>Scenes</button>}
             <h1 className="velora-title">{title}</h1>
           </div>
-          <div className="velora-editor-toolbar">{slots?.toolbar}</div>
+          <div className="velora-editor-toolbar">{slots?.toolbar}{stageChip}</div>
           <div className="velora-header-tools"><OverlayMenu state={overlays} onChange={setOverlays}/>
             <div className="velora-export-slot velora-editor-export" ref={setExportPanel}/>
-            <ExportMenu disabled={blocked || !session.durationMs} panelHost={exportPanel} size={exportSize}/></div>
+            <ExportMenu disabled={blocked || !session.durationMs} panelHost={exportPanel} size={outputSize}/></div>
         </header>
         <nav className="velora-editor-left velora-chrome" data-velora-preview-chrome="" aria-label="Layers">{slots?.left}</nav>
         <section className="velora-editor-center" aria-label="Viewport">
@@ -259,7 +271,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
               {/* One aspect-preserving cover frame fills preview and capture; overflow is cropped, never stretched. */}
               <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
                 <LookLayer look={look} timeMs={session.timeMs} width={definition.width} height={definition.height}>
-                  <Scene camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
+                  <Scene stage={definition.stage} camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
                     timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(inspector ? {inspector, threeSelection} : {})}>
                     {children}
                   </Scene>
@@ -267,7 +279,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
                 <StudioOverlays width={definition.width} height={definition.height} state={overlays} root={frame} timeMs={session.timeMs}/>
                 {editor && slots?.overlay && <div data-velora-preview-chrome="" data-velora-editor-overlay="" style={{position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none"}}>{slots.overlay}</div>}
               </div>
-              <Capture durationMs={session.durationMs} seek={captureSeek} look={look}/>
+              <Capture durationMs={session.durationMs} seek={captureSeek} look={look} stage={definition.stage}/>
             </div>, viewport)}
         </SceneErrorBoundary>
         <div className="velora-header">
@@ -278,9 +290,10 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
               }
             }}>{onBack ? "Back to scenes" : "Back to app"}</a> : onBack && <button className="velora-control" onClick={onBack}>Back to scenes</button>}
             <h1 className="velora-title">{title}</h1>
+            {stageChip}
           </div>
           <div className="velora-header-tools">{editHref && <a className="velora-control" href={editHref} data-velora-edit-link="">Edit</a>}<OverlayMenu state={overlays} onChange={setOverlays}/>
-            <ExportMenu disabled={blocked || !session.durationMs} panelHost={exportPanel} size={exportSize}/></div>
+            <ExportMenu disabled={blocked || !session.durationMs} panelHost={exportPanel} size={outputSize}/></div>
         </div>
         {!definition && <GettingStarted/>}
         <div className="velora-dock">

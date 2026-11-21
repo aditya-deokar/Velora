@@ -111,9 +111,9 @@ try{
  const added=JSON.parse(original);added.id='added';added.title='Added from source';
  const addedJson=path.join(host,'src/velora/scenes/added.scene.json');const addedComponent=path.join(host,'src/velora/scenes/added.tsx');
  await writeFile(addedComponent,await readFile(path.join(host,'src/velora/scenes/plating.tsx'),'utf8'));await writeFile(addedJson,JSON.stringify(added));
- await expect(page.locator('[data-scene-id="added"]')).toHaveCount(1);await expect(page.getByText('11 perspectives',{exact:true})).toBeVisible();
- await rm(addedJson);await rm(addedComponent);await expect(page.getByText('10 perspectives',{exact:true})).toBeVisible();await page.waitForLoadState('networkidle');
+ await expect(page.locator('[data-scene-id="added"]')).toHaveCount(1);await expect(page.getByText(`${recipeIds.length+1} perspectives`,{exact:true})).toBeVisible();
+ await rm(addedJson);await rm(addedComponent);await expect(page.getByText(`${recipeIds.length} perspectives`,{exact:true})).toBeVisible();await page.waitForLoadState('networkidle');
  await page.goto(origin+'/?velora-preview=1&velora-scene=deleted');await expect(page.getByRole('alert')).toContainText('cannot be opened');
  await page.goto(origin);await expect(page.getByRole('link',{name:'Open scene library ↗'})).toBeVisible();
- console.log('Installed catalog: 10 scenes, native plane scroll, selection/reload/CLI parity, recovery, mobile and real MP4 export passed.');
+ console.log(`Installed catalog: ${recipeIds.length} scenes, native plane scroll, selection/reload/CLI parity, recovery, mobile and real MP4 export passed.`);
 }finally{await browser?.close();server?.kill('SIGTERM');if(process.platform==='win32')await new Promise(r=>setTimeout(r,500));await rm(scratch,{recursive:true,force:true,maxRetries:5,retryDelay:500}).catch(()=>{})}

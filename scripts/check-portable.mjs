@@ -126,9 +126,10 @@ try{
     expect.objectContaining({target:{kind:'camera'},property:'x'}));
   }
   await page.getByRole('button',{name:'Ask agent',exact:true}).click();
-  await page.getByLabel('What should the agent change?').fill('Polish the camera key.');
-  await page.getByRole('button',{name:'Copy agent prompt'}).click();
-  await expect(page.getByRole('dialog',{name:'Ask agent'}).getByRole('status')).toHaveText('Prompt copied.');
+  const agentDialog=page.getByRole('dialog',{name:'Ask agent'});
+  await agentDialog.getByLabel('What should the agent change?').fill('Polish the camera key.');
+  await agentDialog.getByRole('button',{name:'Copy agent prompt',exact:true}).click();
+  await expect(agentDialog.getByRole('status')).toHaveText('Prompt copied.');
   const prompt=await page.evaluate(()=>navigator.clipboard.readText());
   assert.ok(prompt.includes('Polish the camera key.') && prompt.includes('survey'));
   await page.keyboard.press('Escape');

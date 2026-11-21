@@ -3,7 +3,8 @@ import { VELORA_PACKAGE } from "../core/branding";
 import { SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 import { SCROLL_CHANNEL, SUBJECT_ID, type ShotDefinition, type Aspect } from "../core/shots";
 import type { ParamValue, TemplateManifest } from "../core/templates";
-import { compositePreview, type CompositeDefinition, type JsonValue, type LayoutElement } from "../core/composites";
+import { compositePreview, stageCompositeLayout, type CompositeDefinition, type JsonValue, type LayoutElement } from "../core/composites";
+import type { Stage } from "../core/stage";
 import { BRAND_FILE } from "../core/brand";
 
 /** SOURCE OF TRUTH: scaffoldScene, componentExport, sceneImportPath, layoutJsx.
@@ -61,7 +62,7 @@ const identifier = (name: string, avoid: string[]) => {
 
 export type ScaffoldInput = {
   id: string; title: string; manifest: TemplateManifest; params: Record<string, ParamValue>;
-  aspect: Aspect; definition: ShotDefinition | CompositeDefinition; subject: { width: number; height: number }; slot: Slot;
+  aspect: Aspect; definition: ShotDefinition | CompositeDefinition; subject: { width: number; height: number }; slot: Slot; stage?: Stage;
 };
 const PLAIN_ELEMENTS = new Set(["div", "span", "strong", "p"]);
 const attribute = (name: string, value: JsonValue) =>
@@ -82,37 +83,40 @@ function kitTypes(element: LayoutElement | string, found: Set<string>): Set<stri
 }
 /** The recipe JSON and binding TSX for one templated scene. */
 export function scaffoldScene(input: ScaffoldInput): { recipe: string; binding: string } {
-  const { id, title, manifest, params, aspect, definition, subject, slot } = input;
+  const { id, title, manifest, params, aspect, definition, subject, slot, stage } = input;
   const recipe = {
     $schema: RECIPE_SCHEMA_POINTER,
     version: 1,
     id,
     title,
     description: manifest.summary,
-    template: { id: manifest.id, version: manifest.version, aspect, params },
-    definition: compositePreview(definition),
+    template: { id: manifest.id, version: manifest.version, aspect, params, ...(stage?.preset ? { stage: stage.preset } : {}) },
+    definition: { ...compositePreview(definition), ...(stage ? { stage } : {}) },
   };
   const component = pascal(id);
-  if ("layout" in definition) return { recipe: JSON.stringify(recipe, null, 2) + "\n", binding: compositeBinding(id, component, manifest, definition, slot) };
+  if ("layout" in definition) return { recipe: JSON.stringify(recipe, null, 2) + "\n", binding: compositeBinding(id, component, manifest, definition, slot, stage) };
   const scroll = manifest.shot === "scroll-through";
   const left = Math.round((definition.width - subject.width) / 2), top = Math.round((definition.height - subject.height) / 2);
-  const imports = [`import { Surface } from '${VELORA_PACKAGE.name}';`];
+  const imports = [`import { Surface${stage ? ", AppStage, useAppStage" : ""} } from '${VELORA_PACKAGE.name}';`];
   let content: string;
   if (slot.kind === "component") {
-    const local = identifier(slot.exportName, [component, "Surface", "ScrollFrame"]);
+    const local = identifier(slot.exportName, [component, "Surface", "ScrollFrame", "AppStage", "useAppStage"]);
     imports.push(slot.isDefault ? `import ${local} from '${slot.importPath}';` : slot.exportName === local
       ? `import { ${local} } from '${slot.importPath}';` : `import { ${slot.exportName} as ${local} } from '${slot.importPath}';`);
     if (scroll) imports.push(`import { ScrollFrame } from '${VELORA_PACKAGE.name}/kit';`);
     content = scroll
-      ? `<ScrollFrame channel="${SCROLL_CHANNEL}" width={${subject.width}} height={${subject.height}}>\n        <${local} />\n      </ScrollFrame>`
+      ? `<ScrollFrame channel="${SCROLL_CHANNEL}" width={${stage ? "stage?.width ?? " : ""}${subject.width}} height={${stage ? "stage?.height ?? " : ""}${subject.height}}>\n        <${local} />\n      </ScrollFrame>`
       : `<${local} />`;
   } else if (slot.kind === "route") {
     imports.push(`import { RouteFrame } from '${VELORA_PACKAGE.name}/kit';`);
-    content = `<RouteFrame route=${JSON.stringify(slot.route)} width={${subject.width}} height={${subject.height}}${scroll ? ` scrollChannel="${SCROLL_CHANNEL}"` : ""} />`;
+    content = `<RouteFrame route=${JSON.stringify(slot.route)}${stage ? "" : ` width={${subject.width}} height={${subject.height}}`}${scroll ? ` scrollChannel="${SCROLL_CHANNEL}"` : ""} />`;
   } else {
     imports.push(`import { SlotPlaceholder } from '${VELORA_PACKAGE.name}/kit';`);
-    content = `<SlotPlaceholder name="${SUBJECT_ID}" width={${subject.width}} height={${subject.height}} />`;
+    content = `<SlotPlaceholder name="${SUBJECT_ID}" width={${stage ? "stage?.width ?? " : ""}${subject.width}} height={${stage ? "stage?.height ?? " : ""}${subject.height}} />`;
   }
+  const usesStageHook = stage && (slot.kind === "placeholder" || (slot.kind === "component" && scroll));
+  if (!usesStageHook && stage) imports[0] = imports[0].replace(", useAppStage", "");
+  if (stage) content = `<AppStage fit={{ width: ${subject.width}, height: ${subject.height} }}>\n        ${content}\n      </AppStage>`;
   const guidance = slot.kind === "component"
     ? "// TODO(velora): wrap the subject with the providers it needs (theme, data, router), as in your app root.\n"
     : slot.kind === "placeholder" ? "// TODO(velora): replace SlotPlaceholder with your real component (and its providers) or a RouteFrame.\n" : "";
@@ -121,7 +125,7 @@ export function scaffoldScene(input: ScaffoldInput): { recipe: string; binding: 
 ${imports.join("\n")}
 
 ${guidance}export default function ${component}() {
-  return (
+${usesStageHook ? "  const stage = useAppStage();\n" : ""}  return (
     <Surface id="${SUBJECT_ID}" style={{ position: 'absolute', left: ${left}, top: ${top}, width: ${subject.width}, height: ${subject.height} }}>
       ${content}
     </Surface>
@@ -133,14 +137,16 @@ ${guidance}export default function ${component}() {
 
 // The layered / motion-graphics binding: one Surface per layout node, kit components by name, the brand
 // file wrapped around everything, and the template slot filled with the user's component or route.
-function compositeBinding(id: string, component: string, manifest: TemplateManifest, definition: CompositeDefinition, slot: Slot): string {
+function compositeBinding(id: string, component: string, manifest: TemplateManifest, definition: CompositeDefinition, slot: Slot, stage?: Stage): string {
   const kit = new Set<string>();
-  for (const node of definition.layout) kitTypes(node.element, kit);
+  const layout = stage ? stageCompositeLayout(definition.layout) : definition.layout;
+  for (const node of layout) kitTypes(node.element, kit);
+  const appStage = kit.delete("AppStage") || !!stage && manifest.slots.length > 0;
   if (definition.brand) kit.add("BrandProvider");
-  const imports = [`import { Surface } from '${VELORA_PACKAGE.name}';`];
+  const imports = [`import { Surface${appStage ? ", AppStage" : ""} } from '${VELORA_PACKAGE.name}';`];
   let local = "";
   if (slot.kind === "component") {
-    local = identifier(slot.exportName, [component, "Surface", ...kit]);
+    local = identifier(slot.exportName, [component, "Surface", "AppStage", ...kit]);
     imports.push(slot.isDefault ? `import ${local} from '${slot.importPath}';` : slot.exportName === local
       ? `import { ${local} } from '${slot.importPath}';` : `import { ${slot.exportName} as ${local} } from '${slot.importPath}';`);
   } else if (slot.kind === "route") kit.add("RouteFrame");
@@ -150,12 +156,13 @@ function compositeBinding(id: string, component: string, manifest: TemplateManif
   const fill = (props: Record<string, JsonValue>) => {
     const width = Number(props.width), height = Number(props.height);
     const inner = slot.kind === "component" ? `<${local} />`
-      : slot.kind === "route" ? `<RouteFrame route=${JSON.stringify(slot.route)} width={${width}} height={${height}} />`
+      : slot.kind === "route" ? `<RouteFrame route=${JSON.stringify(slot.route)}${stage ? "" : ` width={${width}} height={${height}}`} />`
       : `<SlotPlaceholder name="subject" width={${width}} height={${height}} />`;
-    return `<div style={{ width: ${width}, height: ${height}, overflow: 'hidden', background: '#fff' }}>\n  ${inner}\n</div>`;
+    const paint = stage ? `<AppStage fit={{ width: ${width}, height: ${height} }}>\n    ${inner}\n  </AppStage>` : inner;
+    return `<div style={{ width: ${width}, height: ${height}, overflow: 'hidden', background: '#fff' }}>\n  ${paint}\n</div>`;
   };
   const indent = definition.brand ? "        " : "      ";
-  const surfaces = definition.layout.map(node =>
+  const surfaces = layout.map(node =>
     `${indent.slice(2)}<Surface id="${node.id}" style={{ position: 'absolute', left: ${node.left}, top: ${node.top}, width: ${node.width}, height: ${node.height} }}>\n${layoutJsx(node.element, fill, indent)}\n${indent.slice(2)}</Surface>`).join("\n");
   const body = definition.brand ? `    <BrandProvider brand={brand}>\n${surfaces}\n    </BrandProvider>` : surfaces;
   const guidance = slot.kind === "component" ? "// TODO(velora): wrap the subject with the providers it needs (theme, data, router), as in your app root.\n"

@@ -106,7 +106,7 @@ const focus = { kind: "focus" as const };
 const round = (value: number) => Math.round(value * 100) / 100;
 
 /** Compile one camera move into a scene + motion definition (speed 1: authored time is playback time). */
-export function buildShot(input: ShotInput): ShotDefinition {
+export function buildShot(input: ShotInput, { stageFit = false }: { stageFit?: boolean } = {}): ShotDefinition {
   const shot = ShotInputSchema.parse(input);
   const frame = ASPECT_FRAMES[shot.aspect];
   const subject = shot.subject ?? frame.subject;
@@ -152,7 +152,10 @@ export function buildShot(input: ShotInput): ShotDefinition {
       const angle = { rotateX: 12 + 4 * a, rotateY: -(24 + 6 * a), rotateZ: 0 };
       const axis = apply(rotation(angle), [1, 0, 0]);
       const travel = 0.16 * a * subject.width;
-      const base = { x: 0, y: 0, z: fit(1.1 + 0.1 * a) };
+      const fill = 1.1 + 0.1 * a;
+      // A shallower stage fits the same viewport at a closer distance. Keep the rail
+      // at least as far back as the original framing so the oblique near edge stays clear.
+      const base = { x: 0, y: 0, z: stageFit ? Math.max(fit(fill), round(distanceFor(fill, p, frame, frame.subject))) : fit(fill) };
       const at = (offset: number): Camera => ({ x: round(base.x + axis[0] * offset), y: round(base.y + axis[1] * offset), z: round(base.z + axis[2] * offset), ...angle });
       const from = at(-travel), to = at(travel);
       pose = from;

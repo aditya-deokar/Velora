@@ -180,6 +180,8 @@ npx velora snapshot --scene my-shot --url http://127.0.0.1:5173
 
 Snapshots cache rendered local pixels in the recipe. Refresh them after visual changes; they may include visible app data.
 
+New scaffolds use `laptop-14`, a 1512×982 CSS viewport at 2×. Choose a preset or pass the viewport as `--stage 1536x730@1.25`. **Use as stage** in Studio can save your current window or screen size. Set the video dimensions independently when you export.
+
 ### Edit mode: keyframes by hand
 
 ```sh

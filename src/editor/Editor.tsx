@@ -13,6 +13,7 @@ import { Advisories, useAdvisories } from "./Advisories";
 import { History, copyText, opsCommand } from "./History";
 import { AskAgent } from "./AskAgent";
 import { commandForPlatform } from "./handoff";
+import { readEditorSession, saveEditorSession } from "./session";
 import { Palette } from "./Palette";
 import { EasingLibrary } from "./EasingLibrary";
 import { Timeline } from "./timeline/Timeline";
@@ -54,7 +55,9 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
   const [address] = useState(takeBridgeFragment);
   const [client] = useState(() => address ? createBridgeClient(address) : undefined);
   const uiKey = `velora-editor:${typeof location === "undefined" ? "" : location.pathname}:${sceneId}`;
-  const [store] = useState(() => createEditorStore({ sceneId, base: recipe as Doc, readOnly: !client, ...(client ? { writer: client.writer(sceneId) } : {}),
+  const sessionKey = `${uiKey}:checkpoint:${address?.port ?? "offline"}`;
+  const [store] = useState(() => createEditorStore({ sceneId, base: recipe as Doc, readOnly: true,
+    ...(client ? { writer: client.writer(sceneId), checkpoint: readEditorSession(sessionKey)?.editor } : {}),
     ui: { ...DEFAULT_UI, ...loadUi(uiKey) }, persistUi: ui => saveUi(uiKey, ui) }));
   const state = useEditorState(store);
   const [hello, setHello] = useState<BridgeHello>();
@@ -74,6 +77,12 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
   };
   useEffect(() => { if (state.notice) notify(state.notice.message); }, [state.notice]);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
+  useEffect(() => {
+    if (!client) return;
+    const checkpoint = () => saveEditorSession(sessionKey, store.checkpoint());
+    window.addEventListener("pagehide", checkpoint);
+    return () => window.removeEventListener("pagehide", checkpoint);
+  }, [client, sessionKey, store]);
   // Connect: hello, read the file on disk (authoritative), then follow its changes.
   useEffect(() => {
     if (!client) return;
@@ -88,6 +97,7 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
           if (!active) return;
           setHello(greeting);
           const read = await refresh();
+          if (!active) return;
           store.setReadOnly(greeting.readOnly, read.sha);
           attempt = 0;
           await client.events(event => {
@@ -114,7 +124,11 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
     if (!selectedThree?.startsWith("three:") || sourcePicking || tool === "camera" || tool === "focus" || tool === "pivot") return;
     return { id: selectedThree, mode: tool === "rotate" ? "rotate" : tool === "scale" ? "scale" : "translate" };
   }, [selectedThree, sourcePicking, tool]);
-  return <ScenePreview definition={definition} title={title} backHref={backHref} onBack={onBack} backLabel={backLabel} initialTimeMs={initialTimeMs} hot={hot} revision={state.revision} layout="editor" threeSelection={threeSelection}
+  return <ScenePreview sceneId={sceneId} definition={definition} title={title} backHref={backHref} onBack={onBack} backLabel={backLabel} initialTimeMs={initialTimeMs} hot={hot} revision={state.revision} layout="editor" threeSelection={threeSelection}
+    onStage={state.readOnly ? undefined : stage => {
+      const issues = store.commit([{ op: "stage.set", ...stage }], "Use laptop stage");
+      if (issues.length) notify(issues[0].message);
+    }}
     {...(state.ui.director ? { viewCamera: state.ui.director } : {})} peaking={state.ui.tool === "focus"}
     slots={{
       overlay: <WithEditor shared={shared}><Overlay/></WithEditor>,

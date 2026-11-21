@@ -32,6 +32,9 @@ ${studioTheme}
 .velora-controls{max-width:760px;max-height:calc(100dvh - 48px - env(safe-area-inset-bottom));overflow:auto;overscroll-behavior:contain;margin:0 auto;display:flex;flex-direction:column;gap:12px;pointer-events:auto;padding:6px;scrollbar-width:thin;scrollbar-color:#666 transparent}
 .velora-header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-shrink:0}
 .velora-heading{display:flex;align-items:center;gap:16px;min-width:0}
+.velora-stage-chip{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:11px;color:inherit}
+.velora-stage-chip select{min-height:28px;background:#23252b;color:#e5e8ef;border:1px solid #777c87;border-radius:4px}
+.velora-stage-chip output{max-width:42ch;overflow-wrap:anywhere}
 .velora-title{font-size:15px;font-weight:600;letter-spacing:-.2px;color:#fff;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .velora-control{appearance:none;box-sizing:border-box;border:1px solid #ffffff30;border-radius:999px;padding:11px 18px;background:#242424;color:#fff;font:500 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-decoration:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:9px;white-space:nowrap;min-height:44px;flex-shrink:0;transition:background .15s;box-shadow:none}
 .velora-control:hover{background:#3a3a3a}.velora-control:disabled{opacity:.45;cursor:default}

@@ -19,6 +19,7 @@ const samples: Record<Exclude<EditOp["op"], (typeof DEFERRED_EDIT_OPS)[number]>,
   "camera.set": { property: "x", value: 0 }, "focus.set": { property: "distance", value: 1400 },
   "node.ensure": { id: "hero" }, "node.parent": { id: "hero", parentId: null }, "node.remove": { id: "hero" },
   "motion.set": { durationMs: 4000 }, "look.set": { look: { preset: "film" } }, "clip.create": { ...clip, refs: [track] },
+  "stage.set": { width: 1512, height: 982, dpr: 2 },
   "clip.update": { ...clip, speed: 0.5 }, "clip.set": { clip }, "clip.dissolve": { id: clip.id },
   "stagger.set": { clipId: clip.id, members: ["a", "b"], eachMs: 150 },
   "link.set": { link: { to: track, from: { ...track, property: "y" } } }, "link.remove": { to: track },
@@ -54,6 +55,7 @@ describe("agent and editor parity", () => {
     }
     const help = await Promise.all(["edit", "compose"].map(command => runCli([command, "--help"], { root: process.cwd() })));
     expect(help[0].stdout).toContain("velora edit apply --scene ID --ops FILE|-");
+    expect(help[0].stdout).toContain("velora edit stage --scene ID");
     expect(help[1].stdout).toContain("velora compose edit --composition FILE --ops FILE|-");
     for (const name of DEFERRED_EDIT_OPS) expect(tables).not.toContain(`\`${name}`);
     for (const helper of ["trim", "move", "split", "transition"]) expect(help[1].stdout).toContain(`velora compose ${helper}`);

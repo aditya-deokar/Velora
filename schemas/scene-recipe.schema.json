@@ -43,6 +43,17 @@
             "9:16"
           ]
         },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "laptop-14",
+            "laptop-13",
+            "laptop-16",
+            "desktop-1080",
+            "user-native",
+            "custom"
+          ]
+        },
         "params": {
           "type": "object",
           "propertyNames": {
@@ -4732,6 +4743,106 @@
               "pattern": "\\.cube$"
             }
           },
+          "additionalProperties": false
+        },
+        "stage": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "integer",
+              "minimum": 320,
+              "maximum": 3840
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 320,
+              "maximum": 3840
+            },
+            "dpr": {
+              "type": "number",
+              "enum": [
+                1,
+                1.25,
+                1.5,
+                1.75,
+                2,
+                3
+              ]
+            },
+            "preset": {
+              "type": "string",
+              "enum": [
+                "laptop-14",
+                "laptop-13",
+                "laptop-16",
+                "desktop-1080",
+                "user-native",
+                "custom"
+              ]
+            },
+            "physicalWidthMm": {
+              "type": "number",
+              "exclusiveMinimum": 50,
+              "maximum": 2000
+            },
+            "detected": {
+              "type": "object",
+              "properties": {
+                "innerWidth": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000
+                },
+                "innerHeight": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000
+                },
+                "screenWidth": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000
+                },
+                "screenHeight": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100000
+                },
+                "devicePixelRatio": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100
+                },
+                "basis": {
+                  "type": "string",
+                  "enum": [
+                    "window",
+                    "screen"
+                  ]
+                },
+                "atIso": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                }
+              },
+              "required": [
+                "innerWidth",
+                "innerHeight",
+                "screenWidth",
+                "screenHeight",
+                "devicePixelRatio",
+                "basis",
+                "atIso"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "width",
+            "height",
+            "dpr"
+          ],
           "additionalProperties": false
         },
         "width": {

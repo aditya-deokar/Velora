@@ -305,6 +305,18 @@ Run `npx velora edit --scene <id>` while your dev server is running. It opens th
 
 **Ask agent** sends your coding agent a copyable prompt with the current selection, playhead, work area and recent edits. An agent can read tracks with `npx velora edit ls --scene <id> --json`, preview with `npx velora edit apply --scene <id> --ops ops.json --json`, and write the reviewed batch with `--expect-sha <sha> --write`.
 
+### Set the app stage
+
+Choose **Use as stage** in the scene header to save the current browser viewport or screen size. With a connected edit bridge, the change is one undoable edit. In read-only preview, the button copies the matching CLI command.
+
+```sh
+npx velora new scene --template hero-push --id home-hero --route / --stage laptop-14 --json
+npx velora edit stage --scene home-hero --preset laptop-13 --json
+npx velora inspect --scene home-hero --json
+```
+
+The stage sets the CSS viewport for the app. The aspect and export dimensions set the output frame. `RouteFrame` uses the stage for viewport breakpoints, while in-tree components can read the stage through `useAppStage()` or a named container query. Export at standard quality uses the stage DPR within the 3840-pixel capture limit. Read `effectiveDpr` and `dprCapped` in the render lineage.
+
 ### Recut a composition
 
 Run `npx velora edit --composition launch.composition.json` against your running app. Select or reorder shots with V, ripple with B, roll with N, slip with Y and split with C. M adds a cue at the playhead. Drag an overlap transition onto an incoming cut and adjust its handle. Choose an audio clip to change gain and fades in the Inspector, or drag its lane handles.

@@ -165,9 +165,12 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
     pump();
     return [];
   };
+  let restoring = !!options.checkpoint;
   function receiveExternal(doc: Doc, sha: string | undefined, text: string) {
+    const restored = restoring && !!sha;
+    if (restored) restoring = false;
     if (sha && sha === state.sha) return;
-    if (options.target === "composition" && sha) {
+    if ((options.target === "composition" || restored) && sha) {
       // The dev server can reload the page before acknowledging a successful save.
       // Discard only the prefix already on disk, and leave any later edits queued.
       if (inFlight) { deferredRead = [doc, sha, text]; return; }

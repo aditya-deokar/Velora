@@ -136,7 +136,7 @@ describe("edit ops", () => {
     expect(track.keyframes[0].outTangent).toEqual([0, 30, 0]);
   });
   it("returns ERR_EDIT_UNSUPPORTED for later-phase ops", () => {
-    const result = applyEdits(base(), [{ op: "stage.set", preset: "laptop-14" }]);
+    const result = applyEdits(base(), [{ op: "depth.set" }]);
     expect(!result.ok && result.issues[0].code).toBe("ERR_EDIT_UNSUPPORTED");
   });
   it("coalesces drag gestures and labels ops for history", () => {

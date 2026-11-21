@@ -22,7 +22,9 @@ import * as services from "./services";
 import { fault } from "./errors";
 import { generatedPreview, htmlEntry, inspectConfig, inspectEntry, legacyPreviewTexts } from "./vite";
 import { componentExport, sceneImportPath, scaffoldScene, COMPOSITION_SCHEMA_POINTER, type Slot } from "./templates";
-import { BLUEPRINT_CATALOG, TEMPLATE_CATALOG, RouteSchema, certifyTemplate, findBlueprint, findTemplate, resolveTemplateParams, templateDefinition, type Blueprint, type TemplateManifest } from "../core/templates";
+import { BLUEPRINT_CATALOG, TEMPLATE_CATALOG, RouteSchema, certifyTemplate, findBlueprint, findTemplate, resolveTemplateParams, templateDefinition, templateSubject, type Blueprint, type TemplateManifest } from "../core/templates";
+import { DEFAULT_STAGE, sceneStageBudget, stageFromSpec, type Stage } from "../core/stage";
+import { resolveFinishing } from "../core/export";
 import { ASPECT_FRAMES, AspectSchema, type Aspect } from "../core/shots";
 import { SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 import { BRAND_FILE, BrandSchema, brandTokensFromCss, completeBrandColors, contrastRatio } from "../core/brand";
@@ -689,6 +691,7 @@ export type InspectData =
       assets: { count: number; ids: string[] }; sharedComponents: string[] }
   | { kind: "scene"; id: string; title: string; source: string; binding: string;
       width: number; height: number; durationMs: number; nodeCount: number; nodeIds: string[];
+      stage?: Stage & ReturnType<typeof sceneStageBudget> & { advisory?: "stage-undersampled" };
       hasSnapshot: boolean; snapshotTimeMs?: number; sharedComponents: string[]; issues: SceneIssue[] }
   | { kind: "composition"; file: string; composition: Composition;
       resolved: { scenes: { id: string; recipe: string; title: string; nodeCount: number; startMs: number; durationMs: number }[];
@@ -726,11 +729,16 @@ export async function executeInspectCommand(input: unknown, context: { root: str
       if (!selected)
         return inspectFailure([{ code: "ERR_SCENE_NOT_FOUND", message: `Scene "${parsed.data.sceneId}" is not in the validated catalog. Run velora scenes --json to list available IDs.`, path: "sceneId" }]);
       const metadata = sceneMetadata(selected);
+      const { stage, scene, motion, width, height } = selected.definition;
+      const frame = { width, height };
+      const budget = stage && sceneStageBudget({ stage, scene, motion: motion ?? { durationMs: 0, tracks: [] }, frame,
+        effectiveDpr: resolveFinishing({}, frame, stage).supersample });
       return { success: true as const, command: "inspect" as const, data: {
         kind: "scene", id: selected.id, title: selected.title, source: selected.source, binding: selected.binding,
         width: metadata.width, height: metadata.height, durationMs: metadata.durationMs, nodeCount: metadata.nodeCount,
         nodeIds: selected.definition.scene.nodes.map((node) => node.id),
         hasSnapshot: metadata.hasSnapshot, ...(metadata.snapshotTimeMs !== undefined ? { snapshotTimeMs: metadata.snapshotTimeMs } : {}),
+        ...(stage && budget ? { stage: { ...stage, ...budget, ...(budget.undersampled ? { advisory: "stage-undersampled" } : {}) } } : {}),
         sharedComponents: await discoverSharedComponents(root), issues: catalog.issues,
       } };
     }
@@ -1424,11 +1432,11 @@ export type TemplateCommandResult =
 const NewSceneInputSchema = z.strictObject({
   template: z.string().min(1), id: z.string().min(1), title: z.string().trim().min(1).max(200).optional(),
   component: z.string().min(1).optional(), route: z.string().optional(),
-  aspect: z.string().optional(), durationMs: z.number().optional(), set: z.record(z.string(), z.string()).default({}),
+  aspect: z.string().optional(), stage: z.string().optional(), durationMs: z.number().optional(), set: z.record(z.string(), z.string()).default({}),
 });
 const NewVideoInputSchema = z.strictObject({
   blueprint: z.string().min(1), id: z.string().min(1), title: z.string().trim().min(1).max(200).optional(),
-  component: z.string().min(1).optional(), route: z.string().optional(), aspect: z.string().optional(),
+  component: z.string().min(1).optional(), route: z.string().optional(), aspect: z.string().optional(), stage: z.string().optional(),
 });
 type PlannedFile = { path: string; text: string };
 function templateFault(code: string, message: string, path?: string): never {
@@ -1460,14 +1468,19 @@ async function initializedProject(root: string): Promise<ProjectState> {
   if (!state.project) throw fault("not-initialized", "Run velora init in this project before creating scenes.");
   return state.project;
 }
-function planScene(manifest: TemplateManifest, overrides: Record<string, string | number>, id: string, title: string | undefined, aspect: Aspect, slot: Slot, extension: "tsx" | "jsx"): { files: PlannedFile[]; durationMs: number } {
+function authoredStage(spec = DEFAULT_STAGE as string) {
+  return stageFromSpec(spec) ?? templateFault("invalid-input", spec === "user-native"
+    ? "Use the Studio to detect your viewport or pass the exact size with --stage 1512x982@2."
+    : "Use a named stage preset or a size such as --stage 1512x982@2.", "stage");
+}
+function planScene(manifest: TemplateManifest, overrides: Record<string, string | number>, id: string, title: string | undefined, aspect: Aspect, slot: Slot, extension: "tsx" | "jsx", stage: Stage): { files: PlannedFile[]; durationMs: number } {
   if (!SceneRecipeIdSchema.safeParse(id).success) templateFault("invalid-input", "Use a lowercase scene slug for --id (letters, digits and single hyphens).", "id");
   if (!manifest.aspects.includes(aspect)) templateFault("ERR_TEMPLATE_ASPECT", `Template ${manifest.id} supports ${manifest.aspects.join(", ")}, not ${aspect}.`, "aspect");
   const resolved = resolveTemplateParams(manifest, overrides);
   if (resolved.issues.length) throw Object.assign(new Error(resolved.issues.map(issue => issue.message).join(" ")), { code: "ERR_TEMPLATE_PARAM", target: resolved.issues[0].path, issues: resolved.issues });
-  const subject = ASPECT_FRAMES[aspect].subject;
-  const definition = templateDefinition(manifest, resolved.params, aspect);
-  const scaffold = scaffoldScene({ id, title: title ?? manifest.title, manifest, params: resolved.params, aspect, definition, subject, slot });
+  const subject = templateSubject(aspect, stage);
+  const definition = templateDefinition(manifest, resolved.params, aspect, subject);
+  const scaffold = scaffoldScene({ id, title: title ?? manifest.title, manifest, params: resolved.params, aspect, definition, subject, slot, stage });
   const base = `${SCENE_RECIPE_DIRECTORY}/${id}`;
   return { files: [{ path: `${base}.scene.json`, text: scaffold.recipe }, { path: `${base}.${extension}`, text: scaffold.binding }], durationMs: definition.motion.durationMs };
 }
@@ -1543,8 +1556,12 @@ export async function executeTemplateCommand(operation: "list-templates" | "show
       const id = input.id === undefined ? undefined : String(input.id);
       const manifests = id === undefined ? TEMPLATE_CATALOG : [findTemplate(id) ?? templateFault("ERR_TEMPLATE_NOT_FOUND", `No template "${id}". Run velora templates ls --json.`, "id")];
       const results = manifests.map(manifest => {
-        const failures = manifest.aspects.flatMap(aspect => (["subtle", "standard", "dramatic"] as const).flatMap(intensity =>
-          certifyTemplate(manifest, resolveTemplateParams(manifest, { intensity }).params, aspect)));
+        const stages = ["laptop-13", "laptop-14", "desktop-1080"].map(authoredStage);
+        const failures = manifest.aspects.flatMap(aspect => (["subtle", "standard", "dramatic"] as const).flatMap(intensity => {
+          const params = resolveTemplateParams(manifest, { intensity }).params;
+          return [...certifyTemplate(manifest, params, aspect), ...stages.flatMap(stage =>
+            certifyTemplate(manifest, params, aspect, stage).map(issue => ({ ...issue, path: `${issue.path}@${stage.preset}/${intensity}` })))];
+        }));
         return { id: manifest.id, certified: failures.length === 0, failures };
       });
       const failed = results.filter(result => !result.certified);
@@ -1562,7 +1579,7 @@ export async function executeTemplateCommand(operation: "list-templates" | "show
       const project = await initializedProject(root);
       const { slot, warnings } = await resolveSlot(root, request);
       const overrides: Record<string, string | number> = { ...request.set, ...(request.durationMs !== undefined ? { durationMs: request.durationMs } : {}) };
-      const plan = planScene(manifest, overrides, request.id, request.title, aspect.data, slot, await bindingExtension(root, project));
+      const plan = planScene(manifest, overrides, request.id, request.title, aspect.data, slot, await bindingExtension(root, project), authoredStage(request.stage));
       await withBrandFile(root, [manifest], plan.files);
       await writePlanned(root, plan.files);
       const catalog = await discoverRecipes(root);
@@ -1575,6 +1592,7 @@ export async function executeTemplateCommand(operation: "list-templates" | "show
     const parsed = NewVideoInputSchema.safeParse(input);
     if (!parsed.success) templateFault("invalid-input", parsed.error.issues[0].message, parsed.error.issues[0].path.join("."));
     const request = parsed.data;
+    const stage = authoredStage(request.stage);
     const blueprint = findBlueprint(request.blueprint) ?? templateFault("ERR_TEMPLATE_NOT_FOUND", `No blueprint "${request.blueprint}". Run velora templates ls --json.`, "blueprint");
     if (!SceneRecipeIdSchema.safeParse(request.id).success) templateFault("invalid-input", "Use a lowercase slug for --id (letters, digits and single hyphens).", "id");
     const aspect = AspectSchema.safeParse(request.aspect ?? blueprint.aspects[0]);
@@ -1589,7 +1607,7 @@ export async function executeTemplateCommand(operation: "list-templates" | "show
     blueprint.scenes.forEach((scene, index) => {
       const manifest = findTemplate(scene.template)!;
       const sceneId = `${request.id}-${index + 1}-${manifest.id}`;
-      const plan = planScene(manifest, scene.params, sceneId, `${request.title ?? blueprint.title}: ${manifest.title}`, aspect.data, slot, extension);
+      const plan = planScene(manifest, scene.params, sceneId, `${request.title ?? blueprint.title}: ${manifest.title}`, aspect.data, slot, extension, stage);
       files.push(...plan.files);
       // Overlap transitions start the shot inside the previous one; everything else butt-joins.
       const overlap = scene.transition && index > 0 && isOverlapTransition(scene.transition.type) ? scene.transition.durationMs : 0;
@@ -1603,7 +1621,7 @@ export async function executeTemplateCommand(operation: "list-templates" | "show
       const manifest = findTemplate(overlay.template)!;
       const sceneId = `${request.id}-ov${index + 1}-${manifest.id}`;
       const params = { ...overlay.params, ...(manifest.params.some(param => param.name === "backdrop") ? { backdrop: "off" } : {}) };
-      files.push(...planScene(manifest, params, sceneId, `${request.title ?? blueprint.title}: ${manifest.title} (overlay)`, aspect.data, { kind: "placeholder" }, extension).files);
+      files.push(...planScene(manifest, params, sceneId, `${request.title ?? blueprint.title}: ${manifest.title} (overlay)`, aspect.data, { kind: "placeholder" }, extension, stage).files);
       return { id: `overlay-${index + 1}`, recipe: sceneId, startMs: overlay.startMs, durationMs: overlay.durationMs };
     });
     for (const cue of blueprint.cues) markers.push({ atMs: cue.atMs, label: cue.label, kind: "cue" });

@@ -53,3 +53,4 @@ export * from "./prompts";
 export * from "./deliverables";
 export * from "./behaviors";
 export * from "./presets";
+export * from "./stage";

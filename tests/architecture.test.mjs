@@ -46,6 +46,18 @@ const valid = {
  * WHERE: browser preview calls this operation.
  */
  import {z} from 'zod'; export const PreviewDefinitionSchema=z.strictObject({}); export function presentPreview(){return {};}`,
+ 'src/core/stage.ts': `/** SOURCE OF TRUTH: StageSchema, STAGE_PRESETS, resolutionBudget.
+ * WHAT: define concrete logical stage geometry and raster demand.
+ * WHY: keep layout independent from capture dimensions.
+ * WHERE: preview and export read the same stage contract.
+ */
+ import {z} from 'zod'; export const StageSchema=z.strictObject({}); export const STAGE_PRESETS=Object.freeze({}); export function resolutionBudget(){return {};}`,
+ 'src/react/stage.tsx': `/** SOURCE OF TRUTH: AppStage, useAppStage.
+ * WHAT: render a named size container and expose its metrics.
+ * WHY: guarantee consistent viewport layout across preview and export.
+ * WHERE: used by generated scene bindings.
+ */
+ export function AppStage(){return null;} export function useAppStage(){return undefined;}`,
  'src/preview/ScenePreview.tsx': `/** SOURCE OF TRUTH: ScenePreview.
  * WHAT: render the shared preview interface.
  * WHY: avoid duplicate product shells.

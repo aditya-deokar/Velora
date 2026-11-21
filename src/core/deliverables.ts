@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { StageDprSchema } from "./stage";
 import { DELIVERY_PRESETS, findDeliveryPreset, type DeliveryPreset } from "./delivery";
 import type { Composition } from "./composition";
 import type { VideoCodec } from "./export";
@@ -149,6 +150,7 @@ export const DeliverInputSchema = z.strictObject({
   targets: z.array(z.string().min(1)).min(1).max(DELIVERY_PRESETS.length + 4),
   out: z.string().min(1).regex(/^(?!\/)(?![A-Za-z]:)(?!.*(?:^|[\\/])\.\.(?:[\\/]|$)).+$/, "Use a project-relative output directory without traversal.").optional(),
   quality: z.enum(["draft", "standard", "master"]).optional(),
+  stageDpr: StageDprSchema.optional(),
   parallel: z.number().int().min(1).max(8).optional(),
   noCache: z.boolean().optional(),
 });

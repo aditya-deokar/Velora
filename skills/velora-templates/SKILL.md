@@ -75,6 +75,8 @@ The Compositions tab plays a `*.composition.json` with its audio and captions. U
 
 ## Workflow
 
+New app shots use `laptop-14` (1512×982 at 2×). Choose `laptop-13` (1440×900 at 2×) or use a detected stage saved in Studio. Pass an explicit viewport with `velora new scene --template hero-push --id home-hero --route / --stage 1536x730@1.25 --json`. Choose `desktop-1080` at 1× only when requested. The aspect flag selects the video frame independently of the app viewport.
+
 1. Map the request to a template with the table above, or with `velora templates ls --json`.
 2. Choose the slot:
    - `--route` for zero code (works in every host, including Next.js);

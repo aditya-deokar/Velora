@@ -147,8 +147,8 @@ Phase 01 (both are stop conditions in Phase 00.1).
 | D6 | Resolved 2026-11-16: in-house | Built in-house (SVG per visible row, virtualized, dense rows as paths); measured budgets in `artifacts/phase-05-exit.md`. |
 | D7 | Accepted (recommendation) | Phase 01 changes are additive within recipe version 1 and scene version 3. |
 | D8 | Accepted and enforced (00) | The architecture rule `gsap-ban` rejects `gsap` and `@gsap/*` in every layer. |
-| D9 | Accepted (recommendation), confirm before 12 | Stop condition if declined. |
-| D10 | Open: S7 not run | Numbers pending. |
+| D9 | Accepted for Phase 12 | Recipes opt in with concrete stage dimensions. |
+| D10 | Accepted after S7 | Chromium preserved layout at 2×. The 1080p screenshot mean rose from 92 ms to 366 ms on the reference machine. |
 | D11 | Accepted (recommendation), confirm before 13; S6 not run | |
 | D12–D14 | Accepted (recommendation), confirm before 14–16 | |
 
@@ -307,7 +307,7 @@ on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 
 | Phase | Status | Headline evidence |
 |---|---|---|
-| 00 | done except spikes | Goldens (motion, spatial, optics/shot, format corpus, capture) and `scripts/golden.mjs`; baselines; v2.1 checker layers. Spikes: S3 passed, S5 partly run, S1–S2, S4 and S6–S8 not run (`artifacts/phase-00-spikes.md`, `artifacts/phase-00-exit.md`). |
+| 00 | done except spikes | Goldens (motion, spatial, optics/shot, format corpus, capture) and `scripts/golden.mjs`; baselines; v2.1 checker layers. Spikes: S3 and S7 passed, S5 partly run, S1–S2, S4, S6 and S8 pending (`artifacts/phase-00-spikes.md`, `artifacts/phase-00-exit.md`). |
 | 01 | done | Motion model v3 with goldens unchanged; compiled evaluator about 1,700x faster than the Phase 00 baseline at 300 tracks (`artifacts/phase-01-exit.md`). |
 | 02 | done | Clips, staggers, position paths, links, lookAt/focusFollow and the orbit rig; goldens unchanged (`artifacts/phase-02-exit.md`). |
 | 03 | done | `EditOpSchema`/`applyEdits` with exact inverses, the formatting-preserving writer, `velora edit`, and the secure loopback bridge and watcher (`artifacts/phase-03-exit.md`). S2 not run. |
@@ -319,4 +319,5 @@ on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 | 09 | done | Optional Three.js entry, deterministic glTF capture, shared camera and studio gizmos. Product-orbit exports and the installed React 18 fixture passed byte comparisons ([exit report](artifacts/phase-09-exit.md)). |
 | 10 | implemented | Composition lanes, editing operations, scoped waveforms, beat snapping, scene handoff, and CLI parity. The 30-second recut and crossfade comparison passed ([exit report](artifacts/phase-10-exit.md)). |
 | 11 | implementation landed, release gates open | Agent handoff and parity, guide format 4, accessibility and release checks. Hardware timing and the cinematic prerequisites still gate 1.1.0 ([status report](artifacts/phase-11-exit.md)). |
-| 12–16 | not started | — |
+| 12 | implemented | Laptop viewport parity, HiDPI capture, DPR cap, native stage editing, and template certification ([exit report](artifacts/phase-12-exit.md)). |
+| 13–16 | not started | — |

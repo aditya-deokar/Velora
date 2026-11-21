@@ -17,7 +17,7 @@ below, and must be run before that phase starts.
 | S4 Click-to-source | Not run | No verdict. | 08 |
 | S5 Lazy editor chunk | **Partly run** | Chunk emission **passes**; installed-host exclusion is **not yet verified**. | 04 |
 | S6 Volumetric depth in live DOM | Not run | No verdict. The band-quantized fallback (14.4) stays the contingency. | 13, 14 |
-| S7 Stage DPR and sharpness | Not run | No verdict. D10's numbers are still open. | 12 |
+| S7 Stage DPR and sharpness | Passed in Chromium, 2026-11-21 | CSS viewport stayed fixed at 1512×982. DPR 2 doubled the chart backing width and took about 4× the screenshot time at 1080p. | 12 |
 | S8 Projected parallax in iframes | Not run | No verdict. | 13 |
 
 ## S3 Deterministic R3F
@@ -43,3 +43,7 @@ package budget still passes.
 
 The architecture checker now enforces the import side of this design (Phase 00.5): only a dynamic
 `import()` from `src/preview/EditMode.tsx` may reach `src/editor` (rule `editor-lazy-boundary`).
+
+## S7 Stage DPR and capture cost
+
+On the Windows reference machine, full Chromium used a 1920×1080 capture viewport. A same-origin iframe reported 1512×982 at both device scales. A 100 CSS px canvas used 100 backing pixels at DPR 1 and 200 at DPR 2. Five PNG screenshots after warmup averaged 92 ms at 1× and 366 ms at 2×. This isolates browser screenshot cost and excludes downscaling, encoding and network activity.

@@ -13,8 +13,8 @@ import { SCROLL_SPEC, animatableIdFor } from "./brand";
  */
 export type RouteFrameProps = {
   route: string;
-  width: number;
-  height: number;
+  width?: number;
+  height?: number;
   /** Channel track whose value is the page scroll offset in pixels. */
   scrollChannel?: string;
   /** Fixed scroll offset when no channel drives it. */
@@ -78,13 +78,14 @@ export function RouteFrame({ route, width, height, scrollChannel, scrollY = 0, f
     await doc.fonts?.ready;
     await visibleImagesDecoded(doc);
   });
+  const size = { width: width ?? "100%", height: height ?? "100%" };
   if (!parsed.success || state === "blocked")
     return (
       <div role="alert" data-velora-valid="false" data-velora-route-frame="blocked"
-        style={{ width, height, display: "grid", placeItems: "center", background: "#1b1b20", color: "#f3f3f5", font: "500 20px/1.4 system-ui, sans-serif", padding: 32, boxSizing: "border-box", ...style }}>
+        style={{ ...size, display: "grid", placeItems: "center", background: "#1b1b20", color: "#f3f3f5", font: "500 20px/1.4 system-ui, sans-serif", padding: 32, boxSizing: "border-box", ...style }}>
         {!parsed.success ? parsed.error.issues[0].message : `ERR_ROUTE_FRAME_BLOCKED: ${route} could not be framed. Serve it from this app's origin and allow same-origin framing in development.`}
       </div>
     );
   return <iframe ref={frame} src={src} title={title ?? `Route ${route}`} onLoad={onLoad} data-velora-route-frame={state}
-    style={{ display: "block", width, height, border: 0, background: "#fff", pointerEvents: "none", ...style }} />;
+    style={{ display: "block", ...size, border: 0, background: "#fff", pointerEvents: "none", ...style }} />;
 }
