@@ -6,7 +6,7 @@ import type { EditOp } from "../core";
 import { createEditorStore, DEFAULT_UI, type Doc, type EditorUi, type EditorStore } from "./store";
 import { createBridgeClient, takeBridgeFragment, type BridgeHello } from "./bridge";
 import { EditorContext, useEditor, useEditorState, type EditorContextValue } from "./context";
-import { EDITOR_COMMANDS, commandById, matchShortcut, type EditorController } from "./commands";
+import { EDITOR_COMMANDS, commandById, matchShortcut, type EditorController, type EditorPanel } from "./commands";
 import { Layers } from "./Layers";
 import { Inspector } from "./Inspector";
 import { Advisories, useAdvisories } from "./Advisories";
@@ -18,18 +18,18 @@ import { copyKeyframes, parseClipboard, pasteOps, type ClipboardPayload } from "
 import { snapToFrame } from "./model";
 import { toAuthored } from "./properties";
 import { editorTheme } from "./theme";
+import { Overlay } from "./viewport/Overlay";
 
 /** The studio editor (Edit mode, Phase 04/05): ScenePreview in editor layout with Layers, Inspector and the
  * timeline in its slots, one store, one session cursor, and the edit bridge for saving. Every editor element
  * is chrome-marked; the capture viewport only ever contains the scene. */
 export type EditorProps = { sceneId: string; title: string; recipe: unknown; children?: ReactNode; hot?: PreviewHot; backHref?: string; onBack?: () => void };
-type Panel = "palette" | "easing" | "history" | "advisories";
 type Shared = {
-  store: EditorStore; sceneId: string; hello?: BridgeHello; panel?: Panel; setPanel(panel?: Panel): void;
+  store: EditorStore; sceneId: string; hello?: BridgeHello; panel?: EditorPanel; setPanel(panel?: EditorPanel): void;
   focused: { current: EditorController["focused"] }; clipboard: { current?: ClipboardPayload };
   toast?: { message: string; action?: { label: string; run(): void } }; notify(message: string, action?: { label: string; run(): void }): void;
 };
-const UI_KEYS: (keyof EditorUi)[] = ["autoKey", "snap", "animatedOnly", "view", "zoom", "solo", "hidden"];
+const UI_KEYS: (keyof EditorUi)[] = ["autoKey", "snap", "animatedOnly", "view", "zoom", "solo", "hidden", "tool", "onion", "paths"];
 function loadUi(key: string): Partial<EditorUi> {
   try { const value = JSON.parse(localStorage.getItem(key) ?? "{}"); return Object.fromEntries(UI_KEYS.filter(name => name in value).map(name => [name, value[name]])); } catch { return {}; }
 }
@@ -46,7 +46,7 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
     ui: { ...DEFAULT_UI, ...loadUi(uiKey) }, persistUi: ui => saveUi(uiKey, ui) }));
   const state = useEditorState(store);
   const [hello, setHello] = useState<BridgeHello>();
-  const [panel, setPanel] = useState<Panel>();
+  const [panel, setPanel] = useState<EditorPanel>();
   const [toast, setToast] = useState<Shared["toast"]>();
   const focused = useRef<EditorController["focused"]>(undefined);
   const clipboard = useRef<ClipboardPayload | undefined>(undefined);
@@ -56,6 +56,7 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(undefined), action ? 9000 : 4000);
   };
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
   // Connect: hello, read the file on disk (authoritative), then follow its changes.
   useEffect(() => {
     if (!client) return;
@@ -90,7 +91,9 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
   const shared: Shared = { store, sceneId, hello, panel, setPanel, focused, clipboard, toast, notify };
   const definition = (state.draft as Doc).definition;
   return <ScenePreview definition={definition} title={title} backHref={backHref} onBack={onBack} hot={hot} revision={state.revision} layout="editor"
+    {...(state.ui.director ? { viewCamera: state.ui.director } : {})} peaking={state.ui.tool === "focus"}
     slots={{
+      overlay: <WithEditor shared={shared}><Overlay/></WithEditor>,
       toolbar: <WithEditor shared={shared}><Toolbar/><Effects/></WithEditor>,
       left: <WithEditor shared={shared}><Layers/></WithEditor>,
       right: <WithEditor shared={shared}><Inspector/></WithEditor>,
@@ -106,7 +109,7 @@ function WithEditor({ shared, children }: { shared: Shared; children: ReactNode 
     if (!host) return null;
     const { store } = shared;
     const controller: EditorController = {
-      store, state, session: host.session, fps: host.fps, focused: shared.focused.current,
+      store, state, session: host.session, fps: host.fps, focused: shared.focused.current, ...(snapshot ? { snapshot } : {}),
       open: panel => shared.setPanel(panel), notify: message => shared.notify(message),
       copy() {
         const payload = copyKeyframes(store.committed(), store.getState().selection.keys);
@@ -176,8 +179,8 @@ function Toolbar() {
 }
 /** One-per-editor effects: shortcuts, the work-area loop, solo/hide styles, popovers and toasts. */
 function Effects() {
-  const { store, host, controller } = useEditor();
   const shared = useContext(SharedContext)!;
+  const { store, host, controller } = useEditor();
   const state = useEditorState(store);
   const latest = useRef({ controller });
   latest.current = { controller };
@@ -189,6 +192,8 @@ function Effects() {
       if (typing && event.key !== "Escape") return;
       const command = matchShortcut(event, store.getState());
       if (!command) return;
+      // Tab toggles the director view only from the viewport or the page body; elsewhere it moves focus.
+      if (event.key === "Tab" && target && target !== document.body && !target.closest?.("[data-velora-viewport-overlay],[data-velora-editor-overlay]")) return;
       event.preventDefault();
       command.run({ ...latest.current.controller, state: store.getState() });
     };

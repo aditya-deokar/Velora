@@ -84,8 +84,21 @@ const VISUAL_BASE: Record<string, number> = { opacity: 1, blur: 0, brightness: 1
 const pick = (values: Record<string, number> | undefined, visual: boolean) =>
   values ? Object.fromEntries(Object.entries(values).filter(([key]) => visualKeys.has(key) === visual)) : undefined;
 const emptyMotion: MotionState = { surfaces: {}, camera: {}, focus: {}, channels: {}, issues: [] };
-const SceneContext = createContext<SceneContextValue | null>(null);
-const ParentContext = createContext<symbol | undefined>(undefined);
+const createSceneContexts = () => ({ scene: createContext<SceneContextValue | null>(null), parent: createContext<symbol | undefined>(undefined) });
+function sceneContexts() {
+  if (typeof window === "undefined") return createSceneContexts();
+  // Fast Refresh can evaluate the installed React entry again while the existing Scene is mounted.
+  // Share context identity within this browser realm and React runtime.
+  const key = Symbol.for("velora.scene-context.v1");
+  const host = window as unknown as Record<symbol, WeakMap<typeof createContext, ReturnType<typeof createSceneContexts>> | undefined>;
+  const contexts = host[key] ??= new WeakMap();
+  const existing = contexts.get(createContext);
+  if (existing) return existing;
+  const created = createSceneContexts();
+  contexts.set(createContext, created);
+  return created;
+}
+const { scene: SceneContext, parent: ParentContext } = sceneContexts();
 const useLayout = typeof window === "undefined" ? useEffect : useLayoutEffect;
 export type SceneProps = {
   motion?: MotionInput;
@@ -97,6 +110,9 @@ export type SceneProps = {
   constraints?: SceneConstraintInput[];
   /** Publish read-only snapshots for editor consumers (see useSceneInspector). */
   inspector?: SceneInspector;
+  /** Editor-only director viewpoint: replaces the evaluated camera for display (no constraints, no
+   * depth of field). The real camera still drives `inspector` snapshots; capture refuses this view. */
+  viewCamera?: CameraInput;
   className?: string;
   style?: CSSProperties;
   onDiagnostics?: (issues: SceneIssue[]) => void;
@@ -116,6 +132,7 @@ export function Scene({
   focus,
   constraints,
   inspector,
+  viewCamera,
   motion,
   timeMs = 0,
   className,
@@ -189,8 +206,12 @@ export function Scene({
         path: "timeMs",
         message: "Scene time must be finite.",
       });
-    return { evaluation, validated, state };
-  }, [registry, revision, camera, focus, constraints, motion, timeMs]);
+    // Director view: the same nodes seen from the editor's viewpoint, sharp (focus would mislead).
+    const view = viewCamera
+      ? RESOURCES["evaluate-spatial"]({ camera: viewCamera, focus: { ...input.focus, maxBlur: 0 }, nodes: input.nodes }, measurements, { channels: state.channels })
+      : undefined;
+    return { evaluation, validated, state, view };
+  }, [registry, revision, camera, focus, constraints, motion, timeMs, viewCamera]);
   const context = useMemo(
     () => ({
       registry,
@@ -207,7 +228,7 @@ export function Scene({
       channels: result.state.channels,
       colorChannels: result.state.colorChannels ?? noStrings,
       styles: result.state.styles ?? {},
-      nodes: new Map(result.evaluation.nodes.map((node) => [node.id, node])),
+      nodes: new Map((result.view ?? result.evaluation).nodes.map((node) => [node.id, node])),
       transforms: new Map(
         result.validated.success
           ? result.validated.data.nodes.map((node) => [node.id, node.transform])
@@ -219,7 +240,7 @@ export function Scene({
   // Editor consumers observe the committed evaluation; no instances, elements or callbacks leave the Scene.
   useLayout(() => {
     if (!inspector) return;
-    const nodes = result.evaluation.nodes;
+    const nodes = (result.view ?? result.evaluation).nodes;
     inspector.publish({
       timeMs: context.timeMs,
       bindings: Array.from(registry.entries.values()).map(binding => {
@@ -231,6 +252,9 @@ export function Scene({
       animatables: [...registry.animatables.values()],
       motion: result.state,
       issues: result.evaluation.issues,
+      ...(result.evaluation.camera ? { camera: { ...result.evaluation.camera } } : {}),
+      ...(result.evaluation.focus ? { focus: { ...result.evaluation.focus } } : {}),
+      ...(result.view?.camera ? { view: { ...result.view.camera } } : {}),
     });
   });
   // Callback identity can change when the host stores diagnostics in state. Only
@@ -247,7 +271,7 @@ export function Scene({
   }, [issueKey]);
   // The resolved camera (after constraints) drives the stage; it equals the input without constraints.
   const validCamera = result.validated.success
-    ? result.evaluation.camera ?? result.validated.data.camera
+    ? (result.view ?? result.evaluation).camera ?? result.validated.data.camera
     : undefined;
   return (
     <SceneContext.Provider value={context}>
@@ -255,6 +279,7 @@ export function Scene({
         <div
           className={className}
           data-velora-scene=""
+          data-velora-view={viewCamera ? "director" : undefined}
           data-velora-valid={result.evaluation.issues.length===0 ? "true" : "false"}
           style={{
             ...style,

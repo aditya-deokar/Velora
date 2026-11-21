@@ -33,8 +33,9 @@ const owners = new Map([
   ['parseCssColor','src/core/color.ts'], ['mixColors','src/core/color.ts'],
   ['AnimatableSpecSchema','src/core/animatable.ts'], ['monotoneTangents','src/core/motion.ts'],
   ['useAnimatable','src/react/animatable.ts'],
-  // v2.1 Phase 02 owners: cascade clips, rigs and constraint resolution inside the spatial owner.
-  ['createCascadeClip','src/core/choreography.ts'], ['buildOrbitRig','src/core/shots.ts'], ['resolveConstraints','src/core/spatial.ts'],
+  // v2.1 Phase 02 owners: cascade clips, rigs and constraint resolution inside the spatial owner;
+  // Phase 06 adds the projection owners (forward, ray, plane intersection, surface quads).
+  ['createCascadeClip','src/core/choreography.ts'], ['buildOrbitRig','src/core/shots.ts'], ['resolveConstraints','src/core/spatial.ts'], ['projectWorld','src/core/spatial.ts'], ['screenRay','src/core/spatial.ts'], ['intersectPlane','src/core/spatial.ts'], ['surfaceQuad','src/core/spatial.ts'],
   // v2.1 Phase 03 owners: the edit vocabulary and reducer, the formatting-preserving writer and the edit command.
   // v2.1 Phase 04 owners: the editor store, intents, command registry and the Scene inspector hook.
   ['createEditorStore','src/editor/store.ts'], ['intentToOps','src/editor/intents.ts'], ['EDITOR_COMMANDS','src/editor/commands.ts'], ['useSceneInspector','src/react/inspector.ts'],

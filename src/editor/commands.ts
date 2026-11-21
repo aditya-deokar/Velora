@@ -1,5 +1,10 @@
 import type { EditOp, TrackAddress } from "../core";
-import type { EditorState, EditorStore, KeyRef } from "./store";
+import type { EditorState, EditorStore, KeyRef, ViewportTool } from "./store";
+import type { SceneSnapshot } from "../react";
+import { CameraSchema, FocusSchema } from "../core";
+import { defaultDirector } from "./viewport/DirectorView";
+import { rackOps } from "./viewport/FocusTool";
+import { toAuthored } from "./properties";
 import { intentToOps } from "./intents";
 import { findTrack, listTracks, snapToFrame, trackKey } from "./model";
 
@@ -11,6 +16,7 @@ import { findTrack, listTracks, snapToFrame, trackKey } from "./model";
  * WHERE: Editor.tsx builds the controller and dispatches keydown through matchShortcut; panels run
  * commands by id. Edits go through intents and the store, never around them.
  */
+export type EditorPanel = "palette" | "easing" | "history" | "advisories";
 export type EditorController = {
   store: EditorStore;
   state: EditorState;
@@ -18,10 +24,12 @@ export type EditorController = {
   fps: number;
   /** The property the user last focused (inspector row or timeline row), for Alt+K. */
   focused?: { track: TrackAddress; value: number | string };
-  open(panel: "palette" | "easing" | "history" | "advisories"): void;
+  open(panel: EditorPanel): void;
   copy(): void; cut(): void; paste(): void; duplicate(): void;
   zoom(direction: 1 | -1 | 0): void;
   notify(message: string): void;
+  /** The latest Scene snapshot (viewport commands: director view, rack focus). */
+  snapshot?: SceneSnapshot;
 };
 export type EditorCommand = {
   id: string; label: string; group: string; shortcuts: readonly string[];
@@ -31,6 +39,10 @@ const EASY_EASE = { cubicBezier: [0.333, 0, 0.667, 1] as [number, number, number
 const EASE_IN = { cubicBezier: [0.333, 0, 1, 1] as [number, number, number, number] };
 const EASE_OUT = { cubicBezier: [0, 0, 0.667, 1] as [number, number, number, number] };
 const hasKeys = (state: EditorState) => state.selection.keys.length > 0;
+const tool = (id: ViewportTool, key: string, label: string): EditorCommand =>
+  ({ id: `tool.${id}`, label, group: "Viewport", shortcuts: [key], enabled: always, run: c => c.store.setUi({ tool: id }) });
+const SPECIAL_LAYERS = new Set(["camera", "focus", "motion", "look"]);
+export const surfaceLayers = (state: EditorState) => state.selection.layers.filter(id => !SPECIAL_LAYERS.has(id) && !id.startsWith("clip:") && !id.startsWith("animatable:"));
 const always = () => true;
 const commit = (c: EditorController, ops: EditOp[], label?: string) => { if (ops.length) c.store.commit(ops, label); };
 /** Keys whose outgoing segment exists (the last keyframe of a track has no segment to ease). */
@@ -156,6 +168,34 @@ export const EDITOR_COMMANDS: readonly EditorCommand[] = Object.freeze([
   { id: "timeline.zoom-in", label: "Zoom timeline in", group: "Timeline", shortcuts: ["="], enabled: always, run: c => c.zoom(1) },
   { id: "timeline.zoom-out", label: "Zoom timeline out", group: "Timeline", shortcuts: ["-"], enabled: always, run: c => c.zoom(-1) },
   { id: "timeline.fit", label: "Fit timeline", group: "Timeline", shortcuts: ["\\"], enabled: always, run: c => c.zoom(0) },
+  tool("move", "V", "Move tool"), tool("rotate", "R", "Rotate tool"), tool("scale", "S", "Scale tool"),
+  tool("camera", "C", "Camera tool"), tool("focus", "F", "Focus tool"), tool("pivot", "P", "Pivot (anchor point) tool"),
+  { id: "view.director", label: "Toggle director view", group: "Viewport", shortcuts: ["Tab"], enabled: always, run: c => {
+    if (c.state.ui.director) { c.store.setUi({ director: undefined }); return; }
+    const doc = c.store.committed();
+    const real = c.snapshot?.camera ?? CameraSchema.parse(doc?.definition?.scene?.camera ?? {});
+    const focus = c.snapshot?.focus ?? FocusSchema.parse(doc?.definition?.scene?.focus ?? {});
+    c.store.setUi({ director: defaultDirector(real, focus.distance) });
+  } },
+  { id: "view.onion", label: "Toggle onion skin", group: "Viewport", shortcuts: [], enabled: always, run: c => c.store.setUi({ onion: !c.state.ui.onion }) },
+  { id: "view.paths", label: "Toggle motion paths", group: "Viewport", shortcuts: [], enabled: always, run: c => c.store.setUi({ paths: !c.state.ui.paths }) },
+  { id: "path.convert", label: "Convert to position path", group: "Structure", shortcuts: [], enabled: s => surfaceLayers(s).length > 0 || s.selection.layers.includes("camera"), run: c => {
+    const ops = c.state.selection.layers.filter(id => id === "camera" || surfaceLayers(c.state).includes(id))
+      .map(id => ({ op: "path.fromAxes", target: id === "camera" ? { kind: "camera" } : { kind: "surface", id } } as EditOp));
+    const issues = c.store.commit(ops, "Convert to path");
+    if (issues.length) c.notify(issues[0].message);
+  } },
+  { id: "focus.rack", label: "Rack focus between two layers", group: "Viewport", shortcuts: [], enabled: s => surfaceLayers(s).length === 2, run: c => {
+    const [from, to] = surfaceLayers(c.state);
+    const doc = c.store.committed();
+    if (!c.snapshot) return;
+    const area = c.state.ui.workArea;
+    const start = toAuthored(doc, area?.startMs ?? c.session.timeMs), end = toAuthored(doc, area?.endMs ?? Math.min(c.session.durationMs, c.session.timeMs + 1500));
+    const result = rackOps(doc, c.snapshot, from, to, start, end, c.fps);
+    if (!result) { c.notify("Set a work area (B/N) or move the playhead before the scene end to rack focus."); return; }
+    const issues = c.store.commit(result.ops, `Rack focus ${from} → ${to}`);
+    if (issues.length) c.notify(issues[0].message);
+  } },
 ] satisfies EditorCommand[]);
 /** Transport keys (src/preview/transport.ts) that editor shortcuts must never take. */
 export const TRANSPORT_KEYS: readonly string[] = Object.freeze([" ", "J", "K", "L", "Shift+J", "Shift+K", "Shift+L", "ArrowLeft", "ArrowRight", "Shift+ArrowLeft", "Shift+ArrowRight", "Home", "End", "[", "]"]);

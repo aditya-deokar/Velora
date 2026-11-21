@@ -141,7 +141,7 @@ Phase 01 (both are stop conditions in Phase 00.1).
 |---|---|---|
 | D1 | Confirmed 2026-11-14 (instruction to implement Phase 03); implemented | Bridge design unbuilt; the checker already reserves `src/project/services/**` (bridgeServices) and `src/project/edit.ts` (commands). |
 | D2 | Accepted and implemented (01) | The recipe `editor` block is optional editor-owned metadata; the renderer and `presentPreview` ignore it. |
-| D3 | Accepted (recommendation), confirm before 08 | The `sourceAdapter` layer (`src/project/source.ts`) is reserved. |
+| D3 | Confirmed by the Phase 08 implementation request | Every host source write requires explicit confirmation and compares the reviewed revisions. |
 | D4 | Accepted (recommendation), confirm before 09 | The `three` layer allows only `three` and `@react-three/fiber`; nothing is installed yet. |
 | D5 | Accepted (recommendation), confirm before 11 | Guide stays version 3 through 01. |
 | D6 | Resolved 2026-11-16: in-house | Built in-house (SVG per visible row, virtualized, dense rows as paths); measured budgets in `artifacts/phase-05-exit.md`. |
@@ -228,8 +228,6 @@ Full matrix and sources: `OPEN-SOURCE-EVALUATION.md`.
 | 04 | `PHASE-04-editor-shell.md` | Editor shell | Edit mode, layers, inspector with stopwatches, history, save states, command palette | 03 |
 | 05 | `PHASE-05-timeline-and-graph-editor.md` | Timeline and graph editor | Dope sheet, clip bars, snapping, graph editor, easing library | 04, 02 |
 | 06 | `PHASE-06-viewport-and-camera-tools.md` | Viewport | Picking, gizmos, motion paths, onion skin, camera tools, director view, focus tools | 04, 02 |
-| 07 | `PHASE-07-groups-presets-motion-design.md` | Groups and motion design | Group/stagger/sequence tools, behaviors, camera moves, presets, text animator, trim paths, shapes | 05, 06 |
-| 08 | `PHASE-08-source-integration.md` | Real components | JSX outline, promote to layer, spatial groups, expose prop, click-to-source | 04 |
 | 09 | `PHASE-09-threejs-full-control.md` | Three.js | `/three` entry: deterministic R3F, 3D animatables, GLTF clips, unified camera, 3D gizmos | 04, 06 |
 | 10 | `PHASE-10-composition-editing.md` | The cut | Composition lanes, trim tools, transitions, waveforms, beat snapping | 05 |
 | 11 | `PHASE-11-agent-parity-quality-release.md` | Parity, quality, release | Parity audit, skills, guide v4, performance/a11y/security gates, 1.1.0 | all |
@@ -313,4 +311,5 @@ on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 | 03 | done | `EditOpSchema`/`applyEdits` with exact inverses, the formatting-preserving writer, `velora edit`, and the secure loopback bridge and watcher (`artifacts/phase-03-exit.md`). S2 not run. |
 | 04 | done | Edit mode shell: store, bridge client, layers, inspector, history, palette; scripted journey byte-exact with undo; time to first keyframe 1.5 s (`artifacts/phase-04-exit.md`). |
 | 05 | done (budgets partly) | Dope sheet, snapping, clip bars, graph editor, easing library, `edit paste`; 200×1000 timeline with no long tasks; drag/graph budgets not yet met (`artifacts/phase-05-exit.md`). |
-| 06–16 | not started | — |
+| 06 | implemented, viewport budget open | Picking, gizmos, motion paths, director view, and focus tools ([exit report](artifacts/phase-06-exit.md)). |
+| 07–16 | not started | — |

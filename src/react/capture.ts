@@ -30,6 +30,8 @@ export function useSceneCapture({durationMs,seek,selector='[data-velora-capture=
     if(host.__VELORA_CAPTURE__) throw new Error("Only one capture viewport can be registered per page.");
     const verify=()=>{
       const viewport=document.querySelector(selector);
+      if(viewport?.matches('[data-velora-view="director"]') || viewport?.querySelector('[data-velora-view="director"]'))
+        throw new Error("Return to camera view before exporting.");
       if(viewport?.matches('[data-velora-valid="false"]') || viewport?.querySelector('[data-velora-valid="false"]'))
         throw new Error("Correct scene diagnostics before exporting; some content may bypass depth of field.");
     };

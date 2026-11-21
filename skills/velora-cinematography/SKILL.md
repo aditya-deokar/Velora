@@ -161,6 +161,16 @@ These techniques are named after where they are commonly taught and recognized; 
 - **Orbit rig.** `buildOrbitRig({ radius, fromDeg, toDeg, height, durationMs, ease })` returns `{ clip, constraint }`: a constant-speed camera position path, eased as a group, plus a lookAt. Add the clip to `motion.clips` and the constraint to `scene.constraints`. Keep arcs within about 60 degrees for UI subjects, and pair the rig with focusFollow at long lenses.
 - Constraints resolve in the spatial owner from live layout, so preview and export agree. A constraint target must be a node in `scene.nodes`.
 
+## Directing in the Studio Viewport (Edit mode)
+
+People editing in the studio (`velora edit --scene <id>`) direct the camera in the frame. Every gesture is an `EditOp` you could also write with `velora edit`:
+- **Camera tool (C).** Drag orbits around the selected layer or the focus point; Shift+drag trucks and pedestals (x/y); the wheel or Alt+vertical drag dollies (z); Ctrl/⌘+drag pans and tilts in place (the eye stays fixed); the ring rolls (rotateZ). Alt+wheel changes the lens (focal length to `perspective` through `lens.ts`), and Alt+Shift+wheel is a **dolly-zoom** that keeps the selected subject's projected size while the background warps. A layer at z = 0 projects 1:1 under every lens, so dolly-zoom only moves the camera when the subject has depth.
+- **Writes.** Animated camera properties (or Auto-key) key at the playhead; otherwise the change is a `camera.set` static override.
+- **Director view (Tab).** An editor-only viewpoint that shows the real camera (eye, frustum to the frame plane and the focus plane) in the set; dragging the camera gizmo moves the real camera. Depth of field is off there, and exports refuse it with "Return to camera view before exporting.".
+- **Focus tool (F).** Click a layer to set `focus.distance` to that point's depth for the real camera; Shift+click adds `focusFollow` on it. Focus peaking turns on while the tool is active. The **Rack focus** command (two layers selected) writes two `focus.distance` keyframes with a cinematic ease over the work area (or 1.5 s from the playhead) that land sharp on each layer.
+
+Select one layer and open **Camera moves** to apply a shot as an editable clip. Check the frame coverage, depth margin, and focus blur in the inline verdict. Adjust the intensity or lens when the measured subject misses the framing limits.
+
 ## Related Skills
 
 - `velora-templates`: certified starting points that encode these moves.

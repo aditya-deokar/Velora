@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CameraSchema, FocusSchema, SceneConstraintSchema, ConstraintTargetSchema, type SceneConstraint } from "./scene";
 import { evaluateMotion, withAdditive, type MotionInput, type MotionClipInput, type MotionState } from "./motion";
-import { matrixFor, multiply, focusForSurface, sampleFocus, cameraMatrix as stageCamera, resolveConstraints, type Matrix } from "./spatial";
+import { matrixFor, multiply, focusForSurface, sampleFocus, cameraMatrix as stageCamera, resolveConstraints, projectWorld, type Matrix } from "./spatial";
 import { EasingSchema } from "./easing";
 import { lensFor } from "./lens";
 import type { EasingInput } from "./easing";
@@ -317,12 +317,9 @@ export function framingReport(definition: ShotDefinition, subject: { width: numb
 export function projectPoints(definition: Pick<ShotDefinition, "width" | "height" | "scene" | "motion">, points: readonly (readonly [number, number, number])[], timeMs: number): ({ x: number; y: number } | null)[] {
   const state = evaluateMotion(definition.motion, timeMs);
   const c = resolvedLens(definition, state).camera;
-  const m = cameraMatrix(c);
   return points.map(point => {
-    const [x, y, z] = apply(m, point);
-    if (z >= c.perspective) return null;
-    const k = c.perspective / (c.perspective - z);
-    return { x: definition.width / 2 + x * k, y: definition.height / 2 + y * k };
+    const projected = projectWorld(c, definition, point);
+    return projected && { x: projected.x, y: projected.y };
   });
 }
 /** Screen-space corners of the centered subject plane at one time: the studio's schematic storyboards

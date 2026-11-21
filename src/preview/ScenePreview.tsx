@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { SUPPORTED_EXPORT_FPS, ExportFrameRateSchema, QualityPresetSchema, VideoCodecSchema, CODEC_CONTAINERS, type PreviewDefinitionInput, type QualityPreset, type VideoCodec } from "../core";
+import { SUPPORTED_EXPORT_FPS, ExportFrameRateSchema, QualityPresetSchema, VideoCodecSchema, CODEC_CONTAINERS, type CameraInput, type PreviewDefinitionInput, type QualityPreset, type VideoCodec } from "../core";
 import { Scene, SceneErrorBoundary, useSceneCapture, createSceneInspector, type SceneInspector } from "../react";
 import { LookLayer } from "../kit";
 import { decodeBase64Url, hasExportFinishing, resolveLook, LookSchema, type LookInput } from "../core";
@@ -46,6 +46,11 @@ export type ScenePreviewProps = {
   slots?: { left?: ReactNode; right?: ReactNode; bottom?: ReactNode; toolbar?: ReactNode; overlay?: ReactNode };
   /** Shows an Edit link in the scene header (opens Edit mode). */
   editHref?: string;
+  /** Editor-only director viewpoint (layout="editor"): replaces the camera for display only; the
+   * capture viewport is marked data-velora-view="director" and exports refuse it. */
+  viewCamera?: CameraInput;
+  /** Editor-only: force focus peaking on (the focus tool turns it on while active). */
+  peaking?: boolean;
 };
 /** What editor panels read from the one preview: the session (single cursor), the Scene inspector
  * channel and the frame geometry. Provided only in layout="editor". */
@@ -124,7 +129,7 @@ function ExportMenu({disabled, panelHost, size}: {disabled: boolean; panelHost: 
     </details>;
 }
 
-export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, revision, hot, timeline, fps = 60, exportSize, aside, layout, slots, editHref}: ScenePreviewProps) {
+export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, revision, hot, timeline, fps = 60, exportSize, aside, layout, slots, editHref, viewCamera, peaking}: ScenePreviewProps) {
   const editor = layout === "editor";
   const [inspector] = useState(() => editor ? createSceneInspector() : undefined);
   const session = usePreviewSession(input, revision, timeline);
@@ -171,15 +176,16 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
   const capture = <SceneErrorBoundary resetKey={resetKey} onError={failure} onReset={() => setRenderError("")}>
     {definition && viewport && createPortal(
       <div className="velora-canvas" data-velora-capture="scene" data-velora-valid={blocked ? "false" : "true"}
-        style={{width: "100%", height: "100%"}}>
+        data-velora-view={editor && viewCamera ? "director" : undefined} style={{width: "100%", height: "100%"}}>
         <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
           <LookLayer look={look} timeMs={session.timeMs} width={definition.width} height={definition.height}>
             <Scene camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
-              timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(inspector ? {inspector} : {})}>
+              timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(inspector ? {inspector} : {})}
+              {...(editor && viewCamera ? {viewCamera} : {})}>
               {children}
             </Scene>
           </LookLayer>
-          <StudioOverlays width={definition.width} height={definition.height} state={overlays} root={frame} timeMs={session.timeMs}/>
+          <StudioOverlays width={definition.width} height={definition.height} state={peaking && !overlays.peaking ? {...overlays, peaking: true} : overlays} root={frame} timeMs={session.timeMs}/>
           {slots?.overlay && <div data-velora-preview-chrome="" data-velora-editor-overlay="" style={{position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none"}}>{slots.overlay}</div>}
         </div>
         <Capture durationMs={session.durationMs} seek={captureSeek} look={look}/>

@@ -100,6 +100,15 @@ the same ops you make, through the same bridge:
 - The timeline drags keyframes (snapped to frames, playhead, markers and keys), Alt-drag retimes, clip bars
   move and trim, G opens the graph editor (bezier handles map exactly to `cubicBezier`), E the easing library,
   F9 Easy Ease, Ctrl/⌘+G groups tracks into a clip.
+- The viewport is direct manipulation on the same ops: click a layer in the frame to select it (Alt+click
+  cycles the stack under the cursor, Shift adds, Ctrl/⌘ toggles, drag on empty space marquees, double-click
+  enters a group and Esc leaves it; locked layers are skipped). Tools: **V** move (in the parent's plane, so the
+  grabbed point follows the cursor under perspective; axis handles constrain, the depth handle pushes along z,
+  Shift snaps to 10 px, thirds/center/safe guides snap), **R** rotate rings (Shift 15°), **S** scale (corners keep
+  the opposite corner, Alt about the pivot, side handles write scaleX/scaleY), **P** pivot (writes originX/originY
+  and compensates x/y so nothing moves), **C** camera, **F** focus, **Tab** director view. Type a number during a
+  drag and press Enter for an exact value; Esc cancels. Motion paths show sampled positions with frame ticks and
+  draggable keyframe dots; **Convert to position path** runs `path.fromAxes`; onion skin draws ghost outlines.
 - Copying keyframes (Ctrl/⌘+C) produces an `application/x-velora-keyframes+json` clipboard; agents can apply
   one with `velora edit paste --scene <id> --from <file> --at <ms> [--onto <surface>]`.
 - While the editor is open, always pass `--expect-sha`: the editor saves after every gesture. If you write, it

@@ -13,9 +13,9 @@ import {
   type NodeDefinition,
 } from "./scene";
 
-/** SOURCE OF TRUTH: evaluateScene, transformToCss, cameraToCss, focusForSurface, sampleFocus, focusMask, uniformFocusBlur, resolveConstraints.
- * WHAT: camera-space transforms, scene constraints (lookAt, focusFollow) resolved from layout, and
- * progressive spatial focus for every renderer consumer.
+/** SOURCE OF TRUTH: evaluateScene, transformToCss, cameraToCss, focusForSurface, sampleFocus, focusMask, uniformFocusBlur, resolveConstraints, projectWorld, screenRay, intersectPlane, surfaceQuad.
+ * WHAT: camera-space transforms, scene constraints (lookAt, focusFollow) resolved from layout,
+ * progressive spatial focus, and the one forward/inverse projection (frame pixels <-> 3D) for every consumer.
  * WHY: one mathematical definition keeps DOM preview and future output adapters consistent.
  * WHERE: React registration provides untransformed layout measurements; no DOM or transport is imported here.
  */
@@ -189,6 +189,72 @@ export function transformToCss(input: TransformInput = {}): string {
   if (hasAxisScale(t)) css += ` scale3d(${t.scaleX ?? 1}, ${t.scaleY ?? 1}, ${t.scaleZ ?? 1})`;
   if (hasSkew(t)) css += ` skew(${t.skewX ?? 0}deg, ${t.skewY ?? 0}deg)`;
   return css;
+}
+/** Frame geometry in output pixels (the stage origin sits at the frame center). */
+export type Frame = { readonly width: number; readonly height: number };
+export type ProjectedPoint = { x: number; y: number; depth: number };
+/** "stage": scene coordinates (the camera matrix is applied); "view": camera space, the space of
+ * `EvaluatedNode.world` matrices (eye at (0, 0, perspective), looking down -z). */
+export type ProjectionSpace = "stage" | "view";
+export type Ray = { origin: Vec3; direction: Vec3 };
+type Lens = Pick<CameraDefinition, "x" | "y" | "z" | "rotateX" | "rotateY" | "rotateZ" | "perspective">;
+/** The one forward projection: a 3D point to frame pixels plus camera-axis depth (perspective - z,
+ * positive in front of the eye). Null when the point is at or behind the eye plane. */
+export function projectWorld(camera: Lens, frame: Frame, point: readonly number[], space: ProjectionSpace = "stage"): ProjectedPoint | null {
+  const [x, y, z] = space === "stage" ? applyPoint(cameraMatrix(camera), point) : [point[0], point[1], point[2]];
+  if (z >= camera.perspective) return null;
+  const k = camera.perspective / (camera.perspective - z);
+  return { x: frame.width / 2 + x * k, y: frame.height / 2 + y * k, depth: camera.perspective - z };
+}
+/** Inverse of an affine 4x4 (rows; last row 0 0 0 1). Null when singular. */
+export function invertAffine(m: Matrix): Matrix | null {
+  const [a, b, c, d, e, f, g, h, i] = [m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]];
+  const det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-12) return null;
+  const r = [
+    (e * i - f * h) / det, (c * h - b * i) / det, (b * f - c * e) / det,
+    (f * g - d * i) / det, (a * i - c * g) / det, (c * d - a * f) / det,
+    (d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det,
+  ];
+  const [tx, ty, tz] = [m[3], m[7], m[11]];
+  return [
+    r[0], r[1], r[2], -(r[0] * tx + r[1] * ty + r[2] * tz),
+    r[3], r[4], r[5], -(r[3] * tx + r[4] * ty + r[5] * tz),
+    r[6], r[7], r[8], -(r[6] * tx + r[7] * ty + r[8] * tz),
+    0, 0, 0, 1,
+  ];
+}
+/** The ray from the eye through a frame pixel. Direction is not normalized: t = 1 reaches the z = 0
+ * view plane, so intersectPlane's `t` compares depths along one ray. */
+export function screenRay(camera: Lens, frame: Frame, screen: { x: number; y: number }, space: ProjectionSpace = "view"): Ray {
+  const origin: Vec3 = [0, 0, camera.perspective];
+  const direction: Vec3 = [screen.x - frame.width / 2, screen.y - frame.height / 2, -camera.perspective];
+  if (space === "view") return { origin, direction };
+  const inverse = invertAffine(cameraMatrix(camera))!; // rigid: always invertible
+  const o = applyPoint(inverse, origin);
+  const tip = applyPoint(inverse, [origin[0] + direction[0], origin[1] + direction[1], origin[2] + direction[2]]);
+  return { origin: o, direction: [tip[0] - o[0], tip[1] - o[1], tip[2] - o[2]] };
+}
+/** Where a ray meets the z = 0 plane of `world` (same space as the ray): local surface coordinates
+ * (u, v) and the ray parameter t. Null when parallel or behind the origin. */
+export function intersectPlane(ray: Ray, world: Matrix): { u: number; v: number; t: number } | null {
+  // Solve u·A + v·B - t·D = O - P for the plane axes A, B, origin P and ray direction D (Cramer).
+  const A = [world[0], world[4], world[8]], B = [world[1], world[5], world[9]], D = ray.direction;
+  const R = [ray.origin[0] - world[3], ray.origin[1] - world[7], ray.origin[2] - world[11]];
+  const det3 = (c0: number[], c1: number[], c2: number[]) =>
+    c0[0] * (c1[1] * c2[2] - c2[1] * c1[2]) - c1[0] * (c0[1] * c2[2] - c2[1] * c0[2]) + c2[0] * (c0[1] * c1[2] - c1[1] * c0[2]);
+  const negD = [-D[0], -D[1], -D[2]];
+  const det = det3(A, B, negD);
+  const scale = Math.hypot(...A) * Math.hypot(...B) * Math.hypot(...D);
+  if (!Number.isFinite(det) || scale === 0 || Math.abs(det) < 1e-12 * scale) return null;
+  const u = det3(R, B, negD) / det, v = det3(A, R, negD) / det, t = det3(A, B, R) / det;
+  return t > 0 && Number.isFinite(u) && Number.isFinite(v) ? { u, v, t } : null;
+}
+/** Projected corners of an evaluated Surface (top-left, top-right, bottom-right, bottom-left; local
+ * coordinates are centered on the Surface). Null corners sit behind the eye. */
+export function surfaceQuad(node: Pick<EvaluatedNode, "world" | "width" | "height">, camera: Lens, frame: Frame): (ProjectedPoint | null)[] {
+  const w = node.width / 2, h = node.height / 2;
+  return [[-w, -h], [w, -h], [w, h], [-w, h]].map(([x, y]) => projectWorld(camera, frame, applyPoint(node.world, [x, y, 0]), "view"));
 }
 export function evaluateScene(
   input: unknown,

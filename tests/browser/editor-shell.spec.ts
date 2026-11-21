@@ -51,7 +51,8 @@ test("stopwatch, key at playhead, undo to the original bytes, external edits", a
   expect(await readFile(file(), "utf8")).toBe(formatJsonDocument(step1, second.ok ? second.recipe : {}));
   test.info().annotations.push({ type: "time-to-first-keyframe-ms", description: String(timeToFirstKeyframe) });
   // Undo both edits: the file returns to the original bytes.
-  await page.mouse.click(700, 650);
+  // Leave the text field (clicking empty viewport space would deselect the layer since Phase 06).
+  await page.locator('[data-item="dashboard"]').click();
   await page.keyboard.press("Control+z");
   await page.keyboard.press("Control+z");
   await until(async () => (await readFile(file(), "utf8")) === original);

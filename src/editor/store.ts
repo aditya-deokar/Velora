@@ -16,7 +16,10 @@ export type HistoryEntry = { label: string; ops: EditOp[]; inverse: EditOp[]; at
 export type KeyRef = { track: TrackAddress; atMs: number };
 export type Selection = { layers: string[]; tracks: TrackAddress[]; keys: KeyRef[]; clips: string[] };
 export type EditorUi = { autoKey: boolean; snap: boolean; animatedOnly: boolean; view: "dope" | "graph"; zoom: number; scroll: number;
-  workArea?: { startMs: number; endMs: number }; solo: string[]; hidden: string[]; armed: string[]; expanded: string[]; panel?: string };
+  workArea?: { startMs: number; endMs: number }; solo: string[]; hidden: string[]; armed: string[]; expanded: string[]; panel?: string;
+  /** Viewport (Phase 06): active tool, director viewpoint (editor-only camera), group scope, overlays. */
+  tool: ViewportTool; director?: import("../core").CameraDefinition; scope?: string; onion: boolean; paths: boolean };
+export type ViewportTool = "move" | "rotate" | "scale" | "camera" | "focus" | "pivot";
 export type ConflictInfo = { text: string; sha: string; doc: Doc; reason: string };
 export type EditorState = {
   sceneId: string;
@@ -41,7 +44,7 @@ export type EditorWriter = (baseSha: string, ops: EditOp[], label: string) => Pr
 export const HISTORY_LIMIT = 200;
 export const COALESCE_MS = 1000;
 const EMPTY_SELECTION: Selection = { layers: [], tracks: [], keys: [], clips: [] };
-export const DEFAULT_UI: EditorUi = { autoKey: false, snap: true, animatedOnly: false, view: "dope", zoom: 1, scroll: 0, solo: [], hidden: [], armed: [], expanded: [] };
+export const DEFAULT_UI: EditorUi = { autoKey: false, snap: true, animatedOnly: false, view: "dope", zoom: 1, scroll: 0, solo: [], hidden: [], armed: [], expanded: [], tool: "move", onion: false, paths: true };
 const development = (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV === true;
 function deepFreeze<T>(value: T): T {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
@@ -127,7 +130,7 @@ export function createEditorStore(options: { sceneId: string; base: Doc; sha?: s
   const commitOps = (ops: EditOp[], label?: string, merge = false): EditIssue[] => {
     if (!ops.length) return [];
     const result = applyEdits(committed(), ops);
-    if (!result.ok) { set({ transient: [], issues: result.issues, ...(derive(state.pending, []) ?? {}) }); return result.issues; }
+    if (!result.ok) { set({ transient: [], ...(derive(state.pending, []) ?? {}), issues: result.issues }); return result.issues; }
     const entry: HistoryEntry = { label: label ?? ops.map(describeOp).join("; "), ops, inverse: result.inverse, at: now() };
     let undo = [...state.undo, entry];
     // Rapid single-op edits of one target (arrow nudges, typed values) are one history step.
