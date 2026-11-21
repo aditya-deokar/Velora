@@ -49,10 +49,12 @@ const owners = new Map([
   ['evaluateScene', 'src/core/spatial.ts'], ['transformToCss', 'src/core/spatial.ts'],
   ...['StageSchema','STAGE_PRESETS','resolutionBudget'].map(name=>[name,'src/core/stage.ts']),
   ['AppStage','src/react/stage.tsx'], ['useAppStage','src/react/stage.tsx'],
+  ...['DEPTH_TIERS','classifyDepth','evaluateDepthLayers'].map(name=>[name,'src/core/depth.ts']),
+  ['createStyleLedger','src/react/depth/ledger.ts'],
 ]);
 // Inert identity records are frozen object literals rather than schemas or functions.
 // Frozen catalogs (an array literal, possibly under `satisfies`/`as`) count the same way.
-const frozenMetadata = new Set(['VELORA_BRAND', 'VELORA_PACKAGE', 'EDITOR_COMMANDS', 'BEHAVIOR_CATALOG', 'STAGE_PRESETS']);
+const frozenMetadata = new Set(['VELORA_BRAND', 'VELORA_PACKAGE', 'EDITOR_COMMANDS', 'BEHAVIOR_CATALOG', 'STAGE_PRESETS', 'DEPTH_TIERS']);
 const layers = {
   core: { local: ['core'], external: ['zod'] },
   runtime: { local: ['core', 'runtime'], external: ['zod'] },
@@ -144,6 +146,32 @@ export function checkArchitecture(input, { compilerOptions = {} } = {}) {
     const layer = layerOf(name);
     for (const diagnostic of file.parseDiagnostics) add(file, undefined, 'syntax', ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
 
+    function hostStyleWrite(node) {
+      if (!(name.startsWith('src/kit/') || name.startsWith('src/react/depth/')) || name === 'src/react/depth/ledger.ts') return;
+      const member = expression => ts.isPropertyAccessExpression(expression) ? expression.name.text
+        : ts.isElementAccessExpression(expression) && ts.isStringLiteralLike(expression.argumentExpression) ? expression.argumentExpression.text : undefined;
+      const inside = expression => ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression);
+      let target;
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment) target = node.left;
+      if (ts.isCallExpression(node) && ['setProperty','removeProperty','setAttribute','removeAttribute'].includes(member(node.expression))) {
+        if (['setAttribute','removeAttribute'].includes(member(node.expression))) {
+          if (node.arguments[0] && ts.isStringLiteralLike(node.arguments[0]) && node.arguments[0].text.toLowerCase() === 'style')
+            add(file, node, 'host-style-ledger', 'Use createStyleLedger for host inline styles.');
+          return;
+        }
+        target = node.expression;
+      }
+      if (!target || !inside(target)) return;
+      const style = member(target) === 'style' ? target : target.expression;
+      if (!inside(style) || member(style) !== 'style') return;
+      const element = ts.isElementAccessExpression(style.expression) ? style.expression.expression : style.expression;
+      if (name === 'src/react/depth/Volumetric.tsx' && ts.isIdentifier(element)) {
+        const declaration = checker.getSymbolAtLocation(element)?.valueDeclaration;
+        if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer?.getText(file).includes('.createElement(')) return;
+      }
+      add(file, node, 'host-style-ledger', 'Use createStyleLedger for host inline styles.');
+    }
+
     function dependency(expression, dynamic = false) {
       if (!layer) return;
       if (!expression || !(ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression))) {
@@ -227,6 +255,7 @@ export function checkArchitecture(input, { compilerOptions = {} } = {}) {
     }
 
     function visit(node) {
+      hostStyleWrite(node);
       declaration(node);
       if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
         if (node.moduleSpecifier) dependency(node.moduleSpecifier);

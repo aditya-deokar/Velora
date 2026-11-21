@@ -77,8 +77,9 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
     }, Date.now(), { timeout: 30_000, polling: 100 }).then(handle => handle.jsonValue(), () => "timeout");
     const manifest = () => page.evaluate(() => {
       const bridge = (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__;
+      const depth = bridge.depth;
       return { version: bridge.version, durationMs: bridge.durationMs, selector: bridge.selector,
-        ...(bridge.look ? { look: bridge.look } : {}), ...(bridge.stage ? { stage: bridge.stage } : {}) };
+        ...(bridge.look ? { look: bridge.look } : {}), ...(bridge.stage ? { stage: bridge.stage } : {}), ...(depth?.length ? { depth } : {}) };
     });
     const assertBridge = async () => {
       if (await waitForBridge() !== "ready") throw fault("missing-capture", "This page has no ready Velora capture bridge. Open a scene with capture enabled and retry.");
@@ -110,9 +111,13 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
       ]);
     });
     let networkSettle: Promise<void> | undefined;
+    const seek = (timeMs: number) => page.evaluate(elapsed => (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__.seek(elapsed), timeMs);
     return {
       close,
-      manifest,
+      async manifest(timeMs?: number) {
+        if (timeMs !== undefined) await seek(timeMs);
+        return manifest();
+      },
       async snapshot(timeMs:number, manifest:CaptureManifest){
         check();
         // A busy dev server can keep the network active throughout capture. Try once at startup.
@@ -121,7 +126,7 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
         await page.evaluate(()=>document.fonts.ready.then(()=>{}));
         const locator=page.locator(manifest.selector);
         if(await locator.count()!==1)throw fault("invalid-capture","Capture must identify exactly one scene viewport.");
-        await page.evaluate(elapsed=>(window as unknown as {__VELORA_CAPTURE__:CaptureBridge}).__VELORA_CAPTURE__.seek(elapsed),timeMs);
+        await seek(timeMs);
         const rect=await locator.boundingBox();
         if(!rect||rect.width<1||rect.height<1||rect.width>3840||rect.height>3840)throw fault("invalid-capture","Scene viewport must be visible and bounded.");
         const png=await page.screenshot({clip:rect,type:"png",animations:"disabled",omitBackground:transparent,timeout:30_000});check();
@@ -154,7 +159,7 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
           encoder.stdin!.on("error", () => {});
           const shoot = async (elapsed: number) => {
             check();
-            await page.evaluate(time => (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__.seek(time), elapsed);
+            await seek(elapsed);
             return page.screenshot({ clip: rect, type: "png", animations: "disabled", omitBackground: transparent, timeout: 30_000 });
           };
           for (let i = 0; i < frames; i++) {

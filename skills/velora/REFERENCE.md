@@ -20,6 +20,7 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `doctor` | `--project`, `--url`, `--json` | `velora doctor --json` |
 | `render` | `--composition`, `--frame`, `--time`, `--out`, `--parallel`, `--no-cache`, `--cache-dir`, `--fps`, `--width`, `--height`, `--url`, `--project`, `--json`, `--no-stream`, `--quality`, `--stage-dpr`, `--codec`, `--transparent`, `--motion-blur`, `--motion-samples`, `--gif-fps`, `--poster`, `--preset`, `--aspects` | `velora render --composition teaser.composition.json --out teaser.mp4 --quality master --json` |
 | `frames` | `--composition`, `--out`, `--every`, `--at`, `--contact-sheet`, `--columns`, `--no-cache`, `--cache-dir`, `--url`, `--project`, `--json` | `velora frames --composition teaser.composition.json --out stills --every 30 --json` |
+| `depth` | `--scene`, `--url`, `--write`, `--project`, `--json` | `velora depth resolve --scene home-hero --json` |
 | `shot` | `--scene`, `--time`, `--out`, `--url`, `--quality`, `--stage-dpr`, `--motion-blur`, `--motion-samples`, `--fps`, `--transparent`, `--finish`, `--project`, `--json` | `velora shot --scene demo --time 500 --out shot.png --json` |
 | `check` | `--frames`, `--video`, `--manifest`, `--budget-ms`, `--project`, `--json` | `velora check --frames stills --json` |
 | `audio` | `--composition`, `--file`, `--write-markers`, `--project`, `--json` | `velora audio check --composition teaser.composition.json --json` |
@@ -32,7 +33,7 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `transitions` | `--type`, `--json` | `velora transitions ls --json` |
 | `deliver` | `--composition`, `--targets`, `--out`, `--quality`, `--stage-dpr`, `--parallel`, `--no-cache`, `--no-stream`, `--url`, `--project`, `--json` | `velora deliver --composition launch.composition.json --targets youtube,reels,website-hero --json` |
 | `studio` | `--site`, `--port`, `--check`, `--edit`, `--scene`, `--read-only`, `--project`, `--json` | `velora studio --site http://127.0.0.1:4321 --json` |
-| `edit` | `--scene`, `--composition`, `--at`, `--ops`, `--expect-sha`, `--write`, `--track`, `--value`, `--ease`, `--label`, `--from`, `--onto`, `--preset`, `--size`, `--to`, `--layer`, `--title`, `--values`, `--file`, `--node`, `--nodes`, `--id`, `--content`, `--prop`, `--options`, `--expect-recipe-sha`, `--port`, `--url`, `--read-only`, `--no-open`, `--project`, `--json` | `velora edit source outline --scene home-hero --json` |
+| `edit` | `--scene`, `--composition`, `--at`, `--ops`, `--expect-sha`, `--write`, `--track`, `--value`, `--ease`, `--label`, `--from`, `--onto`, `--preset`, `--size`, `--surface`, `--mode`, `--intensity`, `--to`, `--layer`, `--title`, `--values`, `--file`, `--node`, `--nodes`, `--id`, `--content`, `--prop`, `--options`, `--expect-recipe-sha`, `--port`, `--url`, `--read-only`, `--no-open`, `--project`, `--json` | `velora edit source outline --scene home-hero --json` |
 | `create` | `--name`, `--blueprint`, `--json` | `velora create my-launch --name Fieldnote --json` |
 | `prompts` | `--id`, `--json` | `velora prompts show --id launch-film --json` |
 | `skills` | `--dir`, `--agent`, `--source`, `--json` | `velora skills install --dir <path> --json` |

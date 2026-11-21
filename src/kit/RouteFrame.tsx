@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { RouteSchema } from "../core/templates";
 import { useAnimatableState, useCaptureSettle } from "../react";
+import { useProjectedDepth } from "../react/depth";
 import { SCROLL_SPEC, animatableIdFor } from "./brand";
 
 /** RouteFrame: a same-origin route of the running app, framed as live material in a Surface.
@@ -40,16 +41,26 @@ export function RouteFrame({ route, width, height, scrollChannel, scrollY = 0, f
   const scrollState = useAnimatableState(animatableIdFor(scrollChannel), SCROLL_SPEC, scrollChannel ? { channels: { scroll: scrollChannel } } : {});
   const scroll = scrollChannel && scrollState.animated.has("scroll") ? scrollState.values.scroll : scrollY;
   const frame = useRef<HTMLIFrameElement>(null);
+  const sheetRef = useRef<HTMLStyleElement>(null);
+  const captureEnded = useRef(false);
+  const [loadedDocument, setLoadedDocument] = useState<Document>();
   const [state, setState] = useState<"loading" | "ready" | "blocked">("loading");
   const loaded = useMemo(() => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; }, [route]);
   const src = useMemo(() => typeof location === "undefined" || !parsed.success ? "about:blank" : new URL(route, location.origin).href, [route, parsed.success]);
   const document = () => {
     try { return frame.current?.contentDocument ?? undefined; } catch { return undefined; }
   };
+  useProjectedDepth(frame, loadedDocument === document() ? loadedDocument : undefined, () => {
+    captureEnded.current = true;
+    sheetRef.current?.remove();
+    sheetRef.current = null;
+  });
+  useLayoutEffect(() => () => { sheetRef.current?.remove(); sheetRef.current = null; }, [src]);
   const apply = () => {
     const doc = document();
-    if (!doc) return;
+    if (!doc || captureEnded.current) return;
     if (!doc.getElementById(STYLE_ID)) {
+      sheetRef.current?.remove();
       const sheet = doc.createElement("style");
       sheet.id = STYLE_ID;
       sheet.textContent = [
@@ -57,13 +68,17 @@ export function RouteFrame({ route, width, height, scrollChannel, scrollY = 0, f
         hideScrollbars ? "html{scrollbar-width:none}html::-webkit-scrollbar{display:none}" : "",
       ].join("");
       doc.head.appendChild(sheet);
+      sheetRef.current = sheet;
+      doc.defaultView?.addEventListener("pagehide", () => sheet.remove(), { once: true });
     }
     doc.defaultView?.scrollTo(0, scroll);
   };
   const onLoad = () => {
     const doc = document();
-    if (!doc || doc.location.origin !== location.origin) { setState("blocked"); loaded.resolve(); return; }
+    if (!doc || doc.location.origin !== location.origin) { setLoadedDocument(undefined); setState("blocked"); loaded.resolve(); return; }
+    captureEnded.current = false;
     apply();
+    setLoadedDocument(doc);
     setState("ready");
     loaded.resolve();
   };

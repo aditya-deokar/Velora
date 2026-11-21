@@ -90,3 +90,6 @@ Expected: raising `--budget-ms` is a measurement change, not a fix; real fixes l
 - Do not use this skill for correctness failures; load `velora-debug`.
 - Do not use this skill for audio drift or caption coverage; load `velora-audio` or `velora-verify`.
 - Do not quote this skill as a universal guarantee.
+## Budget depth layers
+
+Start with the default 48 classified layers per Surface. Use `maxLayers` or rules to keep the pieces that read at the output size. Classification runs on layout changes and camera motion updates the light from cached geometry. Record the depth hashes when comparing repeated renders, and run the depth performance test on the target hardware before raising the layer count.

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { applyEdits, describeOp, lineDiff, parseTrackShorthand, type EditOp, type EditIssue, type TrackAddress } from "../core/edit";
 import { stageFromSpec } from "../core/stage";
+import { DEFAULT_DEPTH_LIGHT, DepthConfigSchema, DepthIntensitySchema, DepthModeSchema } from "../core/depth";
 import { formatJsonDocument, parseJsonDocument } from "../core/json";
 import { SceneRecipeIdSchema, SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 import { MotionSchema, clipTiming, evaluateMotion } from "../core/motion";
@@ -24,7 +25,7 @@ import { compositionBridgeHandlers, readCompositionEdit } from "./composition-ed
  * WHERE: cli/index parses flags; core/edit and core/json own the reducer and writer; services own file I/O
  * (scoped paths, atomic writes); services/bridge owns the loopback transport and watcher.
  */
-export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "stage" | "bridge" | "preset" | "source";
+export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "stage" | "depth" | "bridge" | "preset" | "source";
 export type EditCommandResult =
   | { success: true; command: "edit"; data: Record<string, unknown>; warnings?: CliIssue[]; next?: string[]; server?: BridgeServer }
   | { success: false; command: "edit"; issues: CliIssue[]; next: string[] };
@@ -49,6 +50,9 @@ const EditInputSchema = z.strictObject({
   ops: z.string().optional(),
   opsText: z.string().max(BRIDGE_MAX_BODY_BYTES).optional(),
   size: z.string().max(80).optional(),
+  surface: z.string().min(1).max(128).optional(),
+  mode: DepthModeSchema.optional(),
+  intensity: DepthIntensitySchema.optional(),
   expectSha: z.string().regex(/^[0-9a-f]{64}$/, "Use the 64-character hex sha256 printed by a previous command.").optional(),
   write: z.boolean().optional(),
   track: z.string().optional(),
@@ -379,6 +383,17 @@ export async function executeEditCommand(operation: EditOperation, input: EditIn
       const stage = size ? stageFromSpec(size, preset === "user-native" ? "user-native" : "custom") : preset && stageFromSpec(preset);
       if (!stage) return failure([{ code: "ERR_EDIT_INVALID", path: "stage", message: "Choose a stage preset or pass --size WxH@DPR, such as 1512x982@2. Use the Studio for viewport detection." }]);
       return await editScene(root, options.scene, [{ op: "stage.set", ...stage }], write);
+    }
+    if (operation === "depth") {
+      if (!options.surface || !options.mode) return failure([{ code: "ERR_MISSING_VALUE", path: "depth", message: "edit depth needs --surface ID and --mode auto, rules or off." }]);
+      const file = await readScene(root, options.scene);
+      if ("success" in file) return file;
+      const document = parseJsonDocument(file.text) as Doc | undefined;
+      const map = document?.definition?.depth;
+      const existing = DepthConfigSchema.safeParse(map && Object.hasOwn(map, options.surface) ? map[options.surface] : undefined);
+      const { resolved, ...prior } = existing.success ? existing.data : { mode: options.mode, light: DEFAULT_DEPTH_LIGHT };
+      const config = { ...prior, mode: options.mode, ...(options.intensity ? { intensity: options.intensity } : {}) };
+      return await editScene(root, options.scene, [{ op: "depth.set", surface: options.surface, config }], { ...write, expectSha: options.expectSha ?? file.sha });
     }
     if (operation === "paste") {
       if (!options.from || options.at === undefined) return failure([{ code: "ERR_MISSING_VALUE", path: options.from ? "at" : "from", message: "edit paste needs --from <clipboard file> and --at <ms>." }]);

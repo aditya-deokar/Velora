@@ -36,6 +36,8 @@ import { createRegistry } from "./registry";
 import { ParentContext, SceneContext, type SurfaceVisuals, type ThreeSelection } from "./context";
 import { AppStageContext } from "./stage";
 import type { Stage } from "../core/stage";
+import type { DepthConfig, DepthMap } from "../core/depth";
+import { DepthSurfaceContext, useVolumetricDepth, type DepthDisplay } from "./depth";
 export { useSceneTime, type ThreeSelection } from "./context";
 import type { SceneInspector } from "./inspector";
 
@@ -69,15 +71,18 @@ function checkMotionMutation(motion: MotionInput | undefined) {
   }
 }
 const visualKeys: ReadonlySet<string> = new Set(SURFACE_VISUAL_PROPERTIES);
+const depthDefault: DepthConfig = Object.freeze({ mode: "auto" });
 // Static bases for add-clip offsets on properties without a replace owner.
 const CAMERA_BASE = CameraSchema.parse({}), FOCUS_BASE = FocusSchema.parse({}), TRANSFORM_BASE = TransformSchema.parse({});
 const VISUAL_BASE: Record<string, number> = { opacity: 1, blur: 0, brightness: 1, contrast: 1, saturate: 1, hueRotate: 0, grayscale: 0, clipTop: 0, clipRight: 0, clipBottom: 0, clipLeft: 0 };
 const pick = (values: Record<string, number> | undefined, visual: boolean) =>
-  values ? Object.fromEntries(Object.entries(values).filter(([key]) => visualKeys.has(key) === visual)) : undefined;
+  values ? Object.fromEntries(Object.entries(values).filter(([key]) => key !== "elevation" && visualKeys.has(key) === visual)) : undefined;
 const emptyMotion: MotionState = { surfaces: {}, camera: {}, focus: {}, channels: {}, issues: [] };
 const useLayout = typeof window === "undefined" ? useEffect : useLayoutEffect;
 export type SceneProps = {
   stage?: Stage;
+  depth?: DepthMap;
+  depthDisplay?: DepthDisplay;
   motion?: MotionInput;
   timeMs?: number;
   children?: ReactNode;
@@ -98,6 +103,7 @@ export type SceneProps = {
 export type SurfaceProps = {
   id: string;
   transform?: TransformInput;
+  depth?: DepthConfig | "auto" | "off";
   children?: ReactNode;
   content?: ReactNode;
   /** Render the original subtree without a wrapper when used outside a Scene. */
@@ -113,6 +119,8 @@ export type SurfaceProps = {
 export function Scene({
   children,
   stage: appStage,
+  depth,
+  depthDisplay,
   camera,
   focus,
   constraints,
@@ -155,7 +163,7 @@ export function Scene({
           // Visual properties style the content leaf; only transform keys reach the spatial node.
           ...Object.fromEntries(
             Object.entries(state.surfaces[binding.id] ?? {}).filter(
-              ([key]) => !visualKeys.has(key),
+              ([key]) => key !== "elevation" && !visualKeys.has(key),
             ),
           ),
         }, pick(additive?.surfaces?.[binding.id], false), TRANSFORM_BASE),
@@ -201,6 +209,12 @@ export function Scene({
   const context = useMemo(
     () => ({
       registry,
+      depth,
+      depthDisplay,
+      elevations: new Map([...new Set([...Object.keys(result.state.surfaces), ...Object.keys(result.state.additive?.surfaces ?? {})])].flatMap(id => {
+        const value = result.state.surfaces[id]?.elevation, additive = result.state.additive?.surfaces?.[id]?.elevation;
+        return value === undefined && additive === undefined ? [] : [[id, Math.max(0, Math.min(4, (value ?? 1) + (additive ?? 0)))] as const];
+      })),
       displayCamera: (result.view ?? result.evaluation).camera ?? (result.validated.success ? result.validated.data.camera : undefined),
       threeSelection,
       timeMs: motion ? motionTime(motion, timeMs) : Number.isFinite(timeMs) ? timeMs : 0,
@@ -223,8 +237,13 @@ export function Scene({
           : [],
       ),
     }),
-    [registry, result, timeMs, motion, threeSelection],
+    [registry, result, timeMs, motion, threeSelection, depth, depthDisplay],
   );
+  const depthReports = [...registry.depthReports.values()];
+  const depthAdvisories = depthReports.flatMap(report => report.issues);
+  for (const surface of new Set(depthReports.filter(report => report.volumetric && (context.nodes.get(report.surface)?.focus.maxBlur ?? 0) > 0).map(report => report.surface))) {
+    depthAdvisories.push({ code: "depth-focus-deferred", path: `definition.depth.${surface}`, message: "Whole-surface focus blur is deferred while this surface uses volumetric depth." });
+  }
   // Editor consumers observe the committed evaluation; no instances, elements or callbacks leave the Scene.
   useLayout(() => {
     if (!inspector) return;
@@ -240,6 +259,8 @@ export function Scene({
       animatables: [...registry.animatables.values()],
       motion: result.state,
       issues: result.evaluation.issues,
+      ...(depthAdvisories.length ? { advisories: depthAdvisories } : {}),
+      ...(depthReports.length ? { depth: depthReports.map(({ surface, hash, layers, explicitTiers }) => ({ surface, hash, layers, explicitTiers })) } : {}),
       ...(result.evaluation.camera ? { camera: { ...result.evaluation.camera } } : {}),
       ...(result.evaluation.focus ? { focus: { ...result.evaluation.focus } } : {}),
       ...(result.view?.camera ? { view: { ...result.view.camera } } : {}),
@@ -268,6 +289,7 @@ export function Scene({
           className={className}
           data-velora-scene=""
           data-velora-view={viewCamera ? "director" : undefined}
+          data-velora-depth-view={depthDisplay && (depthDisplay.tint || depthDisplay.explode !== undefined) ? "" : undefined}
           data-velora-valid={result.evaluation.issues.length===0 ? "true" : "false"}
           style={{
             ...style,
@@ -315,6 +337,9 @@ export function Scene({
             </p>
           </div>
         )}
+        {depthAdvisories.length > 0 && <ul data-velora-preview-chrome="" data-velora-depth-advisories="">
+          {depthAdvisories.map((issue, index) => <li key={index} data-velora-depth-issue={issue.code}>{issue.message}</li>)}
+        </ul>}
       </ParentContext.Provider>
     </SceneContext.Provider>
   );
@@ -323,6 +348,7 @@ export function Scene({
 export function Surface({
   id,
   transform,
+  depth: authoredDepth,
   children,
   content,
   passthrough,
@@ -336,7 +362,21 @@ export function Surface({
   const parent = useContext(ParentContext);
   const [token] = useState(() => Symbol("velora-binding"));
   const element = useRef<HTMLDivElement>(null);
+  const proxies = useRef<HTMLDivElement>(null);
   const registry = context?.registry;
+  const recipeDepth = context?.depth && Object.hasOwn(context.depth, id) ? context.depth[id] : undefined;
+  const config = recipeDepth ?? (authoredDepth === "auto" ? depthDefault : authoredDepth === "off" ? undefined : authoredDepth);
+  const node = context?.nodes.get(id);
+  const visual = context?.visuals.get(id) ?? {};
+  const paintFilter = contentStyle?.filter ?? leafGrade(leafFilter("none", visual.blur ?? 0), visual);
+  const opacity = contentStyle?.opacity ?? visual.opacity ?? 1;
+  const alpha = typeof opacity === "number" ? opacity : Number.parseFloat(opacity) / (opacity.endsWith("%") ? 100 : 1);
+  const leafGrouping = alpha < 1 ? "opacity" : paintFilter !== "none" ? "filter"
+    : contentStyle?.clipPath && contentStyle.clipPath !== "none" || leafClip(visual) ? "clip-path" : undefined;
+  const activeDepth = context && config && config.mode !== "off" ? { root: element.current, config, surface: id, registry: context.registry,
+    camera: context.displayCamera, world: node?.world, width: node?.width, height: node?.height, elevation: context.elevations?.get(id) ?? 1,
+    display: context.depthDisplay, light: config.light, intensity: config.intensity, leafGrouping } : undefined;
+  useVolumetricDepth(activeDepth, element, proxies);
   useLayout(() => {
     if (!registry || !element.current) return;
     registry.upsert({
@@ -352,8 +392,8 @@ export function Surface({
     if (passthrough) return <>{content}{children}</>;
     throw new Error("Surface and Motion must be rendered inside a Velora Scene.");
   }
-  const { nodes, transforms } = context;
-  const node = nodes.get(id);
+  const { transforms } = context;
+  const volume = !!activeDepth && [...context.registry.depthReports.values()].some(report => report.surface === id && report.volumetric);
   const grouped = Array.from(context.registry.entries.values()).some(
     (binding) => binding.parent === token,
   );
@@ -363,9 +403,9 @@ export function Surface({
     node.width > 0 &&
     node.height > 0 &&
     node.focus.maxBlur > 0 &&
+    !volume &&
     (content !== undefined || !grouped);
   const uniformBlur = filtering ? uniformFocusBlur(node.focus, node.width, node.height) : 0;
-  const visual = context.visuals.get(id) ?? {};
   const variables = Object.hasOwn(context.styles, id) ? context.styles[id] : undefined;
   const leafStyle: CSSProperties = {
     pointerEvents: style?.pointerEvents ?? "auto",
@@ -374,7 +414,7 @@ export function Surface({
     ...(leafClip(visual) ? { clipPath: leafClip(visual) } : {}),
   };
   return (
-    <ParentContext.Provider value={token}>
+    <ParentContext.Provider value={token}><DepthSurfaceContext.Provider value={activeDepth}>
       {filtering && uniformBlur === undefined && <FocusFilter id={filterId} node={node} />}
       <div
         ref={element}
@@ -414,8 +454,9 @@ export function Surface({
         >
           {children}
         </div>
+        {activeDepth && <div data-velora-depth-proxies="" ref={proxies} aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", transformStyle: "preserve-3d" }}/>}
       </div>
-    </ParentContext.Provider>
+    </DepthSurfaceContext.Provider></ParentContext.Provider>
   );
 }
 

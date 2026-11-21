@@ -317,6 +317,18 @@ npx velora inspect --scene home-hero --json
 
 The stage sets the CSS viewport for the app. The aspect and export dimensions set the output frame. `RouteFrame` uses the stage for viewport breakpoints, while in-tree components can read the stage through `useAppStage()` or a named container query. Export at standard quality uses the stage DPR within the 3840-pixel capture limit. Read `effectiveDpr` and `dprCapped` in the render lineage.
 
+### Add depth to app surfaces
+
+Select a surface in Edit mode and open **Depth** in the Inspector. Choose **auto** to classify containers, cards, controls and floating UI, or use **rules** with anchors and selectors. Set the light direction and sheen, then animate **elevation** from 0 to 1 to raise the layers during a shot. **Depth view** shows the tiers, and **Explode** is available from the director viewpoint.
+
+```sh
+npx velora edit depth --scene home-hero --surface subject --mode auto --intensity subtle --write
+npx velora depth resolve --scene home-hero --url http://127.0.0.1:5173 --json
+npx velora depth resolve --scene home-hero --url http://127.0.0.1:5173 --write
+```
+
+Use `data-velora-tier` on your own components for explicit tiers, pixel heights, or `flat` regions. In-tree depth uses CSS 3D where the host allows it. RouteFrame projects each layer onto the iframe plane and retains the surface's focus blur. Volumetric depth defers the whole-leaf focus blur to keep its layers in 3D. The depth hashes in export results and render manifests identify the classified layers.
+
 ### Recut a composition
 
 Run `npx velora edit --composition launch.composition.json` against your running app. Select or reorder shots with V, ripple with B, roll with N, slip with Y and split with C. M adds a cue at the playhead. Drag an overlap transition onto an incoming cut and adjust its handle. Choose an audio clip to change gain and fades in the Inspector, or drag its lane handles.

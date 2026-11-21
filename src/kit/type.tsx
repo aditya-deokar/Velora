@@ -135,7 +135,7 @@ export function Panel({ width, height, title, body, icon, startMs = 0, durationM
   const brand = useBrand();
   const reveal = useRevealer();
   const progress = reveal({ startMs, durationMs }, index);
-  return <div data-velora-panel="" style={{ boxSizing: "border-box", width, height, padding: Math.round(Math.min(width, height) * 0.1), borderRadius: brand.radius * 1.5, background: brand.colors.surface, border: "1px solid rgba(255,255,255,.08)",
+  return <div data-velora-panel="" data-velora-tier="card" style={{ boxSizing: "border-box", width, height, padding: Math.round(Math.min(width, height) * 0.1), borderRadius: brand.radius * 1.5, background: brand.colors.surface, border: "1px solid rgba(255,255,255,.08)",
     boxShadow: "0 30px 80px rgba(0,0,0,.35)", color: brand.colors.text, display: "flex", flexDirection: "column", gap: 12, opacity: progress, transform: `translateY(${((1 - progress) * 24).toFixed(2)}px)`, ...style }}>
     {icon && <span style={{ width: 48, height: 48, borderRadius: brand.radius, display: "grid", placeItems: "center", background: `${tint(brand.colors.accent, 15)}`, color: brand.colors.accent, font: `700 24px/1 ${brand.fonts.display}` }}>{icon}</span>}
     {title && <strong style={{ font: `650 ${Math.round(Math.min(44, width / 9))}px/1.15 ${brand.fonts.display}` }}>{title}</strong>}

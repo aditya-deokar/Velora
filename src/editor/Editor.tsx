@@ -65,6 +65,8 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
   const [sourcePicking, setSourcePicking] = useState(false);
   const [sourceHint, setSourceHint] = useState<SourceHint>();
   const [sourceUndo, setSourceUndo] = useState<string>();
+  const [depthView, setDepthView] = useState(false);
+  const [explode, setExplode] = useState(1);
   const pickSource = (hint?: SourceHint) => { setSourcePicking(false); setSourceHint(hint); setPanel("source"); };
   const [toast, setToast] = useState<Shared["toast"]>();
   const focused = useRef<EditorController["focused"]>(undefined);
@@ -130,13 +132,23 @@ export function Editor({ sceneId, title, recipe, children, hot, backHref, onBack
       if (issues.length) notify(issues[0].message);
     }}
     {...(state.ui.director ? { viewCamera: state.ui.director } : {})} peaking={state.ui.tool === "focus"}
+    depthDisplay={depthView ? { tint: true, ...(state.ui.director ? { explode } : {}) } : undefined}
     slots={{
       overlay: <WithEditor shared={shared}><Overlay/></WithEditor>,
-      toolbar: <WithEditor shared={shared}><Toolbar/><Effects/></WithEditor>,
+      toolbar: <WithEditor shared={shared}><Toolbar/><DepthView active={depthView} onToggle={() => setDepthView(value => !value)} explode={explode} onExplode={setExplode}/><Effects/></WithEditor>,
       left: <WithEditor shared={shared}><Layers/></WithEditor>,
       right: <WithEditor shared={shared}><Inspector/></WithEditor>,
       bottom: <WithEditor shared={shared}><Timeline/></WithEditor>,
     }}>{children}</ScenePreview>;
+}
+function DepthView({ active, onToggle, explode, onExplode }: { active: boolean; onToggle(): void; explode: number; onExplode(value: number): void }) {
+  const { store, snapshot } = useEditor();
+  const state = useEditorState(store);
+  if (!active && !snapshot?.depth?.length) return null;
+  return <span data-velora-preview-chrome="" className="ve-row">
+    <button className="ve-btn" aria-pressed={active} onClick={onToggle}>Depth view</button>
+    {active && state.ui.director && <label>Explode <input type="range" min={0} max={4} step={0.05} value={explode} onChange={event => onExplode(Number(event.target.value))}/></label>}
+  </span>;
 }
 /** Provides the editor context to one slot from the shared state and the preview host. */
 function WithEditor({ shared, children }: { shared: Shared; children: ReactNode }) {

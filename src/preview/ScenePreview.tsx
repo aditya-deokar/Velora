@@ -13,6 +13,7 @@ import { OverlayMenu, StudioOverlays, useOverlays } from "./overlays";
 import { useTransportKeys } from "./transport";
 import { StageChip } from "./StageChip";
 import type { Stage } from "../core/stage";
+import type { DepthDisplay } from "../react/depth";
 
 /** SOURCE OF TRUTH: ScenePreview.
  * WHAT: the product's shared browser viewport, playback, source recovery and export entry.
@@ -58,6 +59,7 @@ export type ScenePreviewProps = {
   threeSelection?: ThreeSelection;
   /** Editor-only: force focus peaking on (the focus tool turns it on while active). */
   peaking?: boolean;
+  depthDisplay?: DepthDisplay;
 };
 /** What editor panels read from the one preview: the session (single cursor), the Scene inspector
  * channel and the frame geometry. Provided only in layout="editor". */
@@ -136,7 +138,7 @@ function ExportMenu({disabled, panelHost, size}: {disabled: boolean; panelHost: 
     </details>;
 }
 
-export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, backLabel, initialTimeMs, revision, hot, timeline, fps = 60, exportSize, aside, layout, slots, editHref, sceneId, onStage, viewCamera, threeSelection, peaking}: ScenePreviewProps) {
+export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, backLabel, initialTimeMs, revision, hot, timeline, fps = 60, exportSize, aside, layout, slots, editHref, sceneId, onStage, viewCamera, threeSelection, peaking, depthDisplay}: ScenePreviewProps) {
   const editor = layout === "editor";
   const [inspector] = useState(() => editor ? createSceneInspector() : undefined);
   const session = usePreviewSession(input, revision, timeline, initialTimeMs);
@@ -197,7 +199,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
         data-velora-view={editor && viewCamera ? "director" : undefined} style={{width: "100%", height: "100%"}}>
         <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
           <LookLayer look={look} timeMs={session.timeMs} width={definition.width} height={definition.height}>
-            <Scene stage={definition.stage} camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
+            <Scene stage={definition.stage} depth={definition.depth} depthDisplay={editor ? depthDisplay : undefined} camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
               timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(inspector ? {inspector, threeSelection} : {})}
               {...(editor && viewCamera ? {viewCamera} : {})}>
               {children}
@@ -271,7 +273,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
               {/* One aspect-preserving cover frame fills preview and capture; overflow is cropped, never stretched. */}
               <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
                 <LookLayer look={look} timeMs={session.timeMs} width={definition.width} height={definition.height}>
-                  <Scene stage={definition.stage} camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
+                  <Scene stage={definition.stage} depth={definition.depth} camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
                     timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(inspector ? {inspector, threeSelection} : {})}>
                     {children}
                   </Scene>

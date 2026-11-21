@@ -49,6 +49,8 @@ try {
   ok(await velora(["studio", "init", "--site", site, "--json"], project), "studio init");
   for (const [template, id, route, duration] of [["hero-push", "home", "/", "2000"], ["scroll-through", "tour", "/", "4000"], ["tilt-up-reveal", "pricing", "/pricing", "2000"]])
     ok(await velora(["new", "scene", "--template", template, "--id", id, "--route", route, "--duration", duration, "--json"], project), `new scene ${id} (${template} ${route})`);
+  ok(await velora(["new", "scene", "--template", "hero-push", "--id", "depth-demo", "--route", "/pricing", "--json"], project), "new proxied depth scene");
+  ok(await velora(["edit", "depth", "--scene", "depth-demo", "--surface", "subject", "--mode", "auto", "--write", "--json"], project), "enable depth on a proxied route");
   await writeFile(path.join(project, "tour.composition.json"), JSON.stringify({
     version: 1, id: "tour", title: "Orbit site tour", width: 960, height: 540, fps: 30,
     scenes: [
@@ -67,6 +69,11 @@ try {
   assert.ok(proxied.includes("Pricing"), "proxy serves the site's /pricing");
   assert.equal((await fetch(`${studio}/assets/site.css`)).headers.get("content-type"), "text/css");
   console.log("PASS proxy serves routes and absolute assets");
+  const resolved = ok(await velora(["depth", "resolve", "--scene", "depth-demo", "--url", studio, "--write", "--json"], project), "resolve depth through the proxy");
+  const frozen = resolved.data.ops.find(op => op.op === "depth.resolve" && op.surface === "subject").resolved;
+  assert.ok(frozen.layers.some(layer => layer.tier === "card"), "the proxied pricing cards receive depth");
+  const depthShot = ok(await velora(["shot", "--scene", "depth-demo", "--time", "0", "--out", "depth.png", "--url", studio, "--json"], project), "capture the proxied depth scene");
+  assert.deepEqual(depthShot.data.depth, [{ surface: "subject", hash: frozen.hash }]);
   const bridgeOutput = await start([cli, "edit", "--scene", "home", "--url", studio, "--no-open", "--json"], project,
     out => out.split("\n").some(line => line.includes('"command":"edit"') && line.includes('"url"')));
   const bridge = JSON.parse(bridgeOutput.trim().split("\n").find(line => line.includes('"command":"edit"')));

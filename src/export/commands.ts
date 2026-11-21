@@ -25,6 +25,9 @@ import { isOverlapTransition } from "../core/transitions";
 import { stageLineage, type StageLineage } from "../core/export";
 import type { Stage, StageDpr } from "../core/stage";
 import type { LoudnessMeasurement } from "./services";
+import { executeEditCommand } from "../project/edit";
+import { hashDepthLayers, type DepthEvidence, type ResolvedDepth } from "../core/depth";
+import type { EditOp } from "../core/edit";
 
 /** SOURCE OF TRUTH: executeVideoExport, executeSceneSnapshot, executeFrameRender trusted operations.
  * WHAT: validate requests, local scope and capture state before publishing video.
@@ -41,6 +44,44 @@ const timelineStageFields = (stages: readonly (StageLineage & { sceneId: string 
   const same = stages.every(({ sceneId: _, ...value }) => JSON.stringify(value) === JSON.stringify(stage));
   return { fields: same ? { stage } : { stages }, checks: stages.map(value => stageCheck(value, value.sceneId)) };
 };
+const depthLineage = (entries: DepthEvidence[] | undefined) => entries?.map(({ surface, hash }) => ({ surface, hash })) ?? [];
+async function capturedDepth(session: Awaited<ReturnType<typeof services.openCapture>>, timeMs?: number) {
+  const capture = CaptureManifestSchema.safeParse(await session.manifest(timeMs).catch(() => undefined));
+  return capture.success ? depthLineage(capture.data.depth) : [];
+}
+
+export async function executeDepthResolve(input: { scene: string; url: string; write: boolean }, context: { root: string }) {
+  let session: Awaited<ReturnType<typeof services.openCapture>> | undefined;
+  try {
+    const root = await canonicalRoot(context.root);
+    const opened = await executeRecipeCommand("open-scene", { sceneId: input.scene, url: input.url, launch: false }, { root });
+    if (!opened.success) return { ...opened, command: "depth" as const };
+    const selected = opened.data.selected!;
+    const original = await services.readRecipe(root, selected.source, 256_000);
+    if (!original || JSON.stringify(SceneRecipeSchema.parse(parseJsonDocument(original)).definition) !== JSON.stringify(selected.definition))
+      throw fault("source-changed", "The scene changed while opening the depth capture. Retry after saving.");
+    const { width, height, stage } = selected.definition;
+    session = await services.openCapture({ url: opened.data.url!, width, height, scale: resolveFinishing({}, { width, height }, stage).supersample });
+    const capture = CaptureManifestSchema.parse(await session.manifest(0));
+    if (!capture.depth?.length) throw fault("ERR_EDIT_TARGET", "No live depth layers were classified. Enable depth on a surface with visible layers and retry.");
+    const bySurface = new Map<string, ResolvedDepth["layers"]>();
+    for (const { surface, layers } of capture.depth) {
+      const prior = bySurface.get(surface) ?? [];
+      for (const layer of layers) {
+        const found = prior.find(value => JSON.stringify(value.match) === JSON.stringify(layer.match));
+        if (found && (found.tier !== layer.tier || found.z !== layer.z)) throw fault("ERR_EDIT_INVALID", `Depth selectors conflict on ${surface}. Give the surfaces or layers distinct anchors.`);
+        if (!found) prior.push(layer);
+      }
+      bySurface.set(surface, prior);
+    }
+    const ops: EditOp[] = [...bySurface].map(([surface, layers]) => ({ op: "depth.resolve", surface, resolved: { layers, hash: hashDepthLayers(layers) } }));
+    const result = await executeEditCommand("apply", { scene: input.scene, opsText: JSON.stringify(ops), write: input.write, expectSha: services.sha256Hex(original) }, { root });
+    return result.success ? { ...result, command: "depth" as const, data: { ...result.data, ops } } : { ...result, command: "depth" as const };
+  } catch (error) {
+    const known = error as { code?: string; message?: string };
+    return { success: false as const, command: "depth" as const, issues: [{ code: known.code ?? "invalid-capture", message: known.message ?? "Depth capture failed." }] };
+  } finally { await session?.close(); }
+}
 
 export async function executeVideoExport(input: unknown, context: { root: string; signal?: AbortSignal }): Promise<ExportVideoResult> {
   let session: Awaited<ReturnType<typeof services.openCapture>> | undefined;
@@ -63,6 +104,7 @@ export async function executeVideoExport(input: unknown, context: { root: string
       audio?: { file: string; codec: string; driftMs: number; peakDb: number | null };
       captions?: { file: string; cues: number; burnIn: boolean };
       stage?: StageLineage; checks?: ReturnType<typeof stageCheck>[];
+      depth?: ReturnType<typeof depthLineage>;
     } = { output: parsed.data.output, fps: parsed.data.fps, frames, durationMs: frames * 1000 / parsed.data.fps, codec: finishing.codec, quality: finishing.quality,
       ...(stage ? { stage, checks: [stageCheck(stage)] } : {}) };
     // Every output frame goes through the shared finisher (motion blur, supersample downscale).
@@ -79,8 +121,13 @@ export async function executeVideoExport(input: unknown, context: { root: string
       await services.writeNewFile(await services.prepareFileOutput(context.root, poster), posterPng);
       data.poster = poster;
     };
+    const recordDepth = async () => {
+      const lineage = await capturedDepth(session!);
+      if (lineage.length) data.depth = lineage;
+    };
     if (!parsed.data.audio && !parsed.data.captions) {
       await session.encode(scope, options, manifest.data, frames, produce, onFrame);
+      await recordDepth();
       await publishPoster();
       return { success: true, data };
     }
@@ -89,6 +136,7 @@ export async function executeVideoExport(input: unknown, context: { root: string
     const staged = await services.stageTempVideo(scope);
     try {
       await session.encode(staged.scope, options, manifest.data, frames, produce, onFrame);
+      await recordDepth();
       const post = await services.mixPostAudioCaptions(scope, staged.scope.output, {
         ...(parsed.data.audio ? { audio: parsed.data.audio } : {}),
         ...(parsed.data.captions ? { captions: parsed.data.captions } : {}),
@@ -231,6 +279,7 @@ async function renderTimelineFrames(options: {
   const sorted = [...wanted].sort((a, b) => a.frame - b.frame);
   const frames = new Map<number, RenderedFrame>();
   const stageEvidence = new Map<string, StageLineage & { sceneId: string }>();
+  const depthEvidence = new Map<string, ReturnType<typeof depthLineage>>();
   // With a spill sink, results keep metadata only; the sink owns the PNG bytes.
   const results = { set: async (frame: number, entry: RenderedFrame) => {
     if (spill && entry.png) { await spill(frame, entry.png); const { png: _spilled, ...meta } = entry; frames.set(frame, meta); }
@@ -268,6 +317,7 @@ async function renderTimelineFrames(options: {
   // Capture one unit (a V1 segment, an overlay or the captions layer) at its items' local times.
   const captureUnit = async (entry: CaptureUnit): Promise<void> => {
     let opened: string, recipeSha: string, bindingSha: string, durationLook: LookInput | undefined, authoredStage: Stage | undefined;
+    let hasDepth = false;
     let sceneId = entry.recipeId ?? "captions";
     if (entry.captions) {
       const captions = entry.captions;
@@ -289,16 +339,19 @@ async function renderTimelineFrames(options: {
       bindingSha = services.sha256Hex(bindingText);
       durationLook = recipe.definition.look ?? (entry.inheritLook ? options.look : undefined);
       authoredStage = recipe.definition.stage;
+      hasDepth = Object.values(recipe.definition.depth ?? {}).some(config => config.mode !== "off");
     }
     const unitFinishing = { ...finishing, supersample: resolveFinishing({ quality: finishing.quality, stageDpr: options.stageDpr }, { width, height }, authoredStage).supersample };
     const transparent = finishing.transparent || entry.transparent;
-    const variant = unitFinishing.supersample !== 1 || transparent ? `scale=${unitFinishing.supersample};alpha=${transparent ? 1 : 0}` : undefined;
+    const baseVariant = unitFinishing.supersample !== 1 || transparent ? `scale=${unitFinishing.supersample};alpha=${transparent ? 1 : 0}` : undefined;
     const exportLook = await loadExportLook(root, durationLook);
     const session = await services.openCapture({ url: opened, width, height, scale: unitFinishing.supersample, transparent }, signal);
     try {
       const bridge = CaptureManifestSchema.safeParse(await session.manifest());
       if (!bridge.success) throw fault("invalid-capture", "Scene capture bridge must use version 1, the scene viewport selector and a duration between 0 and 120 seconds.");
       if (authoredStage) stageEvidence.set(sceneId, { sceneId, ...stageLineage(authoredStage, unitFinishing, options.stageDpr) });
+      const initialDepth = hasDepth ? await capturedDepth(session, Math.min(entry.items[0]?.localMs ?? 0, bridge.data.durationMs)) : depthLineage(bridge.data.depth);
+      const variant = initialDepth.length ? `${baseVariant ?? ""};depth=${JSON.stringify(initialDepth)}` : baseVariant;
       for (const item of entry.items) {
         if (signal?.aborted) throw fault("export-cancelled", "Render cancelled; no output was published.");
         const started = Date.now();
@@ -320,6 +373,8 @@ async function renderTimelineFrames(options: {
         else await results.set(item.frame, { frame: item.frame, timeMs: item.timeMs, sceneId, segmentId: entry.segmentId, png: finished.png, ...result });
         tick();
       }
+      const finalDepth = await capturedDepth(session);
+      if (finalDepth.length) depthEvidence.set(sceneId, finalDepth);
     } finally {
       await session.close();
     }
@@ -365,7 +420,8 @@ async function renderTimelineFrames(options: {
       png, sha: services.sha256Hex(png), cached: parts.length > 0 && cached, clamped, renderMs: renderMs + Date.now() - started, ...(parts.length > 1 ? { layers: parts } : {}) });
     if (!layers.segments.length && !layered) tick();
   }
-  return { rendered: frames, stages: [...stageEvidence.values()].sort((a, b) => a.sceneId.localeCompare(b.sceneId)) };
+  return { rendered: frames, stages: [...stageEvidence.values()].sort((a, b) => a.sceneId.localeCompare(b.sceneId)),
+    depth: [...depthEvidence.entries()].sort(([a], [b]) => a.localeCompare(b)).flatMap(([sceneId, values]) => values.map(value => ({ sceneId, ...value }))) };
 }
 
 /** Render one exact timeline frame from a composition to PNG plus a manifest.
@@ -409,7 +465,7 @@ export async function executeFrameRender(
     const catalog = await discoverRecipes(root);
     const sourceText = await readText(root, parsed.data.composition, 256_000);
     if (sourceText === undefined) throw fault("source-changed", "Composition source disappeared. Restore it and retry.");
-    const { rendered, stages } = await renderTimelineFrames({
+    const { rendered, stages, depth } = await renderTimelineFrames({
       root, url: context.url ?? "http://127.0.0.1:5173", version,
       fps, width: composition.width, height: composition.height, seed: composition.seed, look: composition.look, overlays: composition.overlays, captions: await captionLayerFor(root, composition),
       catalog, timeline, wanted: [{ frame, timeMs }], cacheDir, noCache, parallel: 1, signal: context.signal, stageDpr: parsed.data.stageDpr,
@@ -424,7 +480,7 @@ export async function executeFrameRender(
       durationMs: timeline.durationMs,
       segments: timeline.segments.map((s) => ({ id: s.id, recipe: s.recipe, startMs: s.startMs, durationMs: s.durationMs, frames: frameAt(s.startMs + s.durationMs, fps) - frameAt(s.startMs, fps) })),
       frames: [{ frame: entry.frame, timeMs: entry.timeMs, sceneId: entry.sceneId, segmentId: entry.segmentId, file: parsed.data.out, sha: entry.sha, renderMs: entry.renderMs, ...(entry.cached ? { cached: true as const } : {}), ...(entry.clamped ? { clamped: true as const } : {}) }],
-      veloraVersion: version, ...evidence.fields,
+      veloraVersion: version, ...evidence.fields, ...(depth.length ? { depth } : {}),
       checks: [{ id: "bridge-present", pass: true, detail: entry.sceneId === "black-void" ? "Timeline gap renders black void without a browser." : "Capture bridge served this frame." }, ...evidence.checks],
       createdAt: new Date().toISOString(),
     });
@@ -507,7 +563,7 @@ export async function executeVideoRender(
     const layerDir = `${tmpDir}/layers`;
     // Layer frames (transitions, overlays, captions) wait on disk so long renders stay bounded in memory.
     const layerStore: LayerStore = { write: (key, png) => services.spillFile(layerDir, key, png), read: key => services.readSpilledFile(layerDir, key) };
-    const { rendered, stages } = await renderTimelineFrames({
+    const { rendered, stages, depth } = await renderTimelineFrames({
       root, url, version, fps, width, height, seed: composition.seed, look: composition.look, overlays: composition.overlays, captions: await captionLayerFor(root, composition),
       catalog: full.catalog, timeline, wanted, cacheDir, noCache, parallel,
       signal: context.signal, onProgress: context.onProgress,
@@ -639,7 +695,7 @@ export async function executeVideoRender(
       quality: finishing.quality, codec: finishing.codec, container: extension.slice(1), colorimetry: finishing.codec === "gif" ? undefined : "bt709",
       ...(finishing.motionBlur > 0 ? { motionBlur: { shutter: finishing.motionBlur, samples: finishing.motionSamples } } : {}),
       supersample: Math.max(finishing.supersample, ...stages.map(stage => stage.effectiveDpr)), transparent: finishing.transparent, workers: parallel, ...(poster ? { poster } : {}),
-      ...evidence.fields, checks: [{ id: "bridge-present", pass: true, detail: "Segments captured through the capture bridge; gaps render black void." }, ...evidence.checks],
+      ...evidence.fields, ...(depth.length ? { depth } : {}), checks: [{ id: "bridge-present", pass: true, detail: "Segments captured through the capture bridge; gaps render black void." }, ...evidence.checks],
       createdAt: new Date().toISOString(),
     });
     await services.writeNewTextFile(await services.prepareFileOutput(root, manifestPath), JSON.stringify(manifest, null, 2) + "\n");
@@ -708,7 +764,7 @@ export async function executeFramesRender(
     await services.prepareFileOutput(root, manifestPath);
     const sourceText = await readText(root, parsed.data.composition, 256_000);
     if (sourceText === undefined) throw fault("source-changed", "Composition source disappeared. Restore it and retry.");
-    const { rendered, stages } = await renderTimelineFrames({
+    const { rendered, stages, depth } = await renderTimelineFrames({
       root, url, version, fps, width: composition.width, height: composition.height, seed: composition.seed, look: composition.look, overlays: composition.overlays, captions: await captionLayerFor(root, composition),
       catalog: full.catalog, timeline, wanted,
       cacheDir: parsed.data.cacheDir ?? await defaultFrameCacheDir(root), noCache: parsed.data.noCache ?? false,
@@ -731,7 +787,7 @@ export async function executeFramesRender(
       durationMs: timeline.durationMs,
       segments: timeline.segments.map((s) => ({ id: s.id, recipe: s.recipe, startMs: s.startMs, durationMs: s.durationMs, frames: frameAt(s.startMs + s.durationMs, fps) - frameAt(s.startMs, fps) })),
       frames: frames.map(({ entry, file }) => ({ frame: entry.frame, timeMs: entry.timeMs, sceneId: entry.sceneId, segmentId: entry.segmentId, file, sha: entry.sha, renderMs: entry.renderMs, ...(entry.cached ? { cached: true as const } : {}), ...(entry.clamped ? { clamped: true as const } : {}) })),
-      veloraVersion: version, ...evidence.fields,
+      veloraVersion: version, ...evidence.fields, ...(depth.length ? { depth } : {}),
       checks: [{ id: "bridge-present", pass: true, detail: "Frames captured through the capture bridge; gaps render black void." }, ...evidence.checks],
       createdAt: new Date().toISOString(),
     });
@@ -782,11 +838,12 @@ export async function executeShotRender(
     const exportLook = parsed.data.finish ? await loadExportLook(root, bridge.data.look) : {};
     const { png } = await finishFrame(clamped ? bridge.data.durationMs : parsed.data.timeMs, parsed.data.fps ?? 60, bridge.data.durationMs, finishing,
       async time => services.decodePngDataUrl(await capture.snapshot(time, bridge.data)), exportLook, size);
+    const depth = await capturedDepth(session);
     const sha = services.sha256Hex(png);
     await services.writeNewFile(scope, png);
     const stage = selected.definition.stage && stageLineage(selected.definition.stage, finishing, parsed.data.stageDpr);
     return { success: true, data: { out: parsed.data.out, sceneId: selected.id, timeMs: parsed.data.timeMs, sha, ...(clamped ? { clamped: true as const } : {}),
-      ...(stage ? { stage, checks: [stageCheck(stage)] } : {}) } };
+      ...(stage ? { stage, checks: [stageCheck(stage)] } : {}), ...(depth.length ? { depth } : {}) } };
   } catch (error) {
     const known = error as { code?: string; message?: string; target?: string };
     return { success: false, issues: [{ code: known.code ?? "export-failed", message: known.code && known.message ? known.message : `Shot capture failed${detailOf(error)}. Check the scene, server and retry.`, ...(typeof known.target === "string" ? { path: known.target } : {}) }] };

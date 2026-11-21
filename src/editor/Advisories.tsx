@@ -15,20 +15,22 @@ export function useAdvisories(): Advisory[] {
   const doc = state.transient.length ? undefined : state.draft;
   // The snapshot changes every frame during playback; only its issues matter here.
   const sceneIssues = JSON.stringify(snapshot?.issues ?? []);
+  const depthIssues = JSON.stringify(snapshot?.advisories ?? []);
   const textReadings = JSON.stringify((snapshot?.animatables ?? []).flatMap(entry => entry.readingTimeMs ? [{ id: entry.id, minMs: entry.readingTimeMs }] : []));
   const result = useMemo(() => {
     if (!doc) return undefined;
     const out: Advisory[] = [];
     const preview = presentPreview((doc as Doc).definition);
     if (preview.valid) {
-      const { scene, stage, width, height, motion } = preview.definition;
-      const review = reviewAuthoring({ scene, stage, width, height, motion: motion ?? { durationMs: 0, tracks: [] }, textReadings: JSON.parse(textReadings) });
+      const { scene, stage, width, height, motion, depth } = preview.definition;
+      const review = reviewAuthoring({ scene, stage, width, height, depth, motion: motion ?? { durationMs: 0, tracks: [] }, textReadings: JSON.parse(textReadings) });
       out.push(...review.issues.map(entry => ({ ...entry, severity: "issue" as const })), ...review.advice.map(entry => ({ ...entry, severity: "advice" as const })));
     } else out.push(...preview.issues.map(issue => ({ code: "invalid", path: issue.path, message: issue.message, severity: "issue" as const })));
     out.push(...(JSON.parse(sceneIssues) as { path: string; message: string }[]).map(issue => ({ code: "scene", path: issue.path, message: issue.message, severity: "scene" as const })));
+    out.push(...(JSON.parse(depthIssues) as { code: string; path: string; message: string }[]).map(issue => ({ ...issue, severity: "advice" as const })));
     out.push(...state.issues.map(issue => ({ code: issue.code, path: issue.path, message: issue.message, severity: "issue" as const })));
     return out;
-  }, [doc, state.issues, sceneIssues, textReadings]);
+  }, [doc, state.issues, sceneIssues, depthIssues, textReadings]);
   if (result) last.current = result;
   return result ?? last.current;
 }

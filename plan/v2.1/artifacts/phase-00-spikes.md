@@ -16,9 +16,9 @@ below, and must be run before that phase starts.
 | S3 Deterministic R3F | Passed 2026-11-21 | R3F 9.8.2 accepts absolute seconds on its manual root. A Suspense-loaded glTF reproduced the same Chromium pixels after a backward seek. | 09 |
 | S4 Click-to-source | Not run | No verdict. | 08 |
 | S5 Lazy editor chunk | **Partly run** | Chunk emission **passes**; installed-host exclusion is **not yet verified**. | 04 |
-| S6 Volumetric depth in live DOM | Not run | No verdict. The band-quantized fallback (14.4) stays the contingency. | 13, 14 |
+| S6 Volumetric depth in live DOM | Phase 13 depth gate passed, 2026-11-21 | Chromium sorted lifted cards above proxy planes at ±30°. Same-time screenshots matched. Forty-eight layers scrubbed at 59.9 fps median. | 13, 14 |
 | S7 Stage DPR and sharpness | Passed in Chromium, 2026-11-21 | CSS viewport stayed fixed at 1512×982. DPR 2 doubled the chart backing width and took about 4× the screenshot time at 1080p. | 12 |
-| S8 Projected parallax in iframes | Not run | No verdict. | 13 |
+| S8 Projected parallax in iframes | Phase 13 projection gate passed, 2026-11-21 | Same-origin centers met the 50 mm and 200 mm positional tolerances. Teardown restored inline style attributes byte for byte. The packaged CLI froze and captured depth through the any-site proxy with matching layer hashes. | 13 |
 
 ## S3 Deterministic R3F
 

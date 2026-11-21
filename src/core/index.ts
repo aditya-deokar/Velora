@@ -54,3 +54,4 @@ export * from "./deliverables";
 export * from "./behaviors";
 export * from "./presets";
 export * from "./stage";
+export * from "./depth";

@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { EDITOR_LABEL_COLORS } from "../core";
+import { DepthTierSchema, type ResolvedDepth } from "../core/depth";
 import { useEditor, useEditorState } from "./context";
 import { listClips, listTracks } from "./model";
 import type { Doc } from "./store";
@@ -7,7 +8,8 @@ import type { Doc } from "./store";
 /** Layers panel (EDITOR-UX §2): Camera, Focus, Motion, Look; the live Surface tree (recipe nodes that are
  * not mounted are flagged); animatables under their owning Surface; clips. Rename, color tags and locks
  * write editor metadata; solo and hide are editor-only UI state. role="tree" with roving focus. */
-type Item = { id: string; label: string; kind: "camera" | "focus" | "motion" | "look" | "surface" | "animatable" | "three" | "clip"; depth: number; children: Item[]; flag?: string; owner?: string };
+type Item = { id: string; label: string; kind: "camera" | "focus" | "motion" | "look" | "surface" | "animatable" | "three" | "clip" | "depth"; depth: number; children: Item[];
+  flag?: string; owner?: string; layer?: ResolvedDepth["layers"][number]; explicitTier?: boolean };
 const COLORS: Record<string, string> = { red: "#ff6b6b", orange: "#ff9f43", yellow: "#ffd166", green: "#5ee6a0", teal: "#3cc9c9", blue: "#7cc4ff", purple: "#b893ff", gray: "#9aa0aa" };
 export function Layers() {
   const { store, snapshot, sceneId } = useEditor();
@@ -27,6 +29,10 @@ export function Layers() {
       ...bindings.filter(binding => binding.parentId === id).map(binding => surface(binding.id, depth + 1)),
       ...(snapshot?.animatables ?? []).filter(entry => entry.owner === id).map(entry => ({ id: entry.kind === "three" ? entry.id : `animatable:${entry.id}`, label: entry.label ?? entry.id,
         kind: entry.kind ?? ("animatable" as const), depth: depth + 1, children: [], owner: id })),
+      ...(snapshot?.depth ?? []).filter(entry => entry.surface === id).flatMap((entry, source) => entry.layers.map((layer, index) => ({
+        id: `depth:${id}:${source}:${index}`, label: "anchor" in layer.match ? layer.match.anchor : layer.match.selector,
+        kind: "depth" as const, depth: depth + 1, children: [], owner: id, layer, explicitTier: entry.explicitTiers?.includes(index),
+      }))),
     ] });
     const roots: Item[] = [
       { id: "camera", label: "Camera", kind: "camera", depth: 0, children: [] },
@@ -55,7 +61,7 @@ export function Layers() {
   const select = (item: Item, extend = false, toggle = false) => {
     if (item.kind === "clip") store.select({ layers: [item.id], clips: [item.id.slice(5)], tracks: [], keys: [] });
     else {
-      const id = item.kind === "animatable" ? item.owner! : item.id;
+      const id = item.kind === "animatable" || item.kind === "depth" ? item.owner! : item.id;
       const existing = state.selection.layers.filter(layer => !layer.startsWith("clip:"));
       const layers = !extend ? [id] : existing.includes(id) ? toggle ? existing.filter(layer => layer !== id) : existing : [...existing, id];
       store.select({ layers, clips: [], tracks: [], keys: [] });
@@ -96,6 +102,12 @@ export function Layers() {
           {item.flag && <span className="ve-flag">{item.flag}</span>}
           {locked.includes(item.id) && <span aria-label="Locked" title="Locked">🔒</span>}
         </span>
+        {item.layer && <select className="ve-input" aria-label={`Depth tier for ${item.label}`} value={item.layer.tier} disabled={item.explicitTier}
+          title={item.explicitTier ? "Tier is set by the host's data-velora-tier attribute" : undefined}
+          onChange={event => commitEditor([{ op: "depth.rule.add", surface: item.owner!, index: 0,
+            rule: { match: item.layer!.match, tier: DepthTierSchema.parse(event.target.value) } }], `Set ${item.label} depth tier`)}>
+          {DepthTierSchema.options.map(tier => <option key={tier}>{tier}</option>)}
+        </select>}
         {surface && <>
           <select className="ve-input" style={{ width: 22, padding: 0 }} aria-label={`Color tag for ${item.id}`} value={colors[item.id] ?? ""}
             onChange={event => commitEditor([{ op: "editor.set", colors: { [item.id]: (event.target.value || null) as never } }], `Color ${item.id}`)}>

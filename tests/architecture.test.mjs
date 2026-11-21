@@ -19,6 +19,10 @@ const spatialDoc = `/** SOURCE OF TRUTH: evaluateScene, transformToCss, focusFor
  * WHERE: consumed by React adapter.
  */`;
 const valid = {
+ 'src/core/depth.ts': `/** SOURCE OF TRUTH: DEPTH_TIERS, classifyDepth, evaluateDepthLayers. WHAT: classify depth and compute light. WHY: keep capture and preview consistent. WHERE: consumed by the depth renderers. */
+ export const DEPTH_TIERS=Object.freeze({}); export function classifyDepth(){return [];} export function evaluateDepthLayers(){return [];}`,
+ 'src/react/depth/ledger.ts': `/** SOURCE OF TRUTH: createStyleLedger. WHAT: record inline styles before writes. WHY: restore host DOM exactly. WHERE: consumed by the depth renderers. */
+ export function createStyleLedger(){return {};}`,
  'src/project/discovery.ts':`/** SOURCE OF TRUTH: discoverRecipes. WHAT: read scoped recipes. WHY: share discovery policy. WHERE: project commands call this owner. */ export function discoverRecipes(){return {}}`,
  'src/project/portable.ts':`/** SOURCE OF TRUTH: portableIntegration, portableCatalog. WHAT: generate host connection source. WHY: reuse shared rendering contracts. WHERE: project commands write generated files. */ export function portableIntegration(){return {}} export function portableCatalog(){return ''}`,
  'src/core/recipes.ts':`/** SOURCE OF TRUTH: SceneRecipeSchema, SceneSnapshotSchema, SnapshotSceneSchema, loadSceneRecipes, ListScenesSchema, LoadSceneSchema, OpenSceneSchema.
@@ -133,6 +137,12 @@ const rejects = (file, text, rule = 'module-boundary', options) => {
   const issues = fixture(file, text, options);
   assert.ok(issues.some(issue => issue.file === file && issue.rule === rule), JSON.stringify(issues));
 };
+test('host styles can only be written by the depth ledger', () => {
+  rejects('src/kit/DepthFixture.tsx', `function apply(element){element.style.transform='translateZ(2px)'}`, 'host-style-ledger');
+  rejects('src/react/depth/Projected.tsx', `function apply(element){element.style.setProperty('box-shadow','none')}`, 'host-style-ledger');
+  rejects('src/react/depth/Volumetric.tsx', `function apply(element){element.style.cssText='color:red'}`, 'host-style-ledger');
+  assert.deepEqual(fixture('src/react/depth/Volumetric.tsx', `function add(doc){ const plane=doc.createElement('div'); plane.style.transform='translateZ(2px)'; }`), []);
+});
 
 test('allowed canonical declarations, barrels, imports and browser adapter', () => {
   assert.deepEqual(checkArchitecture({ ...valid,

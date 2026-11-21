@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
-import type { CameraDefinition, EvaluatedNode, TransformInput } from "../core";
+import type { CameraDefinition, DepthMap, EvaluatedNode, TransformInput } from "../core";
+import type { DepthDisplay } from "./depth";
 import type { SurfaceVisualProperty } from "../core/motion";
 import type { GizmoMode, Registry } from "./registry";
 
@@ -15,6 +16,9 @@ type SceneContextValue = {
   styles: Readonly<Record<string, Readonly<Record<string, string>>>>;
   timeMs: number;
   displayCamera?: CameraDefinition;
+  depth?: DepthMap;
+  depthDisplay?: DepthDisplay;
+  elevations?: ReadonlyMap<string, number>;
   threeSelection?: ThreeSelection;
 };
 

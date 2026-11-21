@@ -91,3 +91,8 @@ Common mappings: bridge missing means open a capture-enabled scene; binding mism
 - Do not use this skill for fps budgets or memoization; load `velora-performance`.
 - Do not use this skill to approve visuals; load `velora-verify` and inspect frames.
 - Do not bypass the catalog; every fix maps to a stable code.
+## Depth diagnostics
+
+- `depth-flattened` identifies the grouping property and ancestor. Move clipping, opacity or filters to a content leaf, or mark that region `data-velora-tier="flat"`. Flattened chains can use projected depth.
+- `depth-contested` identifies a host style that keeps replacing a property the depth ledger composes. Move that host change to a separate inner element when the visual intent permits it.
+- `depth-focus-deferred` identifies volumetric layers that need a filter-free leaf to preserve 3D. Use projected depth if the shot depends on whole-surface blur.

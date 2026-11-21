@@ -6,6 +6,7 @@ import { SceneRecipeSchema, EDITOR_LABEL_COLORS } from "./recipes";
 import { presentPreview } from "./preview";
 import { applyCompositionOps, compositionEditVariants, isCompositionOp, type CompositionEditResult } from "./composition-edit";
 import { StageSchema } from "./stage";
+import { DepthConfigSchema, DepthRuleSchema, ResolvedDepthSchema, hashDepthLayers } from "./depth";
 
 /** SOURCE OF TRUTH: EditOpSchema, applyEdits.
  * WHAT: the one typed edit vocabulary (keyframes, tracks, scene base, clips, staggers, links, constraints,
@@ -34,10 +35,12 @@ const keyValue = z.union([finite, z.string().max(128), z.tuple([finite, finite, 
 const vector = z.tuple([finite, finite, finite]);
 const nullable = <T extends z.ZodType>(schema: T) => z.union([schema, z.null()]).optional();
 const raw = z.record(z.string(), z.unknown());
-const FIELD_PATHS = ["definition.scene.camera", "definition.scene.focus", "definition.scene.constraints", "definition.look", "definition.stage", "definition.motion",
+const FIELD_PATHS = ["definition.scene.camera", "definition.scene.focus", "definition.scene.constraints", "definition.look", "definition.stage", "definition.depth", "definition.motion",
   "definition.motion.durationMs", "definition.motion.speed", "definition.motion.loop", "definition.motion.clips", "definition.motion.links", "editor"] as const;
 // Ops that land with later phases (12-16); they validate as shapes and return ERR_EDIT_UNSUPPORTED.
-export const DEFERRED_EDIT_OPS = Object.freeze(["depth.set", "depth.rule.add", "depth.rule.remove", "depth.resolve", "lens.apply", "rack.add", "rig.apply", "rig.update"] as const);
+export const DEFERRED_EDIT_OPS = Object.freeze(["lens.apply", "rack.add", "rig.apply", "rig.update"] as const);
+const depthSurface = z.string().min(1).max(128);
+const depthRuleIndex = z.number().int().min(0).max(255);
 export const EditOpSchema = z.discriminatedUnion("op", [
   // Keyframes
   z.strictObject({ op: z.literal("key.set"), track: TrackAddressSchema, atMs: time, value: keyValue, easing: KeyframeEasingSchema.optional() }),
@@ -63,6 +66,10 @@ export const EditOpSchema = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("motion.set"), durationMs: time.optional(), speed: finite.optional(), loop: nullable(z.boolean()) }),
   z.strictObject({ op: z.literal("look.set"), look: z.union([raw, z.null()]) }),
   StageSchema.safeExtend({ op: z.literal("stage.set") }),
+  z.strictObject({ op: z.literal("depth.set"), surface: depthSurface, config: DepthConfigSchema }),
+  z.strictObject({ op: z.literal("depth.rule.add"), surface: depthSurface, rule: DepthRuleSchema, index: depthRuleIndex.optional() }),
+  z.strictObject({ op: z.literal("depth.rule.remove"), surface: depthSurface, index: depthRuleIndex }),
+  z.strictObject({ op: z.literal("depth.resolve"), surface: depthSurface, resolved: ResolvedDepthSchema }),
   // Structure
   z.strictObject({ op: z.literal("clip.create"), id: z.string().min(1).max(64), refs: z.array(TrackAddressSchema).max(1000).optional(), tracks: z.array(raw).max(1000).optional(), startMs: time.optional(), label: z.string().max(80).optional() }),
   z.strictObject({ op: z.literal("clip.update"), id: z.string().min(1).max(64), startMs: time.optional(), speed: nullable(finite), inMs: nullable(time), durationMs: nullable(finite.positive()),
@@ -390,6 +397,33 @@ function applyOne(draft: Draft, op: EditOp) {
       definition(draft.doc).stage = stage;
       return;
     }
+    case "depth.set":
+    case "depth.rule.add":
+    case "depth.rule.remove":
+    case "depth.resolve": {
+      const d = definition(doc);
+      if (!(d.scene?.nodes as Doc[] | undefined)?.some(node => node.id === op.surface))
+        throw new EditFault("ERR_EDIT_TARGET", `No scene node "${op.surface}".`);
+      const raw = d.depth && Object.hasOwn(d.depth, op.surface) ? d.depth[op.surface] : undefined;
+      const { resolved: previous, ...current } = DepthConfigSchema.parse(raw ?? { mode: "auto" });
+      draft.field("definition.depth");
+      if (op.op === "depth.set") d.depth = { ...d.depth, [op.surface]: op.config };
+      else if (op.op === "depth.resolve") {
+        if (hashDepthLayers(op.resolved.layers) !== op.resolved.hash) throw new EditFault("ERR_EDIT_INVALID", "Depth hash does not match the frozen layers.");
+        d.depth = { ...d.depth, [op.surface]: { ...current, resolved: op.resolved } };
+      } else {
+        const rules = [...(current.rules ?? [])];
+        if (op.op === "depth.rule.add") {
+          if (op.index !== undefined && op.index > rules.length) throw new EditFault("ERR_EDIT_TARGET", `No depth rule position ${op.index}.`);
+          rules.splice(op.index ?? rules.length, 0, op.rule);
+        } else {
+          if (op.index >= rules.length) throw new EditFault("ERR_EDIT_TARGET", `No depth rule at index ${op.index}.`);
+          rules.splice(op.index, 1);
+        }
+        d.depth = { ...d.depth, [op.surface]: { ...current, rules } };
+      }
+      return;
+    }
     case "look.set": {
       draft.field("definition.look");
       setField(doc, "definition.look", op.look);
@@ -649,6 +683,10 @@ const describeOps: Record<string, (op: any) => string> = { // eslint-disable-lin
   "motion.set": op => `Set motion ${Object.entries(op).filter(([k]) => k !== "op").map(([k, v]) => `${k} ${v}`).join(", ")}`,
   "look.set": op => op.look === null ? "Remove look" : "Set look",
   "stage.set": op => `Set app stage to ${op.width} × ${op.height} @${op.dpr}×`,
+  "depth.set": op => `Set ${op.surface} depth to ${op.config.mode}`,
+  "depth.rule.add": op => `Add depth rule to ${op.surface}`,
+  "depth.rule.remove": op => `Remove depth rule from ${op.surface}`,
+  "depth.resolve": op => `Freeze ${op.resolved.layers.length} depth layers for ${op.surface}`,
   "clip.create": op => `Group ${(op.refs?.length ?? 0) + (op.tracks?.length ?? 0)} tracks into clip ${op.id}`,
   "clip.update": op => `Update clip ${op.id}`,
   "clip.set": op => `Apply clip ${String(op.clip.id)}${op.clip.source && typeof op.clip.source === "object" ? ` (${Object.entries(op.clip.source as Record<string, unknown>).find(([key]) => key !== "version" && key !== "params")?.join(" ") ?? "generated"})` : ""}`,

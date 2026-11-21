@@ -6,6 +6,11 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
 
 ## [Unreleased]
 
+### Added — UI depth and light (v2.1 Phase 13)
+
+- Opt into automatic or rule-based depth tiers with camera-reactive parallax, edges, contact shadows and sheen. The shared style ledger restores host styles when depth ends.
+- Edit depth mode, intensity, light and animated elevation in Studio. Freeze a scene's layer assignments with `velora depth resolve` and compare their hashes in capture and render evidence.
+
 ### Added — App stage (v2.1 Phase 12)
 
 - New scene and blueprint scaffolds use a 1512×982 laptop viewport at 2×. Studio can save the current window or screen as the stage, and `velora edit stage` previews or writes the same edit.

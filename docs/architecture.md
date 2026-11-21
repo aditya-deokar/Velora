@@ -317,3 +317,8 @@ Capture uses the recipe or bridge stage DPR as a quality floor. The output frame
 - **Scene data.** Editor panels read a live Scene through `useSceneInspector` (`src/react/inspector.ts`): plain, frozen snapshots of bindings, measurements, animatables, evaluated nodes and motion state, published through a channel that `ScenePreview` creates in `layout="editor"`.
 - **Capture safety.** Every editor element is chrome-marked (`data-velora-preview-chrome`); the copied export URL strips `velora-edit` and the fragment, so captures never load the editor.
 
+### UI depth
+
+`src/core/depth.ts` owns layer classification and camera-derived lighting. It consumes untransformed layout snapshots and uses the spatial owner's projection and ray intersection. The React depth adapter caches layout and paints each frame from the evaluated camera. Velora-owned side walls, sheen and shadow planes sit alongside the host content. RouteFrame uses a projected transform and prepended paint layers inside its own document.
+
+`createStyleLedger` is the host-style writer. It composes allowlisted properties and restores their original inline values, priorities and attribute bytes. The depth adapters diagnose grouping properties and preserve the host's layout and styling. Capture and Studio use the same ledger, and each cleans it up when the relevant surface or document ends.

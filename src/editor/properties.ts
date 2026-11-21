@@ -30,7 +30,7 @@ export const FOCUS_PROPS: readonly PropertySpec[] = [
   { name: "distance", unit: "px", step: 10, min: 1 }, { name: "fStop", step: 0.1, min: 0.7, max: 128 },
   { name: "focalLength", unit: "px", step: 1, min: 1, max: 300 }, { name: "maxBlur", unit: "px", step: 0.1, min: 0, max: 32 },
 ];
-const VISUAL_BASE: Record<string, number> = { opacity: 1, blur: 0, brightness: 1, contrast: 1, saturate: 1, hueRotate: 0, grayscale: 0, clipTop: 0, clipRight: 0, clipBottom: 0, clipLeft: 0, clipRadius: 150 };
+const VISUAL_BASE: Record<string, number> = { elevation: 1, opacity: 1, blur: 0, brightness: 1, contrast: 1, saturate: 1, hueRotate: 0, grayscale: 0, clipTop: 0, clipRight: 0, clipBottom: 0, clipLeft: 0, clipRadius: 150 };
 /** The motion speed (authored ms per presentation ms); legacy recipes default to 0.5. */
 export function motionSpeed(doc: Doc): number {
   // Read the field with the schema's default; never parse the whole motion just for its speed.

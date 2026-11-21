@@ -9,6 +9,7 @@ import { perspectiveForFocalLength } from "./lens";
 import { CascadeSchema } from "./choreography";
 import { SUPPORTED_EXPORT_FPS, CaptureManifestSchema, QUALITY_PRESETS, CODEC_CONTAINERS, ALPHA_CODECS, resolveFinishing } from "./export";
 import { DEFAULT_STAGE, StageSchema, STAGE_PRESETS, STAGE_DPRS, sceneStageBudget } from "./stage";
+import { DEFAULT_DEPTH_LIGHT, DEPTH_TIERS, DepthMapSchema } from "./depth";
 import { DELIVERY_PRESETS } from "./delivery";
 import { PROMPT_LIBRARY } from "./prompts";
 
@@ -133,6 +134,12 @@ const concepts: z.infer<typeof ConceptSchema>[] = [
  choices:"Start new app shots at laptop-14 (1512 × 982 @2×). Choose laptop-13 for compact layouts or use the Studio to save the actual viewport.",
  pitfalls:"Use RouteFrame for window media queries and AppStage container queries for in-tree UI. A raster close-up can exceed the available DPR even when the layout is correct.",
  verify:"Run velora inspect --scene ID --json for the stage budget and test a close-up with velora shot."},
+ {id:"depth-layers",title:"UI depth and light",
+ meaning:"Lift classified UI regions into tiers and let the camera drive parallax, contact shadows and sheen.",
+ mechanism:"definition.depth configures each Surface. In-tree layers use CSS 3D. RouteFrame projects the equivalent camera rays into the iframe.",
+ choices:"Use subtle depth for readable UI. Mark unusual elements with data-velora-tier or give a recipe rule a stable anchor.",
+ pitfalls:"Grouping properties flatten 3D. Split app clipping into a leaf or mark the clipping ancestor flat. Volumetric depth defers whole-leaf focus blur.",
+ verify:"Scrub Depth view and use velora depth resolve to freeze the layout. Compare the depth hash in capture manifests."},
  {id:"editor",title:"Studio edits and agent handoff",
  meaning:"Studio and coding agents edit the same scene or composition JSON. A gesture is an EditOp batch with a diff and an inverse.",
  mechanism:"Open a running project with velora edit --scene ID or velora edit --composition FILE. The authenticated loopback bridge writes validated text using SHA-256 compare-and-swap. Scene batches use velora edit apply and composition batches use velora compose edit.",
@@ -237,6 +244,7 @@ export default function PageSurvey() {
       editorial:{beats:"velora audio beats --composition FILE [--write-markers] --json",snap:"velora compose snap --composition FILE --to beats|downbeats [--write] --json",review:"velora review --composition FILE [--platform ID] --json",transitions:"velora transitions ls --json"},
       editor:{scene:"velora edit --scene ID",composition:"velora edit --composition FILE",sceneOps:"velora edit apply --scene ID --ops FILE --json",compositionOps:"velora compose edit --composition FILE --ops FILE --json",source:"velora edit source outline --scene ID --json",presets:"velora edit preset ls --json"},
       stages:{presets:STAGE_PRESETS,dprs:STAGE_DPRS,default:DEFAULT_STAGE,custom:"--stage WxH@DPR",edit:"velora edit stage --scene ID --preset laptop-13"},
+      depth:{tiers:DEPTH_TIERS,light:DEFAULT_DEPTH_LIGHT,edit:"velora edit depth --scene ID --surface subject --mode auto",resolve:"velora depth resolve --scene ID [--write]",elevation:[0,4]},
       brandAndLooks:{brand:"velora brand init [--from-css FILE] --json; velora brand check --json",finishPreview:"velora shot --scene ID --time MS --finish --out PNG --json"},
       presets:"velora render --composition FILE --out VIDEO --preset <id>; the delivery list below names each preset.",
       deliver:"velora deliver --composition FILE --targets youtube,x,linkedin,reels,tiktok,shorts,website-hero,readme-gif,og-image,product-hunt [--out DIR] --json: every platform file within its size budget, website-hero embed snippets, stills and deliverables.json.",
@@ -266,7 +274,7 @@ export default function PageSurvey() {
     },
   });
 }
-export const AuthoringReviewInputSchema=z.strictObject({scene:SceneSchema,motion:MotionSchema,
+export const AuthoringReviewInputSchema=z.strictObject({scene:SceneSchema,motion:MotionSchema,depth:DepthMapSchema.optional(),
  stage:StageSchema.optional(), width:z.number().positive().optional(), height:z.number().positive().optional(),
  textReadings:z.array(z.strictObject({id:z.string(),minMs:z.number().finite().positive()})).optional()});
 const ReviewIssueSchema=z.strictObject({code:z.string(),path:z.string(),message:z.string()});

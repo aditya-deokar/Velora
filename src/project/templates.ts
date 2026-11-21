@@ -2,7 +2,7 @@ import ts from "typescript";
 import { VELORA_PACKAGE } from "../core/branding";
 import { SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 import { SCROLL_CHANNEL, SUBJECT_ID, type ShotDefinition, type Aspect } from "../core/shots";
-import type { ParamValue, TemplateManifest } from "../core/templates";
+import { templateDepth, type ParamValue, type TemplateManifest } from "../core/templates";
 import { compositePreview, stageCompositeLayout, type CompositeDefinition, type JsonValue, type LayoutElement } from "../core/composites";
 import type { Stage } from "../core/stage";
 import { BRAND_FILE } from "../core/brand";
@@ -84,6 +84,7 @@ function kitTypes(element: LayoutElement | string, found: Set<string>): Set<stri
 /** The recipe JSON and binding TSX for one templated scene. */
 export function scaffoldScene(input: ScaffoldInput): { recipe: string; binding: string } {
   const { id, title, manifest, params, aspect, definition, subject, slot, stage } = input;
+  const depth = stage && templateDepth(manifest);
   const recipe = {
     $schema: RECIPE_SCHEMA_POINTER,
     version: 1,
@@ -91,7 +92,7 @@ export function scaffoldScene(input: ScaffoldInput): { recipe: string; binding: 
     title,
     description: manifest.summary,
     template: { id: manifest.id, version: manifest.version, aspect, params, ...(stage?.preset ? { stage: stage.preset } : {}) },
-    definition: { ...compositePreview(definition), ...(stage ? { stage } : {}) },
+    definition: { ...compositePreview(definition), ...(stage ? { stage } : {}), ...(depth ? { depth } : {}) },
   };
   const component = pascal(id);
   if ("layout" in definition) return { recipe: JSON.stringify(recipe, null, 2) + "\n", binding: compositeBinding(id, component, manifest, definition, slot, stage) };

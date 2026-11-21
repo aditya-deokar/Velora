@@ -130,7 +130,7 @@ export type CameraInput = z.input<typeof CameraSchema>;
 export type CameraDefinition = z.output<typeof CameraSchema>;
 export type FocusDefinition = z.output<typeof FocusSchema>;
 export type FocusInput = z.input<typeof FocusSchema>;
-export type SceneIssue = { path: string; message: string };
+export type SceneIssue = { path: string; message: string; code?: string };
 export function validateScene(
   input: unknown,
 ):

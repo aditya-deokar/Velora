@@ -1,6 +1,7 @@
 import type { SceneSnapshot } from "../react";
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { EASING_NAMES, focalLengthForPerspective, perspectiveForFocalLength, type EditOp, type TrackAddress } from "../core";
+import { DEFAULT_DEPTH_LIGHT, DepthConfigSchema, DepthIntensitySchema, DepthModeSchema, type DepthConfig } from "../core/depth";
 import { useEditor, useEditorState } from "./context";
 import { intentToOps, isAnimated, type PropertyIntent } from "./intents";
 import { findTrack, listClips, listTracks, trackKey } from "./model";
@@ -234,6 +235,45 @@ function AnimatableProperties({ entries, objectLabels = false }: { entries: Scen
       kind={spec.type} options={spec.type === "enum" ? spec.options : undefined}
       fallback={spec.type === "boolean" ? (spec.default ? 1 : 0) : spec.type === "enum" ? Math.max(0, spec.options.indexOf(spec.default)) : spec.default}/>))}</>;
 }
+function DepthProperties({ id }: { id: string }) {
+  const { store, snapshot, controller } = useEditor();
+  const state = useEditorState(store);
+  const authored = DepthConfigSchema.safeParse((state.draft as Doc).definition?.depth?.[id]);
+  const live = snapshot?.depth?.some(entry => entry.surface === id);
+  const config: DepthConfig = authored.data ?? { mode: live ? "auto" : "off" };
+  const light = { ...DEFAULT_DEPTH_LIGHT, ...config.light };
+  const update = (patch: Partial<DepthConfig>, preview = false) => {
+    const base = DepthConfigSchema.safeParse((store.committed() as Doc).definition?.depth?.[id]).data ?? config;
+    const op: EditOp = { op: "depth.set", surface: id, config: { ...base, ...patch } };
+    if (preview) store.preview([op]);
+    else {
+      const issues = store.commit([op]);
+      if (issues.length) controller.notify(issues[0].message);
+    }
+  };
+  const sliders = [
+    { name: "azimuthDeg", label: "Light azimuth", unit: "°", min: -360, max: 360, step: 1 },
+    { name: "elevationDeg", label: "Light elevation", unit: "°", min: 5, max: 90, step: 1 },
+    { name: "sheen", label: "Sheen", min: 0, max: 1, step: 0.01 },
+  ] as const;
+  return <>
+    <label className="ve-prop">Depth mode<select className="ve-input" value={config.mode} onChange={event => update({ mode: DepthModeSchema.parse(event.target.value), resolved: undefined, light })}>
+      {DepthModeSchema.options.map(mode => <option key={mode}>{mode}</option>)}
+    </select></label>
+    {config.mode !== "off" && <>
+      <label className="ve-prop">Depth intensity<select className="ve-input" value={config.intensity ?? "standard"} onChange={event => update({ intensity: DepthIntensitySchema.parse(event.target.value) })}>
+        {DepthIntensitySchema.options.map(intensity => <option key={intensity}>{intensity}</option>)}
+      </select></label>
+      {sliders.map(spec => <div className="ve-prop" key={spec.name}><span>{spec.label}</span>
+        <NumberField value={light[spec.name]} spec={spec} label={spec.label} italic={false}
+          onPreview={value => update({ light: { ...light, [spec.name]: value } }, true)}
+          onCommit={value => update({ light: { ...light, [spec.name]: value } })} onCancel={() => store.cancel()}/>
+      </div>)}
+      <PropertyRow track={{ target: { kind: "surface", id }, property: "elevation" }} spec={{ name: "elevation", step: 0.05, min: 0, max: 4, unit: "×" }} />
+      {config.resolved && <button className="ve-btn" onClick={() => update({ resolved: undefined })}>Use live depth</button>}
+    </>}
+  </>;
+}
 export function Inspector() {
   const { store, snapshot } = useEditor();
   const state = useEditorState(store);
@@ -269,6 +309,7 @@ export function Inspector() {
     body = <>
       <Group title="Transform">{TRANSFORM_PROPS.map(spec => <PropertyRow key={spec.name} track={{ target: { kind: "surface", id: subject }, property: spec.name }} spec={spec}/>)}</Group>
       <Group title="Visual and grade" open={false}>{VISUAL_PROPS.map(spec => <PropertyRow key={spec.name} track={{ target: { kind: "surface", id: subject }, property: spec.name }} spec={spec}/>)}</Group>
+      <Group title="Depth" open={false}><DepthProperties id={subject}/></Group>
       <Group title="Style vars" open={false}><StyleVars id={subject}/></Group>
       {animatables.length > 0 && <Group title="Props"><AnimatableProperties entries={animatables}/></Group>}
       <Group title="Constraints" open={false}><Constraints surface={subject}/></Group>

@@ -1,4 +1,5 @@
 import type { Measurement, TransformInput, SceneIssue, AnimatableSpec } from "../core";
+import type { DepthReport } from "./depth";
 
 /** SOURCE OF TRUTH: React registration and untransformed layout measurements.
  * WHAT: one ephemeral registry per Scene; entries use mount identity, not public IDs.
@@ -51,7 +52,7 @@ const ZERO = { x: 0, y: 0 };
 
 // Offset geometry excludes transforms. Share offset and scroll ancestors within
 // one measurement so every layer does not query the same layout geometry.
-function layoutReader() {
+export function layoutReader() {
   const offsets = new Map<HTMLElement, Point>();
   const scrolls = new Map<HTMLElement, Point>();
   const boxes = new Map<HTMLElement, { width: number; height: number }>();
@@ -100,7 +101,7 @@ function uncoveredContent(root:Element):boolean {
   for (const child of root.childNodes) {
     if (child.nodeType===3 && child.textContent?.trim()) return true;
     if (!(child instanceof Element)) continue;
-    if (child.hasAttribute("data-velora-id") || child.hasAttribute("data-velora-content") || child.matches('svg[width="0"],script,style,template')) continue;
+    if (child.hasAttribute("data-velora-id") || child.hasAttribute("data-velora-content") || child.matches('[data-velora-depth-proxies],svg[width="0"],script,style,template')) continue;
     const css=getComputedStyle(child);
     if(css.display==='none'||css.visibility==='hidden') continue;
     if(child.matches('img,svg,canvas,video,input,textarea,select') || (css.backgroundImage && css.backgroundImage!=='none')) return true;
@@ -114,6 +115,7 @@ export function createRegistry() {
   const declarations = new Map<symbol, AnimatableDeclaration>();
   const anchors = new Map<symbol, { id: string; sample: AnchorSampler }>();
   const externalIssues = new Map<symbol, SceneIssue>();
+  const depthReports = new Map<symbol, DepthReport>();
   let animatableView: ReadonlyMap<string, AnimatableEntry> = new Map();
   let animatableIssues: SceneIssue[] = [];
   // First declaration of an id wins; a later declaration with a different spec is a Scene issue.
@@ -189,6 +191,14 @@ export function createRegistry() {
     /** Read-only view of declared animatables (id -> spec and owning Surface id). */
     get animatables(): ReadonlyMap<string, AnimatableEntry> { return animatableView; },
     get animatableIssues(): SceneIssue[] { return [...animatableIssues, ...externalIssues.values()]; },
+    depthReports,
+    reportDepth(token: symbol, report?: DepthReport) {
+      if (report) {
+        if (JSON.stringify(depthReports.get(token)) === JSON.stringify(report)) return;
+        depthReports.set(token, report);
+      } else if (!depthReports.delete(token)) return;
+      publish();
+    },
     reportIssue(token: symbol, issue?: SceneIssue) {
       if (issue) {
         if (sameObject(externalIssues.get(token), issue)) return;
@@ -237,7 +247,7 @@ export function createRegistry() {
       stage = element;
       if(typeof MutationObserver!=="undefined") {
         mutations=new MutationObserver(records=>{
-          if(records.some(r=>!(r.target instanceof Element ? r.target : r.target.parentElement)?.closest('[data-velora-content],svg[width="0"]'))) {
+          if(records.some(r=>!(r.target instanceof Element ? r.target : r.target.parentElement)?.closest('[data-velora-content],[data-velora-depth-proxies],svg[width="0"]'))) {
             coverageDirty=true; refresh();
           }
         });

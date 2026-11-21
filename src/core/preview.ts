@@ -4,6 +4,7 @@ import { SceneSchema, type SceneIssue } from "./scene";
 import { MotionSchema } from "./motion";
 import { reviewAuthoring } from "./authoring";
 import { StageSchema } from "./stage";
+import { DepthMapSchema } from "./depth";
 
 /** SOURCE OF TRUTH: PreviewDefinitionSchema, presentPreview.
  * WHAT: validate a source-authored preview revision using existing scene/motion owners.
@@ -16,6 +17,7 @@ export const PreviewDefinitionSchema = z.strictObject({
   // Finishing look: grade/grain/vignette/letterbox in the browser layer, the rest at export.
   look: LookSchema.optional(),
   stage: StageSchema.optional(),
+  depth: DepthMapSchema.optional(),
   width: z.number().finite().positive().max(7680).default(1400),
   height: z.number().finite().positive().max(7680).default(980),
 });
@@ -28,7 +30,7 @@ export function presentPreview(input: unknown):
   if (!parsed.success) return { valid: false, issues: parsed.error.issues.map(issue => ({
     path: issue.path.join("."), message: issue.message,
   })) };
-  const review = reviewAuthoring({scene: parsed.data.scene,
+  const review = reviewAuthoring({scene: parsed.data.scene, depth: parsed.data.depth,
     motion: parsed.data.motion ?? {durationMs: 0, tracks: []}});
   return review.valid ? {valid: true, definition: parsed.data, issues: []}
     : {valid: false, issues: review.issues};

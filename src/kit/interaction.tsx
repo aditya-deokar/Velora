@@ -25,7 +25,7 @@ export function Cursor({ id = "cursor", x, y, skin = "arrow", size = 30, color =
   const press = Math.max(0, Math.min(1, cursor.values.press));
   const brand = useBrand();
   const px = x ?? cx, py = y ?? cy;
-  return <div data-velora-cursor={skin} style={{ position: "absolute", left: 0, top: 0, transform: `translate(${px}px, ${py}px)`, pointerEvents: "none", zIndex: 10, ...style }}>
+  return <div data-velora-cursor={skin} data-velora-tier="cursor" style={{ position: "absolute", left: 0, top: 0, transform: `translate(${px}px, ${py}px)`, pointerEvents: "none", zIndex: 10, ...style }}>
     {press > 0 && <span style={{ position: "absolute", left: -size, top: -size, width: size * 2, height: size * 2, borderRadius: "50%",
       border: `3px solid ${brand.colors.accent}`, opacity: 1 - press, transform: `scale(${0.3 + press * 0.9})` }}/>}
     <svg width={size} height={size} viewBox="0 0 32 32" style={{ display: "block", filter: "drop-shadow(0 2px 3px rgba(0,0,0,.45))", transform: `scale(${1 - 0.12 * Math.sin(press * Math.PI)})`, transformOrigin: "2px 2px" }}>

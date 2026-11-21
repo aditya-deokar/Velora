@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LookSchema } from "./looks";
 import { StageDprSchema, StagePresetSchema, StageSizeSchema, type StageDpr, type StageSize, type Stage } from "./stage";
+import { DepthEvidenceSchema, DepthLineageSchema } from "./depth";
 
 /** SOURCE OF TRUTH: ExportVideoSchema, CaptureManifestSchema, FrameRenderSchema, RenderManifestSchema, QualityPresetSchema, VideoCodecSchema.
  * WHAT: runtime contracts for local video requests, the live browser capture bridge,
@@ -101,6 +102,7 @@ export const CaptureManifestSchema = z.strictObject({
   // The scene's look (browser layer already captured); export applies its finishing fields.
   look: LookSchema.optional(),
   stage: StageSizeSchema.extend({ preset: StagePresetSchema.optional() }).optional(),
+  depth: z.array(DepthEvidenceSchema).optional(),
 });
 export const StageLineageSchema = StageSizeSchema.extend({
   preset: StagePresetSchema.optional(), effectiveDpr: z.number().positive(), dprCapped: z.literal(true).optional(),
@@ -189,6 +191,7 @@ export const RenderManifestSchema = z.strictObject({
   supersample: z.number().positive().optional(),
   stage: StageLineageSchema.optional(),
   stages: z.array(StageLineageSchema.extend({ sceneId: z.string() })).optional(),
+  depth: z.array(DepthLineageSchema.extend({ sceneId: z.string().optional() })).optional(),
   transparent: z.boolean().optional(),
   workers: z.number().int().positive().optional(),
   // Loudness normalization: target, first-pass measurement and the measured result.
@@ -296,7 +299,7 @@ export type ShotRender = z.output<typeof ShotRenderSchema>;
 export const ShotRenderResultSchema = z.discriminatedUnion("success", [
   z.strictObject({ success: z.literal(true), data: z.strictObject({
     out: z.string(), sceneId: z.string(), timeMs: z.number().finite().nonnegative(),
-    sha: z.string(), clamped: z.boolean().optional(), stage: StageLineageSchema.optional(), checks: z.array(RenderCheckSchema).optional(),
+    sha: z.string(), clamped: z.boolean().optional(), stage: StageLineageSchema.optional(), depth: z.array(DepthLineageSchema).optional(), checks: z.array(RenderCheckSchema).optional(),
   }) }),
   z.strictObject({ success: z.literal(false), issues: z.array(ExportIssueSchema) }),
 ]);
@@ -329,7 +332,7 @@ export const ExportVideoResultSchema = z.discriminatedUnion("success", [
   z.strictObject({ success: z.literal(true), data: z.strictObject({
     output: z.string(), fps: z.number(), frames: z.number().int(), durationMs: z.number(),
     codec: z.string().optional(), quality: z.string().optional(), poster: z.string().optional(),
-    stage: StageLineageSchema.optional(), checks: z.array(RenderCheckSchema).optional(),
+    stage: StageLineageSchema.optional(), depth: z.array(DepthLineageSchema).optional(), checks: z.array(RenderCheckSchema).optional(),
     audio: z.strictObject({ file: z.string(), codec: z.string(), driftMs: z.number(), peakDb: z.number().nullable() }).optional(),
     captions: z.strictObject({ file: z.string(), cues: z.number().int().nonnegative(), burnIn: z.boolean() }).optional(),
   }) }),

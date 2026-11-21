@@ -187,3 +187,6 @@ Select one layer and open **Camera moves** to apply a shot as an editable clip. 
 - Not for wiring files, discovery or providers; use `velora-scenes` or `velora-init`.
 - Not for editing several shots into a film; timing between shots belongs to `velora-editing` and `velora-composition`.
 - Not for claims about artistic quality from checks. Automated checks are technical; taste needs human review.
+## Camera-reactive UI depth
+
+Start at subtle intensity and orbit the app enough to see the difference between a card and its controls. Use **Depth view** to inspect tiers. Keep sheen restrained, and angle the light so the contact shadows make the layers legible. Examine the beginning and end of the move before freezing depth. Whole-leaf focus blur is deferred on volumetric surfaces, and projected RouteFrames retain the surface focus blur.

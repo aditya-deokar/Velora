@@ -54,7 +54,7 @@ type Vec3 = [number, number, number];
 export function cameraWorld(camera: CameraDefinition): Matrix {
   return multiply(invertAffine(cameraMatrix(camera))!, matrixFor(TransformSchema.parse({ z: camera.perspective })));
 }
-const applyPoint = (m: Matrix, [x, y, z]: readonly number[]): Vec3 =>
+export const applyPoint = (m: Matrix, [x, y, z]: readonly number[]): Vec3 =>
   [m[0] * x + m[1] * y + m[2] * z + m[3], m[4] * x + m[5] * y + m[6] * z + m[7], m[8] * x + m[9] * y + m[10] * z + m[11]];
 const wrap = (degrees: number) => ((((degrees + 180) % 360) + 360) % 360) - 180;
 /** Pan/tilt about the camera's eye: rotateX/rotateY (degrees, nearest the authored ones, target in

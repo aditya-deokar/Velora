@@ -182,6 +182,8 @@ Snapshots cache rendered local pixels in the recipe. Refresh them after visual c
 
 New scaffolds use `laptop-14`, a 1512×982 CSS viewport at 2×. Choose a preset or pass the viewport as `--stage 1536x730@1.25`. **Use as stage** in Studio can save your current window or screen size. Set the video dimensions independently when you export.
 
+Enable UI depth on a surface with `velora edit depth --scene home-hero --surface subject --mode auto --write`. Depth tiers give cards and controls parallax, edges, shadows and camera-reactive sheen. Use `velora depth resolve --scene home-hero --write` to freeze the classified layers before delivery.
+
 ### Edit mode: keyframes by hand
 
 ```sh

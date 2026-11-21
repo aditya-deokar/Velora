@@ -1,6 +1,6 @@
 import { AspectSchema, ASPECT_FRAMES, type Aspect, type ShotDefinition } from "./shots";
 import { compositePreview, type CompositeDefinition } from "./composites";
-import { RouteSchema, findTemplate, resolveTemplateParams, templateDefinition, templateSubject, type ParamValue, type TemplateIssue, type TemplateManifest } from "./templates";
+import { RouteSchema, findTemplate, resolveTemplateParams, templateDefinition, templateDepth, templateSubject, type ParamValue, type TemplateIssue, type TemplateManifest } from "./templates";
 import { DEFAULT_STAGE, stageFromSpec, type Stage } from "./stage";
 
 /** SOURCE OF TRUTH: QUICK_SHOT_PARAMS, readQuickShot, quickShotQuery, quickShotCommands.
@@ -96,8 +96,9 @@ export function readQuickShot(query: QueryLookup): QuickShot | undefined {
   const resolved = resolveTemplateParams(manifest, overrides);
   issues.push(...resolved.issues);
   const built = issues.length || !stage ? undefined : templateDefinition(manifest, resolved.params, state.aspect, templateSubject(state.aspect, stage));
+  const depth = templateDepth(manifest);
   // Layered and motion-graphics templates also carry their layout; the definition stays recipe-shaped.
-  return { ...state, manifest, params: resolved.params, ...(built && stage ? { definition: { ...compositePreview(built), stage } } : {}),
+  return { ...state, manifest, params: resolved.params, ...(built && stage ? { definition: { ...compositePreview(built), stage, ...(depth ? { depth } : {}) } } : {}),
     ...(built && "layout" in built ? { composite: built as CompositeDefinition } : {}), issues };
 }
 

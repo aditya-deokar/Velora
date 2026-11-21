@@ -178,3 +178,8 @@ Use `useAnimatable` when an existing component prop needs a clocked value. Choos
 Use the studio's **Pick source element** or `velora edit source outline --scene <id> --json` to find authored JSX. The source diff can wrap an element in a Surface and update its scene recipe in one transaction. **Group spatial layers** gives contiguous Surface siblings a common parent while retaining their IDs and tracks. Use a motion clip to group tracks in time.
 
 Choose a stable, unique layer ID and verify the new wrapper's layout in Edit mode after applying. For JSX rendered in loops, conditions, or props, review the refusal and use **Ask agent** to request a manual change.
+## Lift app layers
+
+Set `definition.depth` by Surface ID or run `velora edit depth --scene home-hero --surface subject --mode auto --intensity subtle --write`. Scene props are a fallback. In rule mode, match `data-velora-anchor`, a CSS selector, or a detected tier. The first rule wins after explicit `data-velora-tier` markup. Use `flat` for a subtree or `none` to exclude one node. Use the `elevation` surface track to animate the tier multiplier from 0 to 1.
+
+Run `velora depth resolve --scene home-hero --url http://127.0.0.1:5173 --write` after checking the shot. This freezes stable anchor or selector matches at the opening frame. Re-enable live depth before freezing a changed layout.

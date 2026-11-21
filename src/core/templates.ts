@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_DEPTH_LIGHT, type DepthMap } from "./depth";
 import { SceneRecipeIdSchema } from "./recipes";
 import { AspectSchema, IntensitySchema, ShotKindSchema, buildShot, framingReport, projectPoints, ASPECT_FRAMES, type Aspect, type ShotDefinition, type ShotInput } from "./shots";
 import { fitStage, type Stage } from "./stage";
@@ -365,6 +366,9 @@ export function templateDefinition(manifest: TemplateManifest, params: Record<st
   if (manifest.composite) return buildComposite(manifest.composite, aspect, params);
   return buildShot(templateShotInput(manifest, params, aspect, subject), { stageFit: !!subject });
 }
+export function templateDepth(manifest: TemplateManifest): DepthMap | undefined {
+  return manifest.id === "parallax-planes" ? { subject: { mode: "auto", intensity: "subtle", light: DEFAULT_DEPTH_LIGHT } } : undefined;
+}
 /** Framing, title-safe placement and reading time for a layered or motion-graphics template. */
 function certifyComposite(manifest: TemplateManifest, definition: CompositeDefinition, aspect: Aspect, stage?: Stage): TemplateIssue[] {
   const issues: TemplateIssue[] = [];
@@ -374,15 +378,19 @@ function certifyComposite(manifest: TemplateManifest, definition: CompositeDefin
   const W = definition.width, H = definition.height;
   const cx = node.left + node.width / 2 - W / 2, cy = node.top + node.height / 2 - H / 2, z = node.transform?.z ?? 0;
   const subject = stage && node.element.type === "Slot" ? fitStage(stage, node) : node;
-  const grid = Array.from({ length: 49 }, (_, i) => [cx + subject.width * ((i % 7) / 6 - 0.5), cy + subject.height * (Math.floor(i / 7) / 6 - 0.5), z] as const);
+  // A staged parallax template lifts its tallest tray by 60 CSS px at subtle strength.
+  const elevations = stage && templateDepth(manifest) ? [z, z + 60] : [z];
+  const grids = elevations.map(elevation => Array.from({ length: 49 }, (_, i) => [cx + subject.width * ((i % 7) / 6 - 0.5), cy + subject.height * (Math.floor(i / 7) / 6 - 0.5), elevation] as const));
   const duration = definition.motion.durationMs;
   const { minSubjectVisible, checkFrom } = manifest.certification;
   const safe = manifest.category === "motion-graphics" ? 0.9 : 1;
   for (let k = 0; k <= 12; k++) {
     const timeMs = (duration * k) / 12;
     if (timeMs < checkFrom * duration) continue;
-    const points = projectPoints(definition, grid, timeMs);
-    const inside = points.filter(point => point && Math.abs(point.x - W / 2) <= (W * safe) / 2 + 0.5 && Math.abs(point.y - H / 2) <= (H * safe) / 2 + 0.5).length / points.length;
+    const inside = Math.min(...grids.map(grid => {
+      const points = projectPoints(definition, grid, timeMs);
+      return points.filter(point => point && Math.abs(point.x - W / 2) <= (W * safe) / 2 + 0.5 && Math.abs(point.y - H / 2) <= (H * safe) / 2 + 0.5).length / points.length;
+    }));
     if (inside < minSubjectVisible)
       issues.push({ code: "ERR_TEMPLATE_FRAMING", path: at, message: `Only ${(inside * 100).toFixed(0)}% of ${definition.primary} is ${safe < 1 ? "title-safe" : "in frame"} at ${Math.round(timeMs)}ms (needs ${minSubjectVisible * 100}%).` });
   }

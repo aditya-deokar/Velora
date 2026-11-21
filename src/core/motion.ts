@@ -27,6 +27,7 @@ const finite = z.number().finite();
 // Visual properties apply to a Surface's content leaf (never a spatial group), so they
 // cannot flatten 3D: opacity, an artistic blur composed with depth of field, true masks and a grade.
 const SurfaceMotionSchema = TransformSchema.extend({
+  elevation: finite.min(0).max(4).optional(),
   opacity: finite.min(0).max(1),
   blur: finite.min(0).max(64),
   clipTop: finite.min(0).max(100),
