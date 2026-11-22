@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { CameraSchema, FocusSchema, intersectPlane, projectWorld, screenRay, type CameraDefinition, type EditOp, type Matrix, type Transform } from "../../core";
+import { CameraSchema, FocusSchema, intersectPlane, projectWorld, screenRay, withCameraAdditive, type CameraDefinition, type EditOp, type Matrix, type Transform } from "../../core";
 import { useEditor, useEditorState } from "../context";
 import { stateAt, toAuthored, toPresentation } from "../properties";
 import type { Doc } from "../store";
@@ -17,6 +17,7 @@ import { describeElementTarget, elementKey, isElementTarget, targetPoseKey, type
 import { focusHit, followOps, targetAt } from "./FocusTool";
 import { cameraPath, keyDotOps, layerPath, pathKeys, pathWindow, sampleTimes } from "./MotionPath";
 import { onionSkin } from "./OnionSkin";
+import { RigPath } from "./RigPath";
 import { GizmoHandles, gizmoGeometry, type HandleId } from "./Gizmo";
 import { pickSourceElement } from "../source/pick";
 
@@ -40,7 +41,7 @@ const centerOf = (world: Matrix) => [world[3], world[7], world[11]];
 /** The authored camera at the playhead (static base + camera tracks, before constraints): what edits write. */
 function authoredCamera(doc: Doc, presentationMs: number): Camera {
   const state = stateAt(doc, presentationMs);
-  return CameraSchema.parse({ ...doc?.definition?.scene?.camera, ...state?.camera });
+  return CameraSchema.parse(withCameraAdditive({ ...doc?.definition?.scene?.camera, ...state?.camera }, state?.additive?.camera, state?.cameraPositionSpace));
 }
 export function Overlay() {
   const { store, host, snapshot, notify, sourcePicking, pickSource } = useEditor();
@@ -401,12 +402,13 @@ export function Overlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   [doc, snapshot, camera, frame, state.ui.onion, selected.join("\u0000"), host.session.timeMs]);
   const gizmo = director && snapshot ? cameraGizmo(real, snapshot.focus ?? FocusSchema.parse({}), director, frame) : undefined;
+  const hasRig = doc?.definition?.motion?.clips?.some((clip: Doc) => clip.source?.rig);
   const camPath = useMemo(() => {
-    if (!director || !snapshot || !state.ui.paths) return [];
+    if (!director || !snapshot || !state.ui.paths || hasRig) return [];
     const animated = (doc?.definition?.motion?.tracks ?? []).some((track: Doc) => track.target?.kind === "camera") || (doc?.definition?.motion?.clips ?? []).length > 0;
     return animated ? cameraPath(doc, snapshot, director, frame, sampleTimes(0, host.session.durationMs, 30)) : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [director, doc, snapshot?.bindings, frame, state.ui.paths]);
+  }, [director, doc, snapshot?.bindings, frame, state.ui.paths, hasRig]);
   const poly = (points: ({ x: number; y: number } | null)[]) => points.filter(Boolean).map(p => `${p!.x},${p!.y}`).join(" ");
   const primary = selected[0] && tool !== "camera" && tool !== "focus" ? gizmoFor(selected[0]) : null;
   const typed = drag?.typed;
@@ -466,6 +468,7 @@ export function Overlay() {
     {items.filter(item => selected.includes(item.id)).map(item => <polygon key={item.id} className="ve-outline" data-outline={item.id} {...(item.id === selected[0] ? { "data-primary": "" } : {})} points={poly(item.quad)}/>)}
     {primary && <GizmoHandles tool={tool} geometry={primary} scale={scale}/>}
     {tool === "camera" && !director && <circle role="img" data-handle="rotateZ" aria-label="Roll camera" cx={frame.width / 2} cy={frame.height / 2} r={Math.min(frame.width, frame.height) * 0.42} className="ve-ring" strokeWidth={6 * s} fill="none"/>}
+    {director && state.ui.paths && hasRig && <RigPath camera={director} frame={frame} scale={scale}/>}
     {gizmo && <g role="img" data-camera-gizmo="" aria-label="Real camera">
       <polygon className="ve-focus-plane" data-focus-plane="" points={poly(gizmo.focus)}/>
       <polygon className="ve-frustum" points={poly(gizmo.frustum)}/>

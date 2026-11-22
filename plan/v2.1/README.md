@@ -151,7 +151,7 @@ Phase 01 (both are stop conditions in Phase 00.1).
 | D10 | Accepted after S7 | Chromium preserved layout at 2×. The 1080p screenshot mean rose from 92 ms to 366 ms on the reference machine. |
 | D11 | Accepted for Phase 13 | Host styles go through the reversible ledger. Chromium confirmed proxy sorting and iframe cleanup. |
 | D12 | Accepted for Phase 14 | Lens presets use full-frame perspective and stage pixels per millimetre. Legacy `lensFor` keeps its original range and focal-length output. |
-| D13 | Accepted (recommendation), confirm before Phase 16 | |
+| D13 | Accepted. Phase 16 bakes the follower at a fixed step and uses additive banking. | Phase 16 |
 | D14 | Accepted. Phase 15 implements named or unique selector targets and refuses capture if a lock becomes unresolved. | Phase 15 |
 
 ## 4. Open-source verdict (summary)
@@ -325,4 +325,4 @@ on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 | 13 | implemented | Volumetric and projected depth, reversible host styles, camera-reactive light, Studio authoring and frozen capture lineage ([exit report](artifacts/phase-13-exit.md)). |
 | 14 | implemented | Physical lens presets, zoom and framing hold, per-layer depth of field, rack focus, and Studio and CLI authoring ([exit report](artifacts/phase-14-exit.md)). |
 | 15 | Implemented | [phase-15-exit.md](artifacts/phase-15-exit.md) |
-| 16 | not started | — |
+| 16 | Implemented | Fixed-step physical camera rigs, Studio and CLI authoring, and verified preview-to-capture parity ([exit report](artifacts/phase-16-exit.md)). |

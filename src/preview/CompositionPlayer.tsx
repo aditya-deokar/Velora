@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { audioPlacement, CompositionSchema, layersAt, localTime, motionDuration, timelineFromComposition, type Composition, type BoundRecipe, type CaptionCue, type PreviewDefinitionInput } from "../core";
-import { Scene, SceneErrorBoundary } from "../react";
+import { audioPlacement, CompositionSchema, layersAt, localTime, motionDuration, rigLayersFromAnchors, timelineFromComposition, velocityBlurAt, type Composition, type BoundRecipe, type CaptionCue, type LookInput, type PreviewDefinitionInput } from "../core";
+import { createSceneInspector, Scene, SceneErrorBoundary, useSceneInspector } from "../react";
 import { BrandProvider, LookLayer, type CaptionCueInput, type CaptionStyle } from "../kit";
 import { usePreviewSession } from "./session";
 import { useTransportKeys } from "./transport";
@@ -36,6 +36,17 @@ function StyledCaptions({ cues, style, timeMs, width, height }: { cues: CaptionC
       <CaptionPicture cues={cues} style={style} width={width} height={height}/>
     </Scene></BrandProvider>
   </div>;
+}
+function CompositionScene({ definition, Component, timeMs, width, height, look }: {
+  definition: BoundRecipe["definition"]; Component: ComponentType; timeMs: number; width: number; height: number; look?: LookInput;
+}) {
+  const [inspector] = useState(createSceneInspector);
+  const activeInspector = look?.velocityBlur ? inspector : undefined;
+  const snapshot = useSceneInspector(activeInspector);
+  const velocity = look?.velocityBlur ? velocityBlurAt({ ...definition, width, height, look }, timeMs, { layers: rigLayersFromAnchors(snapshot?.targets ?? []) }) : undefined;
+  const scene = <SceneErrorBoundary><Scene stage={definition.stage} depth={definition.depth} camera={definition.scene.camera} focus={definition.scene.focus}
+    constraints={definition.scene.constraints} motion={definition.motion} timeMs={timeMs} inspector={activeInspector} style={{ width, height }}><Component/></Scene></SceneErrorBoundary>;
+  return look ? <LookLayer look={look} velocity={velocity} timeMs={timeMs} width={width} height={height}>{scene}</LookLayer> : scene;
 }
 export function CompositionPlayer({ path, document, scenes, bindings, assetUrls, onBack, backHref, editHref, initialTimeMs, renderEditor }: CompositionPlayerProps) {
   const editing = !!renderEditor;
@@ -94,11 +105,10 @@ export function CompositionPlayer({ path, document, scenes, bindings, assetUrls,
   const cue = activeCue(cues, session.timeMs);
   const captionStyle = composition?.captions?.style;
   const renderScene = (recipe: BoundRecipe, Component: ComponentType, timeMs: number, inheritLook: boolean) => {
-    const localMs = editing && recipe.definition.motion ? Math.min(timeMs, motionDuration(recipe.definition.motion)) : timeMs;
-    const scene = <SceneErrorBoundary><Scene stage={recipe.definition.stage} depth={recipe.definition.depth} camera={recipe.definition.scene.camera} focus={recipe.definition.scene.focus} constraints={recipe.definition.scene.constraints}
-      motion={recipe.definition.motion} timeMs={localMs} style={{ width: composition!.width, height: composition!.height }}><Component/></Scene></SceneErrorBoundary>;
     const look = recipe.definition.look ?? (inheritLook ? composition?.look : undefined);
-    return editing && look ? <LookLayer look={look} timeMs={localMs} width={composition!.width} height={composition!.height}>{scene}</LookLayer> : scene;
+    const localMs = (editing || look?.velocityBlur) && recipe.definition.motion ? Math.min(timeMs, motionDuration(recipe.definition.motion)) : timeMs;
+    return <CompositionScene definition={recipe.definition} Component={Component} timeMs={localMs} width={composition!.width} height={composition!.height}
+      look={editing || look?.velocityBlur ? look : undefined}/>;
   };
   const picture = <div className="velora-viewport" ref={viewport} aria-label="Composition preview" style={{ alignItems: "flex-start", paddingTop: 16 }}>
       {composition && <div ref={frameRef} data-velora-player-frame="" style={{ position: "absolute", left: "50%", top: 16, width: composition.width, height: composition.height, transform: `translateX(-50%) scale(${Math.max(0.05, scale)})`, transformOrigin: "50% 0", background: "#000", overflow: "hidden" }}>

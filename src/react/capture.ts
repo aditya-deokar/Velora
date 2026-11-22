@@ -28,11 +28,13 @@ export function useCaptureSettle(settle: Settle, beforeSeek?: () => void, enable
 export function useSceneCapture({durationMs,seek,selector='[data-velora-capture="scene"]',look,stage}:
   {durationMs:number;seek:(elapsedMs:number)=>void;selector?:string;look?:unknown;stage?:Stage}) {
   const current=useRef(seek);
+  const velocityBlur = useRef(true);
   current.current=seek;
   useEffect(()=>{
     const host=window as typeof window & {__VELORA_CAPTURE__?:unknown};
     if(host.__VELORA_CAPTURE__) throw new Error("Only one capture viewport can be registered per page.");
     let activeViewport: Element | null = null;
+    const applyBlur = (viewport: Element | null) => viewport?.toggleAttribute("data-velora-velocity-blur-disabled", !velocityBlur.current);
     const verify=(inventory?: boolean)=>{
       const viewport=document.querySelector(selector);
       if(viewport?.matches('[data-velora-view="director"]') || viewport?.querySelector('[data-velora-view="director"]'))
@@ -46,6 +48,11 @@ export function useSceneCapture({durationMs,seek,selector='[data-velora-capture=
     };
     const captureStage = stage && { width: stage.width, height: stage.height, dpr: stage.dpr, ...(stage.preset ? { preset: stage.preset } : {}) };
     const bridge:CaptureBridge={...CaptureManifestSchema.parse({version:1,durationMs,selector,...(look?{look}:{}),...(captureStage ? {stage:captureStage} : {})}),
+      configure(options) {
+        if (options.velocityBlur !== undefined) velocityBlur.current = options.velocityBlur;
+        applyBlur(document.querySelector(selector));
+      },
+      get blurMode() { return this.look?.velocityBlur ? velocityBlur.current ? "velocity" : "shutter" : undefined; },
       get depth() {
         const depth = captureDepth(document.querySelector(selector));
         return depth.length ? depth : undefined;
@@ -56,6 +63,7 @@ export function useSceneCapture({durationMs,seek,selector='[data-velora-capture=
       if(!Number.isFinite(elapsedMs)||elapsedMs<0||elapsedMs>durationMs) throw new Error("Capture time is outside the scene.");
       settlers.forEach(entry => entry.current.beforeSeek?.());
       activeViewport = document.querySelector(selector);
+      if (!velocityBlur.current) applyBlur(activeViewport);
       flushSync(()=>current.current(elapsedMs));
       if(!settlers.size){flushSync(()=>refreshTargetScenes(activeViewport));verify(options?.inventory);return;}
       const settle = () => Promise.all([...settlers].map(entry=>entry.current.settle()));
@@ -67,6 +75,8 @@ export function useSceneCapture({durationMs,seek,selector='[data-velora-capture=
     host.__VELORA_CAPTURE__=bridge;
     return ()=>{
       if ((window as Window & { __VELORA_CAPTURING__?: boolean }).__VELORA_CAPTURING__) revertCaptureDepth(activeViewport ?? document.querySelector(selector));
+      activeViewport?.removeAttribute("data-velora-velocity-blur-disabled");
+      document.querySelector(selector)?.removeAttribute("data-velora-velocity-blur-disabled");
       if(host.__VELORA_CAPTURE__===bridge)delete host.__VELORA_CAPTURE__;
     };
   },[durationMs,selector,look,stage]);

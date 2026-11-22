@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { EasingSchema } from "./easing";
-import { KeyframeEasingSchema, TrackRefSchema, STAGGER_ORDERS, evaluateMotion, MotionLinkSchema, MotionSchema } from "./motion";
-import { SceneConstraintSchema } from "./scene";
+import { KeyframeEasingSchema, TrackRefSchema, STAGGER_ORDERS, clipTiming, evaluateMotion, withCameraAdditive, MotionClipSchema, MotionLinkSchema, MotionSchema } from "./motion";
+import { SceneConstraintSchema, type SceneConstraint } from "./scene";
 import { SceneRecipeSchema, EDITOR_LABEL_COLORS } from "./recipes";
 import { presentPreview } from "./preview";
 import { applyCompositionOps, compositionEditVariants, isCompositionOp, type CompositionEditResult } from "./composition-edit";
@@ -10,6 +10,7 @@ import { DepthConfigSchema, DepthRuleSchema, ResolvedDepthSchema, hashDepthLayer
 import { applyLens, LensHoldSchema, LensPresetSchema } from "./lens";
 import { buildRackFocus, rackSurfaceDepth, RackFocusSchema } from "./shots";
 import type { PreviewDefinitionInput } from "./preview";
+import { buildRig, mergeRigParams, RigKindSchema, RigGeometrySchema, RigRequestSchema, rigSmoothness } from "./rigs";
 import type { SceneIssue } from "./scene";
 
 /** SOURCE OF TRUTH: EditOpSchema, applyEdits.
@@ -39,10 +40,10 @@ const keyValue = z.union([finite, z.string().max(128), z.tuple([finite, finite, 
 const vector = z.tuple([finite, finite, finite]);
 const nullable = <T extends z.ZodType>(schema: T) => z.union([schema, z.null()]).optional();
 const raw = z.record(z.string(), z.unknown());
-const FIELD_PATHS = ["definition.scene.camera", "definition.scene.focus", "definition.scene.constraints", "definition.look", "definition.stage", "definition.depth", "definition.motion",
+const FIELD_PATHS = ["definition.scene.camera", "definition.scene.focus", "definition.scene.constraints", "definition.look", "definition.focusTarget", "definition.stage", "definition.depth", "definition.motion",
   "definition.motion.durationMs", "definition.motion.speed", "definition.motion.loop", "definition.motion.clips", "definition.motion.links", "editor"] as const;
-// Ops that land with later phases (12-16); they validate as shapes and return ERR_EDIT_UNSUPPORTED.
-export const DEFERRED_EDIT_OPS = Object.freeze(["rig.apply", "rig.update"] as const);
+/** Existing callers use this list to hide operations before they become available. */
+export const DEFERRED_EDIT_OPS = Object.freeze([] as const);
 const depthSurface = z.string().min(1).max(128);
 const depthRuleIndex = z.number().int().min(0).max(255);
 export const EditOpSchema = z.discriminatedUnion("op", [
@@ -101,7 +102,8 @@ export const EditOpSchema = z.discriminatedUnion("op", [
     z.strictObject({ link: TrackRefSchema }), z.strictObject({ field: z.enum(FIELD_PATHS) }),
   ]), value: z.unknown(), index: z.number().int().nonnegative().optional() }),
   ...compositionEditVariants,
-  ...DEFERRED_EDIT_OPS.map(name => z.looseObject({ op: z.literal(name) })),
+  z.strictObject({ op: z.literal("rig.apply"), kind: RigKindSchema, params: raw, geometry: RigGeometrySchema.optional() }),
+  z.strictObject({ op: z.literal("rig.update"), clipId: z.string().min(1).max(64), params: raw, geometry: RigGeometrySchema.optional() }),
 ]);
 export type EditOp = z.output<typeof EditOpSchema>;
 export type EditOpInput = z.input<typeof EditOpSchema>;
@@ -278,6 +280,8 @@ function dropProvenance(draft: Draft, op: EditOp) {
     const walk = (list: Doc[] | undefined): boolean => (list ?? []).some(clip => { path.push(clip); if (clip.id === id || walk(clip.clips)) return true; path.pop(); return false; });
     if (!walk(clips) || !path.some(clip => clip.source)) continue;
     draft.clip(path[0].id);
+    if (path.some(clip => clip.source?.rig))
+      draft.advisories.push({ code: "rig-hand-edited", path: `definition.motion.clips.${path[0].id}`, message: "Hand editing removed this rig’s regeneration settings." });
     for (const clip of path) delete clip.source;
   }
 }
@@ -367,6 +371,56 @@ function applyOne(draft: Draft, op: EditOp) {
         for (const compiled of edit.ops) applyOne(draft, compiled);
         draft.advisories.push(...edit.issues);
       } catch (error) { throw new EditFault("ERR_EDIT_INVALID", error instanceof Error ? error.message : "Invalid lens change."); }
+      return;
+    }
+    case "rig.apply": case "rig.update": {
+      const d = definition(doc), s = scene(doc);
+      const id = op.op === "rig.update" ? op.clipId : "camera-rig";
+      const entry = findClip(d.motion?.clips, id);
+      const prior = entry?.clip;
+      if (entry && (entry.root !== prior || !prior?.source?.rig) || op.op === "rig.update" && !prior)
+        throw new EditFault("ERR_EDIT_TARGET", "Choose a generated root camera rig to update.");
+      const kind = op.op === "rig.update" ? prior!.source.rig : op.kind;
+      const params = mergeRigParams(kind, op.op === "rig.update" ? prior!.source.params : undefined, op.params);
+      try {
+        const request = RigRequestSchema.parse({ kind, params });
+        const rig = buildRig(request, {
+          id, startMs: prior?.startMs, frame: { width: d.width ?? 1400, height: d.height ?? 980 }, stage: d.stage, layers: op.geometry,
+        });
+        draft.field("definition.motion");
+        draft.field("definition.scene.constraints");
+        draft.field("definition.focusTarget");
+        d.motion ??= { durationMs: 0, speed: 1, tracks: [] };
+        const driven = new Set(rig.clip.tracks?.filter(track => track.target.kind === "camera" || track.target.kind === "focus")
+          .flatMap(track => track.property === "position" ? ["camera.position", "camera.x", "camera.y", "camera.z"] : [track.target.kind + "." + track.property]));
+        // Replace camera and focus curves on the root. Keep the authored roll and any additive clips.
+        d.motion.tracks = (d.motion.tracks ?? []).filter((track: Doc) => !driven.has(track.target.kind + "." + track.property));
+        d.motion.clips ??= [];
+        const index = d.motion.clips.findIndex((clip: Doc) => clip.id === id);
+        const clip = op.op === "rig.update" ? { ...rig.clip, speed: prior?.speed, ease: prior?.ease, loop: prior?.loop,
+          inMs: prior?.inMs, label: prior?.label ?? rig.clip.label } : rig.clip;
+        if (index === -1) d.motion.clips.push(clip);
+        else d.motion.clips[index] = clip;
+        d.motion.durationMs = Math.max(d.motion.durationMs, clipTiming(MotionClipSchema.parse(clip)).endMs);
+        const replaces = new Set(rig.constraints.map(constraint => constraint.kind));
+        s.constraints = [...(s.constraints ?? []).filter((c: SceneConstraint) => !replaces.has(c.kind)
+          && !(typeof c.weight === "object" && c.weight.target.id.startsWith(id + "-rig-"))), ...rig.constraints];
+        if (rig.definition.focusTarget) d.focusTarget = rig.definition.focusTarget;
+        else if (prior?.source?.rig) delete d.focusTarget;
+        if (rig.definition.look?.velocityBlur || prior?.source?.rig === "whip-pan-macro") {
+          draft.field("definition.look");
+          if (rig.definition.look?.velocityBlur) d.look = { ...d.look, velocityBlur: rig.definition.look.velocityBlur };
+          else if (d.look) {
+            delete d.look.velocityBlur;
+            if (!Object.keys(d.look).length) delete d.look;
+          }
+        }
+        const smoothness = rigSmoothness(rig.definition, request.params.mass);
+        if (!smoothness.pass) draft.advisories.push({ code: "rig-jerk", path: id, message: `Peak camera jerk ${smoothness.peakJerk} px/s³. Review the flight speed and waypoint spacing.` });
+        if (rig.clearance && !rig.clearance.pass) draft.advisories.push({ code: "rig-clearance", path: id, message: `Clearance is ${rig.clearance.minimum.toFixed(1)} px.` });
+      } catch (error) {
+        throw new EditFault("ERR_EDIT_INVALID", error instanceof Error ? error.message : "Unable to bake the camera rig.");
+      }
       return;
     }
     case "rack.add": {
@@ -706,7 +760,8 @@ function bakeClip(d: Doc, clip: Doc, samplesPerSecond: number): Doc[] {
       series.get(key)!.keyframes.push({ timeMs: at, value, easing: "linear" });
     };
     for (const [id, values] of Object.entries(state.surfaces)) for (const [property, value] of Object.entries(values)) add({ kind: "surface", id }, property, value as number);
-    for (const [property, value] of Object.entries(state.camera)) add({ kind: "camera" }, property, value as number);
+    const camera = state.cameraPositionSpace ? withCameraAdditive({ ...d.scene.camera, ...state.camera }, undefined, state.cameraPositionSpace) : state.camera;
+    for (const [property, value] of Object.entries(camera)) add({ kind: "camera" }, property, value as number);
     for (const [property, value] of Object.entries(state.focus)) add({ kind: "focus" }, property, value as number);
     for (const [id, value] of Object.entries(state.channels)) add({ kind: "channel", id }, "value", value);
   }
@@ -735,6 +790,8 @@ const describeOps: Record<string, (op: any) => string> = { // eslint-disable-lin
   "stage.set": op => `Set app stage to ${op.width} × ${op.height} @${op.dpr}×`,
   "depth.set": op => `Set ${op.surface} depth to ${op.config.mode}`,
   "lens.apply": op => `Apply ${op.preset} lens`,
+  "rig.apply": op => `Bake ${op.kind}`,
+  "rig.update": op => `Regenerate ${op.clipId}`,
   "rack.add": op => `Rack focus at ${op.atMs} ms`,
   "depth.rule.add": op => `Add depth rule to ${op.surface}`,
   "depth.rule.remove": op => `Remove depth rule from ${op.surface}`,
@@ -790,8 +847,6 @@ export function applyEdits(recipe: unknown, ops: unknown, options: ApplyOptions 
   for (const [index, op] of batch.data.entries()) {
     const result = EditOpSchema.safeParse(op);
     if (!result.success) issues.push(...result.error.issues.map(issue => ({ code: "ERR_EDIT_INVALID" as const, path: ["ops", index, ...issue.path].join("."), message: issue.message })));
-    else if ((DEFERRED_EDIT_OPS as readonly string[]).includes(result.data.op))
-      issues.push({ code: "ERR_EDIT_UNSUPPORTED", path: `ops.${index}.op`, message: `${result.data.op} lands with a later Velora phase and is not available yet.` });
     else parsed.push(result.data);
   }
   if (issues.length) return { ok: false, issues };

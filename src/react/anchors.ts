@@ -72,7 +72,8 @@ export function measureAnchors(bindings: ReadonlyMap<symbol, Binding>, routes: r
         const target = anchor.success ? { surface: id, anchor: anchor.data } : { surface: id, selector: match && "selector" in match ? match.selector : "" };
         const layerMatch = layers.get(element)?.match;
         const measurement = { target, rect: { x, y, width: box.width * placement.sx, height: box.height * placement.sy },
-          elevation: (layer?.z ?? 0) * factor, baseElevation: (layer?.base ?? 0) * factor, ...(layer ? { tier: layer.tier } : {}), ...(layerMatch ? { layerMatch } : {}) };
+          elevation: (layer?.z ?? 0) * factor, baseElevation: (layer?.base ?? 0) * factor,
+          ...(layer ? { tier: layer.tier, restElevation: layer.z, restBaseElevation: layer.base } : {}), ...(layerMatch ? { layerMatch } : {}) };
         measured.set(element, measurement);
         onMeasure?.(element);
         return measurement;

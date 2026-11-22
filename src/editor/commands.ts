@@ -151,7 +151,7 @@ export const EDITOR_COMMANDS: readonly EditorCommand[] = Object.freeze([
   { id: "clip.ungroup", effects: ["clip.dissolve"], label: "Ungroup clip", group: "Structure", shortcuts: ["Mod+Shift+G"], enabled: s => s.selection.clips.length > 0, run: c => c.open("ungroup") },
   { id: "stagger.open", effects: ["clip.create", "stagger.set"], label: "Stagger layers", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length > 1, run: c => c.open("stagger") },
   { id: "behaviors.open", effects: ["clip.set", "motion.set"], label: "Apply a behavior", group: "Motion Design", shortcuts: [], enabled: always, run: c => c.open("behaviors") },
-  { id: "shots.open", effects: ["clip.set", "motion.set", "constraint.set"], label: "Apply a camera move", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length === 1, run: c => c.open("camera-moves") },
+  { id: "shots.open", effects: ["clip.set", "motion.set", "constraint.set", "rig.apply", "rig.update"], label: "Apply a camera move", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length === 1, run: c => c.open("camera-moves") },
   { id: "presets.open", effects: "ui-only", label: "Browse or save project presets", group: "Motion Design", shortcuts: [], enabled: always, run: c => c.open("presets") },
   { id: "timing.open", effects: ["keys.retime", "keys.shift", "keys.scale", "keys.reverse"], label: "Sequence layers, align, distribute or stretch keyframes", group: "Motion Design", shortcuts: [], enabled: s => surfaceLayers(s).length > 1 || hasKeys(s), run: c => c.open("timing") },
   { id: "marker.add", effects: ["editor.set"], label: "Add marker at playhead", group: "Timeline", shortcuts: ["M"], enabled: always, run: c => {

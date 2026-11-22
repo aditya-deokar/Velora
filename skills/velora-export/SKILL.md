@@ -121,3 +121,9 @@ FPS and size choice: 24 for a cinematic cadence, 25/50 for PAL deliverables, 30 
 - Do not use this skill for composition authoring; load `velora-composition`.
 - Do not use this skill for still-only tasks; load `velora-render`.
 - Do not claim artistic quality from manifests; they prove reproducibility.
+
+## Directional blur and shutter accumulation
+
+Whips use a directional velocity filter stored in `look.velocityBlur` with a shutter duration in milliseconds. Preview and capture use that same duration at every export frame rate.
+
+Master quality or explicit shutter accumulation disables the velocity filter before the first capture seek. The render manifest records the chosen blur mode. Inspect the whip during peak motion and at the arrival frame.

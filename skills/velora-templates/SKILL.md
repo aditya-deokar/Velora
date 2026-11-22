@@ -150,3 +150,7 @@ Template IDs name techniques, not people. Each one packages a camera convention 
 - Do not force a template onto a request for a unique shot; author it with `velora-scenes`.
 - Do not use templates for titles, logos or end cards. Motion-graphics templates arrive in a later release, and until then that work belongs in `velora-typography`.
 - Do not use `--route` for a page that needs logged-in state the dev server cannot reproduce. Use `--component` with fixture providers instead.
+
+## Add a physical camera rig to a scaffold
+
+Scaffold the scene around a component or route and add stable target anchors to its markup. Bake a physical rig after the preview is running so its dimensions and elevation come from the authored stage. Rig parameters appear in the `capabilities.rigs` section of the guide. Existing template outputs keep their original camera moves.

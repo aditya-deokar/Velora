@@ -13,7 +13,7 @@ import { channelValue, gradeColorMatrix, gradeTransferTable, grainOffset, hasBro
 // Grain refreshes at a film cadence independent of the export frame rate, so stills match video.
 export const GRAIN_FPS = 24;
 const NOISE = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" seed="7" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  0 0 0 1.6 -.3"/></filter><rect width="256" height="256" filter="url(#n)"/></svg>`);
-export function LookLayer({ look: input, timeMs, width, height, seed = 0, children }: { look?: LookInput; timeMs: number; width: number; height: number; seed?: number; children?: ReactNode }) {
+export function LookLayer({ look: input, timeMs, width, height, seed = 0, velocity, children }: { look?: LookInput; timeMs: number; width: number; height: number; seed?: number; velocity?: { x: number; y: number }; children?: ReactNode }) {
   const filterId = "velora-look-" + useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const look = useMemo(() => { try { return resolveLook(input); } catch { return undefined; } }, [input]);
   if (!look || !hasBrowserLook(look)) return <>{children}</>;
@@ -22,7 +22,17 @@ export function LookLayer({ look: input, timeMs, width, height, seed = 0, childr
   const frame = Math.floor((Math.max(0, timeMs) * GRAIN_FPS) / 1000);
   const offset = grainOffset(seed, frame);
   const bars = look.letterbox && width / height < look.letterbox.aspect ? Math.round((height - width / look.letterbox.aspect) / 2) : 0;
+  const moving = !!look.velocityBlur && !!velocity && (velocity.x > 0 || velocity.y > 0);
+  const velocityId = filterId + "-velocity";
+  const content = look.velocityBlur ? <div data-velora-velocity-blur={moving ? "" : undefined}
+    style={{ width, height, filter: moving ? `var(--velora-velocity-filter, url(#${velocityId}))` : undefined }}>{children}</div> : children;
   return <div data-velora-look="" style={{ position: "relative", width, height }}>
+    {moving && <>
+      <style>{'[data-velora-velocity-blur-disabled]{--velora-velocity-filter:none}'}</style>
+      <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true"><filter id={velocityId} colorInterpolationFilters="sRGB" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation={`${velocity.x} ${velocity.y}`} edgeMode="duplicate"/>
+      </filter></svg>
+    </>}
     {graded && <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden="true">
       <filter id={filterId} colorInterpolationFilters="sRGB">
         <feColorMatrix type="matrix" values={gradeColorMatrix(grade).join(" ")}/>
@@ -34,7 +44,7 @@ export function LookLayer({ look: input, timeMs, width, height, seed = 0, childr
         </feComponentTransfer>
       </filter>
     </svg>}
-    <div style={{ position: "absolute", inset: 0, filter: graded ? `url(#${filterId})` : undefined }}>{children}</div>
+    <div style={{ position: "absolute", inset: 0, filter: graded ? `url(#${filterId})` : undefined }}>{content}</div>
     {look.grain && look.grain.amount > 0 && <div data-velora-grain={frame} style={{ position: "absolute", inset: 0, pointerEvents: "none", backgroundImage: `url("${NOISE}")`,
       backgroundSize: `${256 * look.grain.size}px ${256 * look.grain.size}px`, backgroundPosition: `${offset.x * look.grain.size}px ${offset.y * look.grain.size}px`, opacity: Math.min(1, look.grain.amount * 1.6), mixBlendMode: "overlay" }}/>}
     {look.vignette && look.vignette.amount > 0 && <div data-velora-vignette="" style={{ position: "absolute", inset: 0, pointerEvents: "none",

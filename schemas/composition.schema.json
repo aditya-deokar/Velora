@@ -675,6 +675,26 @@
           ],
           "additionalProperties": false
         },
+        "velocityBlur": {
+          "type": "object",
+          "properties": {
+            "shutterMs": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 250
+            },
+            "maxPx": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 128
+            }
+          },
+          "required": [
+            "shutterMs",
+            "maxPx"
+          ],
+          "additionalProperties": false
+        },
         "bloom": {
           "type": "object",
           "properties": {

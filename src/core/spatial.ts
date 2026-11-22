@@ -61,6 +61,11 @@ export function cameraMatrix(c: Pick<CameraDefinition, "x" | "y" | "z" | "rotate
 export function cameraWorld(camera: CameraDefinition): Matrix {
   return multiply(invertAffine(cameraMatrix(camera))!, matrixFor(TransformSchema.parse({ z: camera.perspective })));
 }
+/** Convert a stage-space eye position to the translation used by CSS perspective. */
+export function cameraAtStageEye(point: Vec3, pose: CameraDefinition): CameraDefinition {
+  const [x, y, z] = applyPoint(cameraMatrix({ ...pose, x: 0, y: 0, z: 0 }), point);
+  return { ...pose, x, y, z: z - pose.perspective };
+}
 const wrap = (degrees: number) => ((((degrees + 180) % 360) + 360) % 360) - 180;
 /** Pan/tilt about the camera's eye: rotateX/rotateY (degrees, nearest the authored ones, target in
  * front) that put stage point p at frame center, with camera x/y/z re-derived so the eye stays fixed.
@@ -144,7 +149,7 @@ export function resolveConstraints(constraints: readonly SceneConstraint[] | und
     const w = constraint.weight;
     if (w === undefined) return 1;
     if (typeof w === "number") return w;
-    const channel = options.channels && Object.hasOwn(options.channels, w.target.id) ? options.channels[w.target.id] : 1;
+    const channel = options.channels && Object.hasOwn(options.channels, w.target.id) ? options.channels[w.target.id] : w.fallback ?? 1;
     return Math.max(0, Math.min(1, channel));
   };
   let resolvedCamera = camera, resolvedFocus = focus;
@@ -352,7 +357,7 @@ export function evaluateScene(
     return { point: point(u, v), corners: [point(0, 0), point(1, 0), point(1, 1), point(0, 1)] };
   };
   const isActive = (constraint: SceneConstraint) => typeof constraint.weight === "number" ? constraint.weight > 0
-    : !constraint.weight || (options.channels?.[constraint.weight.target.id] ?? 1) > 0;
+    : !constraint.weight || (options.channels?.[constraint.weight.target.id] ?? constraint.weight.fallback ?? 1) > 0;
   const activeFrames = targets.filter(c => c.kind === "frame" && isActive(c));
   if (options.frame && activeFrames.length > 1) issues.push({ code: "target-frame-conflict", path: "constraints", message: "Only one frame constraint can be active at a time." });
   const reportMissing = (target: ElementTarget, path: string) => {
@@ -554,9 +559,15 @@ function reportTarget(target: ElementTarget, anchors: AnchorMeasurements, evalua
   const projected = pixels.every(pixel => pixel !== null) ? bounds(pixels) : undefined;
   const center = projectWorld(camera, frame, point, "view");
   const depth = camera.perspective - point[2];
-  const stageRect = bounds(corners.map(point => applyPoint(stageWorld, point)));
+  const stageCorners = corners.map(point => applyPoint(stageWorld, point)) as [Vec3, Vec3, Vec3, Vec3];
+  const rest = target.plane === "base" ? measurement.restBaseElevation : measurement.restElevation;
+  const current = target.plane === "base" ? measurement.baseElevation : measurement.elevation;
+  const origin = applyPoint(stageWorld, applyPoint(node.world, [0, 0, 0]));
+  const elevationOffset = (z: number) => applyPoint(stageWorld, applyPoint(node.world, [0, 0, z])).map((value, i) => value - origin[i]) as Vec3;
+  const stageRect = bounds(stageCorners);
   const blur = sampleFocus({ ...node.focus, depth, depthX: 0, depthY: 0 }, 0, 0) * camera.perspective / Math.max(1, depth) * (camera.zoom ?? 1);
   return { target, ...(measurement.tier ? { tier: measurement.tier } : {}), elevation: measurement.elevation, baseElevation: measurement.baseElevation,
+    stagePoint: applyPoint(stageWorld, point), stageCorners, ...(rest === undefined ? {} : { stageElevation: { current: elevationOffset(current), rest: elevationOffset(rest) } }),
     rect: { ...stageRect, x: stageRect.x + frame.width / 2, y: stageRect.y + frame.height / 2 }, projected, ...(center ? { point: [center.x, center.y] } : {}),
     depth, blur, visible: !!projected && projected.x < frame.width && projected.y < frame.height && projected.x + projected.width > 0 && projected.y + projected.height > 0 };
 }

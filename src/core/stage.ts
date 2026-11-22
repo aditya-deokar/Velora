@@ -109,7 +109,7 @@ export function sceneStageBudget(input: {
     const values = evaluateMotion(motion, timeMs);
     const evaluation = evaluateScene({
       ...scene,
-      camera: withCameraAdditive({ ...scene.camera, ...values.camera }, values.additive?.camera),
+      camera: withCameraAdditive({ ...scene.camera, ...values.camera }, values.additive?.camera, values.cameraPositionSpace),
       focus: withAdditive({ ...scene.focus, ...values.focus }, values.additive?.focus),
       nodes: scene.nodes.map(node => ({
         ...node, transform: withAdditive({

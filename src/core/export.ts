@@ -96,6 +96,7 @@ export const ExportVideoSchema = z.strictObject({
   if (input.captions && (input.codec ?? "h264") !== "h264")
     ctx.addIssue({ code: "custom", path: ["captions"], message: "Burned-in captions re-encode H.264; export with --codec h264." });
 });
+const CaptureBlurSchema = z.enum(["velocity", "shutter"]);
 export const CaptureManifestSchema = z.strictObject({
   version: z.literal(1),
   durationMs: z.number().nonnegative().max(120_000),
@@ -105,6 +106,7 @@ export const CaptureManifestSchema = z.strictObject({
   stage: StageSizeSchema.extend({ preset: StagePresetSchema.optional() }).optional(),
   depth: z.array(DepthEvidenceSchema).optional(),
   anchors: z.array(AnchorReportSchema).optional(),
+  blurMode: CaptureBlurSchema.optional(),
 });
 export const StageLineageSchema = StageSizeSchema.extend({
   preset: StagePresetSchema.optional(), effectiveDpr: z.number().positive(), dprCapped: z.literal(true).optional(),
@@ -189,6 +191,7 @@ export const RenderManifestSchema = z.strictObject({
   codec: VideoCodecSchema.optional(),
   container: z.string().optional(),
   colorimetry: z.literal("bt709").optional(),
+  blurModes: z.array(z.strictObject({ sceneId: z.string(), mode: CaptureBlurSchema })).optional(),
   motionBlur: z.strictObject({ shutter: z.number(), samples: z.number().int() }).optional(),
   supersample: z.number().positive().optional(),
   stage: StageLineageSchema.optional(),
@@ -301,7 +304,7 @@ export type ShotRender = z.output<typeof ShotRenderSchema>;
 export const ShotRenderResultSchema = z.discriminatedUnion("success", [
   z.strictObject({ success: z.literal(true), data: z.strictObject({
     out: z.string(), sceneId: z.string(), timeMs: z.number().finite().nonnegative(),
-    sha: z.string(), clamped: z.boolean().optional(), stage: StageLineageSchema.optional(), depth: z.array(DepthLineageSchema).optional(), checks: z.array(RenderCheckSchema).optional(),
+    sha: z.string(), blurMode: CaptureBlurSchema.optional(), clamped: z.boolean().optional(), stage: StageLineageSchema.optional(), depth: z.array(DepthLineageSchema).optional(), checks: z.array(RenderCheckSchema).optional(),
   }) }),
   z.strictObject({ success: z.literal(false), issues: z.array(ExportIssueSchema) }),
 ]);
@@ -334,7 +337,7 @@ export const ExportVideoResultSchema = z.discriminatedUnion("success", [
   z.strictObject({ success: z.literal(true), data: z.strictObject({
     output: z.string(), fps: z.number(), frames: z.number().int(), durationMs: z.number(),
     codec: z.string().optional(), quality: z.string().optional(), poster: z.string().optional(),
-    stage: StageLineageSchema.optional(), depth: z.array(DepthLineageSchema).optional(), checks: z.array(RenderCheckSchema).optional(),
+    stage: StageLineageSchema.optional(), depth: z.array(DepthLineageSchema).optional(), checks: z.array(RenderCheckSchema).optional(), blurMode: CaptureBlurSchema.optional(),
     audio: z.strictObject({ file: z.string(), codec: z.string(), driftMs: z.number(), peakDb: z.number().nullable() }).optional(),
     captions: z.strictObject({ file: z.string(), cues: z.number().int().nonnegative(), burnIn: z.boolean() }).optional(),
   }) }),
@@ -343,5 +346,5 @@ export const ExportVideoResultSchema = z.discriminatedUnion("success", [
 export type ExportVideo = z.output<typeof ExportVideoSchema>;
 export type CaptureManifest = z.output<typeof CaptureManifestSchema>;
 // seek may return a promise when components registered async settle work; services await it.
-export type CaptureBridge = CaptureManifest & { seek: (elapsedMs: number, options?: { inventory?: boolean }) => void | Promise<void> };
+export type CaptureBridge = CaptureManifest & { configure?: (options: { velocityBlur?: boolean }) => void; seek: (elapsedMs: number, options?: { inventory?: boolean }) => void | Promise<void> };
 export type ExportVideoResult = z.output<typeof ExportVideoResultSchema>;

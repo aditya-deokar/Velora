@@ -37,6 +37,7 @@ export type CaptureOptions = Pick<ExportVideo, "url" | "width" | "height"> & {
   stageScale?: (stage: NonNullable<CaptureManifest["stage"]>) => number;
   transparent?: boolean;
   measureTargets?: boolean;
+  accumulateMotion?: boolean;
   targetQueries?: readonly ElementTarget[];
 };
 // Frame finishing applied before encoding: sub-frame capture and compositing for one output frame.
@@ -84,7 +85,7 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
       const depth = bridge.depth;
       const anchors = bridge.anchors;
       return { version: bridge.version, durationMs: bridge.durationMs, selector: bridge.selector,
-        ...(bridge.look ? { look: bridge.look } : {}), ...(bridge.stage ? { stage: bridge.stage } : {}), ...(depth?.length ? { depth } : {}), ...(anchors?.length ? { anchors } : {}) };
+        ...(bridge.look ? { look: bridge.look } : {}), ...(bridge.blurMode ? { blurMode: bridge.blurMode } : {}), ...(bridge.stage ? { stage: bridge.stage } : {}), ...(depth?.length ? { depth } : {}), ...(anchors?.length ? { anchors } : {}) };
     });
     const assertBridge = async () => {
       if (await waitForBridge() !== "ready") throw fault("missing-capture", "This page has no ready Velora capture bridge. Open a scene with capture enabled and retry.");
@@ -106,6 +107,10 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
         }
       }
     }
+    if (input.accumulateMotion) await page.evaluate(() => {
+      const bridge = (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__;
+      bridge.configure?.({ velocityBlur: false });
+    });
     // Hide product chrome only in this private export page.
     await page.addStyleTag({content:'[data-velora-preview-chrome],nextjs-portal{visibility:hidden!important}'});
     if (transparent) await page.addStyleTag({ content: TRANSPARENT_CAPTURE_CSS });

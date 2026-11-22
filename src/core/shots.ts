@@ -3,8 +3,10 @@ import { CameraSchema, FocusSchema, SceneConstraintSchema, ConstraintTargetSchem
 import { evaluateMotion, withAdditive, withCameraAdditive, type MotionInput, type MotionClipInput, type MotionState } from "./motion";
 import { applyPoint, evaluateScene, matrixFor, multiply, focusForSurface, sampleFocus, cameraMatrix as stageCamera, resolveConstraints, projectWorld, type Matrix } from "./spatial";
 import { EasingSchema } from "./easing";
-import { framingDistance, lensFor, lensPreset, perspectiveForFocalLength } from "./lens";
+import { framingDistance, lensFor, lensPreset, perspectiveForFocalLength, LensPresetSchema } from "./lens";
 import type { EasingInput } from "./easing";
+import { buildRig, rigPose, rigSmoothness, rigClearance, velocityBlurAt, type RigLayer, type RigContext, type RigDefinition } from "./rigs";
+import { RigMassSchema, RigWaypointSchema } from "./rig-params";
 import type { PreviewDefinitionInput } from "./preview";
 import { ElementTargetSchema, isElementTarget, matchesDepthLayer, parseElementTarget, type ElementTarget } from "./targets";
 
@@ -18,10 +20,11 @@ import { ElementTargetSchema, isElementTarget, matchesDepthLayer, parseElementTa
  * output as editable recipe JSON; tests and velora templates check certify it with framingReport.
  * The subject is one Surface ("subject") centered on the stage; all values are pixels/degrees.
  */
-export const SHOT_KINDS = Object.freeze([
+export const LEGACY_SHOT_KINDS = Object.freeze([
   "push-in", "survey", "orbit", "crane", "rise", "dolly-zoom", "rack-focus",
   "scroll-through", "macro", "float-loop", "handheld-push", "whip",
 ] as const);
+export const SHOT_KINDS = Object.freeze([...LEGACY_SHOT_KINDS, "drone-flyover", "telephoto-orbit", "whip-pan-macro"] as const);
 export const ShotKindSchema = z.enum(SHOT_KINDS);
 export type ShotKind = z.output<typeof ShotKindSchema>;
 export const ASPECT_FRAMES = Object.freeze({
@@ -44,17 +47,23 @@ export const ShotInputSchema = z.strictObject({
   kind: ShotKindSchema,
   aspect: AspectSchema.default("16:9"),
   subject: z.strictObject({ width: z.number().finite().min(64).max(7680), height: z.number().finite().min(64).max(7680) }).optional(),
-  durationMs: z.number().finite().min(500).max(120_000).optional(),
+  durationMs: z.number().finite().min(150).max(120_000).optional(),
   intensity: IntensitySchema.default("subtle"),
   lens: z.number().finite().min(16).max(200).optional(),
   // Subject pixels, top-left origin: what the shot frames and keeps in focus.
   focusRegion: RegionSchema.optional(),
   focusTarget: ElementTargetSchema.optional(),
+  targets: z.array(RigWaypointSchema).min(1).max(12).optional(),
+  lensPreset: LensPresetSchema.optional(),
+  mass: RigMassSchema.optional(),
   scrollDistance: z.number().finite().min(0).max(20_000).default(2400),
   seed: z.number().int().nonnegative().max(4_294_967_295).default(1),
-}).refine(shot => !(shot.focusRegion && shot.focusTarget), { path: ["focusTarget"], message: "Choose a focus target or a focus region." });
+}).refine(shot => !(shot.focusRegion && shot.focusTarget), { path: ["focusTarget"], message: "Choose a focus target or a focus region." })
+  .refine(shot => shot.durationMs === undefined || shot.durationMs >= 500 || !(LEGACY_SHOT_KINDS as readonly string[]).includes(shot.kind),
+    { path: ["durationMs"], message: "Legacy shots need at least 500 ms." });
 export type ShotInput = z.input<typeof ShotInputSchema>;
 export type ShotDefinition = {
+  look?: RigDefinition["look"];
   width: number; height: number;
   scene: { camera: z.input<typeof CameraSchema>; focus: z.input<typeof FocusSchema>; nodes: { id: string }[]; constraints?: z.input<typeof SceneConstraintSchema>[] };
   motion: MotionInput;
@@ -70,7 +79,7 @@ export const SCROLL_CHANNEL = "subject-scroll";
 
 type Camera = { x: number; y: number; z: number; rotateX: number; rotateY: number; rotateZ: number };
 const level = { subtle: 1, standard: 1.5, dramatic: 2 } as const;
-const defaults: Record<ShotKind, { lens: number; durationMs: number }> = {
+const defaults: Record<(typeof LEGACY_SHOT_KINDS)[number], { lens: number; durationMs: number }> = {
   "push-in": { lens: 50, durationMs: 6000 }, survey: { lens: 35, durationMs: 8000 }, orbit: { lens: 50, durationMs: 7000 },
   crane: { lens: 35, durationMs: 7000 }, rise: { lens: 50, durationMs: 5000 }, "dolly-zoom": { lens: 85, durationMs: 5000 },
   "rack-focus": { lens: 85, durationMs: 5000 }, "scroll-through": { lens: 50, durationMs: 9000 }, macro: { lens: 85, durationMs: 6000 },
@@ -85,7 +94,7 @@ const cameraMatrix = (c: Camera): Matrix => stageCamera(c);
 /** Camera and focus at one time: tracks, add-clip offsets, then constraints. The subject Surface is
  * centered on the stage with the given size; point targets need no measurement. */
 function resolvedLens(definition: Pick<ShotDefinition, "scene" | "motion">, state: MotionState, subject?: { width: number; height: number }) {
-  const camera = CameraSchema.parse(withCameraAdditive({ ...definition.scene.camera, ...state.camera }, state.additive?.camera));
+  const camera = CameraSchema.parse(withCameraAdditive({ ...definition.scene.camera, ...state.camera }, state.additive?.camera, state.cameraPositionSpace));
   const focus = FocusSchema.parse(withAdditive({ ...definition.scene.focus, ...state.focus }, state.additive?.focus, FocusSchema.parse({})));
   const constraints = definition.scene.constraints?.map(constraint => SceneConstraintSchema.parse(constraint));
   return resolveConstraints(constraints, camera, focus, target => {
@@ -153,7 +162,7 @@ export function rackSurfaceDepth(definition: PreviewDefinitionInput, target: Rac
   const fit = Math.min(frame.width / stage.width, frame.height / stage.height);
   const size = { width: stage.width * fit, height: stage.height * fit };
   const evaluation = evaluateScene({ ...definition.scene,
-    camera: withCameraAdditive({ ...definition.scene.camera, ...state.camera }, state.additive?.camera),
+    camera: withCameraAdditive({ ...definition.scene.camera, ...state.camera }, state.additive?.camera, state.cameraPositionSpace),
     focus: withAdditive({ ...definition.scene.focus, ...state.focus }, state.additive?.focus, FocusSchema.parse({})),
     nodes: definition.scene.nodes.map(node => ({ ...node, transform: withAdditive({ ...node.transform,
       ...Object.fromEntries(Object.entries(state.surfaces[node.id] ?? {}).filter(([key]) => key === "position" || key in transformFields)),
@@ -222,9 +231,11 @@ export function rackReport(clip: MotionClipInput, lens: z.input<typeof FocusSche
 }
 
 /** Compile one camera move into a scene + motion definition (speed 1: authored time is playback time). */
-export function buildShot(input: ShotInput, { stageFit = false }: { stageFit?: boolean } = {}): ShotDefinition {
+export function buildShot(input: ShotInput, { stageFit = false, layers }: { stageFit?: boolean; layers?: readonly RigLayer[] } = {}): ShotDefinition {
   const shot = ShotInputSchema.parse(input);
   const frame = ASPECT_FRAMES[shot.aspect];
+  if (shot.kind === "drone-flyover" || shot.kind === "telephoto-orbit" || shot.kind === "whip-pan-macro")
+    return physicalShot(shot, { frame: { width: frame.width, height: frame.height }, layers }).definition;
   const subject = shot.subject ?? frame.subject;
   const a = level[shot.intensity];
   const durationMs = shot.durationMs ?? defaults[shot.kind].durationMs;
@@ -396,15 +407,26 @@ export function buildShot(input: ShotInput, { stageFit = false }: { stageFit?: b
   return shot.focusTarget ? lockShotFocus(definition, shot.focusTarget) : definition;
 }
 
+function physicalShot(shot: z.output<typeof ShotInputSchema>, context: RigContext) {
+  const common = { ...(shot.durationMs !== undefined ? { durationMs: shot.durationMs } : {}),
+    ...(shot.lensPreset ? { lens: shot.lensPreset } : {}), ...(shot.mass ? { mass: shot.mass } : {}) };
+  const targets = (shot.targets ?? []).filter(isElementTarget);
+  if (shot.kind === "drone-flyover")
+    return buildRig({ kind: "drone-flyover", params: { ...common, bank: shot.intensity, waypoints: shot.targets ?? [] } }, context);
+  if (shot.kind === "telephoto-orbit")
+    return buildRig({ kind: "telephoto-parallax-orbit", params: { ...common, arcDeg: { subtle: 24, standard: 36, dramatic: 50 }[shot.intensity], target: shot.focusTarget ?? targets[0] } }, context);
+  return buildRig({ kind: "whip-pan-macro", params: { ...common, lens: shot.lensPreset as "85mm-portrait" | "200mm-telephoto" | undefined, from: targets[0], to: shot.focusTarget ?? targets[1] } }, context);
+}
 export type FramingSample = { timeMs: number; subjectVisible: number; regionVisible: number; regionBlur: number; depthMargin: number };
-export type FramingReport = { samples: FramingSample[]; minSubjectVisible: number; minDepthMargin: number; worstRegionBlur: number };
+export type FramingReport = { samples: FramingSample[]; minSubjectVisible: number; minDepthMargin: number; worstRegionBlur: number; rigSmoothness?: ReturnType<typeof rigSmoothness>; rigClearance?: ReturnType<typeof rigClearance>; peakVelocityBlur?: number };
 /** Project a grid over the subject (and its focus region) at sampled times: visible fraction inside
  * the frame, camera-plane margin (fraction of perspective) and depth-of-field blur at the region. */
 export function framingReport(definition: ShotDefinition, subject: { width: number; height: number }, options: {
-  samples?: number; focusRegion?: Region; times?: number[];
+  samples?: number; focusRegion?: Region; times?: number[]; layers?: readonly RigLayer[];
   poseAt?: (timeMs: number) => { world: Matrix; perspective: number; zoom?: number; focus: z.output<typeof FocusSchema> };
 } = {}): FramingReport {
   const motion = definition.motion;
+  const rig = motion.clips?.find(clip => clip.source && "rig" in clip.source);
   const duration = motion.durationMs / (motion.speed ?? 0.5);
   const times = options.times ?? Array.from({ length: options.samples ?? 24 }, (_, i) => (duration * i) / ((options.samples ?? 24) - 1));
   const region = options.focusRegion ?? { x: subject.width / 3, y: subject.height / 3, width: subject.width / 3, height: subject.height / 3 };
@@ -413,7 +435,7 @@ export function framingReport(definition: ShotDefinition, subject: { width: numb
   const subjectGrid = grid(0, 0, subject.width, subject.height, 9), regionGrid = grid(region.x, region.y, region.width, region.height, 5);
   const samples = times.map(timeMs => {
     const pose = options.poseAt?.(timeMs);
-    const { camera: c, focus: f } = pose ? { camera: pose, focus: pose.focus } : resolvedLens(definition, evaluateMotion(motion, timeMs), subject);
+    const { camera: c, focus: f } = pose ? { camera: pose, focus: pose.focus } : rig ? rigPose(definition, timeMs, options.layers) : resolvedLens(definition, evaluateMotion(motion, timeMs), subject);
     const m = pose ? pose.world : cameraMatrix(c as z.output<typeof CameraSchema>);
     const project = ([x, y]: readonly [number, number]) => {
       const [wx, wy, wz] = apply(m, [x, y, 0]);
@@ -436,6 +458,8 @@ export function framingReport(definition: ShotDefinition, subject: { width: numb
     minSubjectVisible: Math.min(...samples.map(s => s.subjectVisible)),
     minDepthMargin: Math.min(...samples.map(s => s.depthMargin)),
     worstRegionBlur: Math.max(...samples.map(s => s.regionBlur)),
+    ...(rig ? { rigSmoothness: rigSmoothness(definition), ...(options.layers?.length ? { rigClearance: rigClearance(definition, options.layers) } : {}),
+      peakVelocityBlur: Math.max(...times.map(t => { const blur = velocityBlurAt(definition, t, { layers: options.layers }); return Math.hypot(blur.x, blur.y); })) } : {}),
   };
 }
 /** Screen-space positions (frame pixels, top-left origin) of stage points (center origin, z toward the
@@ -513,7 +537,7 @@ export function shotVerdict(report: FramingReport, input: { lens?: number; inten
   if (focusBlur > SHOT_CERTIFICATION.maxRegionBlur) suggestions.push("Use a longer lens or deeper focus so the subject region stays sharp.");
   return { ok: suggestions.length === 0, inFrame, depthMargin, focusBlur, suggestions };
 }
-export function buildShotClip(input: ShotInput, options: { subject: { width: number; height: number; center?: readonly [number, number, number] }; frame: { width: number; height: number }; sceneSpeed?: number; clipId?: string; startMs?: number }):
+export function buildShotClip(input: ShotInput, options: { subject: { width: number; height: number; center?: readonly [number, number, number] }; frame: { width: number; height: number }; sceneSpeed?: number; clipId?: string; startMs?: number; layers?: readonly RigLayer[] }):
   { clip: MotionClipInput; definition: ShotDefinition; report: FramingReport; verdict: ShotVerdict } {
   const ratio = options.frame.width / options.frame.height;
   const aspect = (Object.keys(ASPECT_FRAMES) as (keyof typeof ASPECT_FRAMES)[]).reduce((best, key) =>
@@ -522,6 +546,11 @@ export function buildShotClip(input: ShotInput, options: { subject: { width: num
   const clampSide = (value: number) => Math.min(7680, Math.max(64, value));
   const subject = { width: clampSide(options.subject.width / s), height: clampSide(options.subject.height / s) };
   const shot = ShotInputSchema.parse({ ...input, aspect, subject });
+  if (shot.kind === "drone-flyover" || shot.kind === "telephoto-orbit" || shot.kind === "whip-pan-macro") {
+    const { clip, definition } = physicalShot(shot, { frame: options.frame, id: options.clipId, startMs: options.startMs, layers: options.layers });
+    const report = framingReport(definition, options.subject, { layers: options.layers });
+    return { clip, definition, report, verdict: shotVerdict(report, shot) };
+  }
   const definition = buildShot(shot);
   const report = framingReport(definition, subject);
   const verdict = shotVerdict(report, { ...(shot.lens !== undefined ? { lens: shot.lens } : {}), intensity: shot.intensity });
@@ -529,7 +558,7 @@ export function buildShotClip(input: ShotInput, options: { subject: { width: num
   const base = CameraSchema.parse(definition.scene.camera);
   const offsetAt = (timeMs: number) => {
     const state = evaluateMotion(definition.motion, timeMs);
-    const c = CameraSchema.parse({ ...definition.scene.camera, ...state.camera });
+    const c = CameraSchema.parse(withCameraAdditive({ ...definition.scene.camera, ...state.camera }, state.additive?.camera, state.cameraPositionSpace));
     return apply(rotation(c), [px, py, pz]);
   };
   const spatial = new Set(["x", "y", "z", "perspective"]);

@@ -69,6 +69,7 @@ Op table (`{"op": …}`):
 | Tracks | `track.add {track, keyframes, …options}`, `track.remove`, `track.options` (null clears an option) |
 | Depth | `depth.set {surface, config}`, `depth.rule.add {surface, rule, index?}`, `depth.rule.remove {surface, index}`, `depth.resolve {surface, resolved}` |
 | Lens and rack | `lens.apply {preset, hold?}`, `rack.add {from, to, atMs, durationMs, breathing?}` |
+| Physical rigs | `rig.apply {kind, params, geometry?}`, `rig.update {clipId, params, geometry?}` |
 | Scene | `camera.set` and `focus.set {property, value or null}`, `node.ensure {id}`, `node.parent {id, parentId}`, `node.remove`, `motion.set {durationMs?, speed?, loop?}`, `look.set`, `stage.set {preset?, width, height, dpr, physicalWidthMm?, detected?}` |
 
 Use `velora edit stage --scene home-hero --preset laptop-13 --json` to preview a stage change. The Studio's **Use as stage** button applies one undoable edit. Record the returned SHA when applying a reviewed edit with `--expect-sha`.

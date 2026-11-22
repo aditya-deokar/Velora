@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BEHAVIOR_CATALOG, BEHAVIOR_INTENSITIES, MotionClipSchema, MotionSchema, applyEdits, buildBehavior, buildShotClip, buildStaggeredBehavior,
-  evaluateMotion, resolveBehaviorParams, reviewAuthoring, SHOT_KINDS,
+  evaluateMotion, resolveBehaviorParams, reviewAuthoring, LEGACY_SHOT_KINDS,
 } from "../../src/core";
 
 const targetFor = (id: string) => (BEHAVIOR_CATALOG.find(entry => entry.id === id)!.target === "surface" ? { surface: "headline" } : { animatable: "hero-counter" });
@@ -148,7 +148,7 @@ describe("behaviors library", () => {
 
 describe("camera-move library", () => {
   it("every SHOT_KINDS move compiles to a camera clip with shot provenance and a verdict", () => {
-    for (const kind of SHOT_KINDS) {
+    for (const kind of LEGACY_SHOT_KINDS) {
       const result = buildShotClip({ kind }, { subject: { width: 800, height: 520, center: [-100, -70, 0] }, frame: { width: 1400, height: 980 }, sceneSpeed: 1 });
       expect(MotionClipSchema.safeParse(result.clip).success, kind).toBe(true);
       expect(result.clip.source).toMatchObject({ shot: kind, version: 1 });

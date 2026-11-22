@@ -10,6 +10,7 @@ import { NoiseSchema, sampleNoise } from "./noise";
 import { parseCssColor, mixColors, formatCssColor, colorDifference, type CssColor } from "./color";
 import { createRng } from "./random";
 import { compilePath, orientAngles, type CompiledPath } from "./paths";
+import { cameraAtStageEye } from "./spatial";
 
 /** SOURCE OF TRUTH: MotionSchema, evaluateMotion, motionDuration, motionTime, cinematicProgress, cinematicTimeAtProgress, sampleFrameTime, loopSeam, monotoneTangents, explicit scene time.
  * WHAT: typed motion tracks (surface, camera, focus, channel, style), target/property validation and
@@ -95,6 +96,7 @@ const pathKeyframes = z.array(PathKeyframeSchema).min(1);
 const pathOptions = {
   // Constant speed across the whole path; interior keyframe times then only shape the curve.
   rove: z.boolean().optional(),
+  timing: z.literal("parametric").optional(),
   // Derive rotateY (and rotateX for yaw-pitch) from the path tangent.
   orient: z.strictObject({ axis: z.enum(["yaw", "yaw-pitch"]), offsetDeg: finite.min(-360).max(360).optional() }).optional(),
 };
@@ -164,6 +166,7 @@ export const MotionTrackSchema = z
       target: z.strictObject({ kind: z.literal("camera") }),
       property: z.literal("position"),
       keyframes: pathKeyframes,
+      space: z.literal("stage-eye").optional(),
       ...pathOptions,
       ...trackOptions,
     }),
@@ -238,6 +241,7 @@ const clipId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/, "Use a clip 
 /** Provenance of a generated clip: a behavior (07.4), a camera move from buildShot (07.5) or a project
  * preset (07.6). Re-applying regenerates the clip; hand edits of its tracks drop the provenance. */
 export type ClipSource =
+  | { rig: string; version: number; params: Record<string, unknown> }
   | { rack: string; version: number; params?: Record<string, unknown> }
   | { behavior: string; version: number; params?: Record<string, unknown> }
   | { shot: string; version?: number; params?: Record<string, unknown> }
@@ -275,6 +279,7 @@ export const MotionClipSchema: z.ZodType<MotionClipOutput, MotionClipInput> = z.
   }).optional(),
   // Provenance of a generated clip (behaviors and presets, Phase 07).
   source: z.union([
+    z.strictObject({ rig: z.string().min(1).max(64), version: z.number().int().positive(), params: z.record(z.string(), z.unknown()) }),
     z.strictObject({ rack: z.string().min(1).max(64), version: z.number().int().positive(), params: z.record(z.string(), z.unknown()).optional() }),
     z.strictObject({ behavior: z.string().min(1).max(64), version: z.number().int().positive(), params: z.record(z.string(), z.unknown()).optional() }),
     z.strictObject({ shot: z.string().min(1).max(64), version: z.number().int().positive().optional(), params: z.record(z.string(), z.unknown()).optional() }),
@@ -345,6 +350,7 @@ type ColorFrame = z.output<typeof ColorKeyframeSchema>;
 export type MotionState = {
   surfaces: Record<string, Partial<z.output<typeof SurfaceMotionSchema>>>;
   camera: Partial<z.output<typeof CameraMotionSchema>>;
+  cameraPositionSpace?: "stage-eye";
   focus: Partial<z.output<typeof FocusMotionSchema>>;
   channels: Record<string, number>;
   /** CSS custom properties per surface id, present only when the motion has style tracks. */
@@ -542,6 +548,8 @@ function structureIssues(motion: MotionDefinition): StructureIssue[] {
     owners.set(key, { owner, direct });
   };
   for (const entry of flatten(motion)) {
+    if (entry.add && "space" in entry.track && entry.track.space === "stage-eye")
+      issues.push({ path: splitPath(entry.owner), message: "A stage-eye path must be a replace track." });
     if (entry.add) continue;
     if (entry.track.target.kind === "camera" && entry.track.property === "zoom") {
       for (const [index, key] of entry.track.keyframes.entries()) if (!CameraSchema.shape.zoom.safeParse(key.value).success)
@@ -583,7 +591,7 @@ function slotFromKey(key: string): Slot {
  * structural fingerprint (duration, track and keyframe counts) recompiles a mutated cached object. */
 type CompiledTrack = { track: MotionTrack; color: boolean; value: (time: number) => number | string; path?: CompiledPath };
 type Entry = { compiled: CompiledTrack; add: boolean; map?: TimeMap; slots: Slot[]; keys: string[] };
-type Compiled = { parsed?: MotionDefinition; issues: SceneIssue[]; entries: Entry[]; slots: Map<string, Slot & { unit?: string; color: boolean }>;
+type Compiled = { parsed?: MotionDefinition; cameraPositionSpace?: MotionState["cameraPositionSpace"]; issues: SceneIssue[]; entries: Entry[]; slots: Map<string, Slot & { unit?: string; color: boolean }>;
   byKey: Map<string, { entry: Entry; component: number }[]>; links: { link: MotionLink; to: string; from: string }[]; linkByTo: Map<string, { link: MotionLink; to: string; from: string }>; fingerprint: string };
 const compiledMotion = new WeakMap<object, Compiled>();
 /** Duration plus track, clip, link and keyframe counts of a raw motion input (for mutation diagnostics). */
@@ -605,7 +613,7 @@ function compileTrack(track: MotionTrack): CompiledTrack {
     const path = compilePath(frames.map(frame => ({
       timeMs: frame.timeMs, value: frame.value, inTangent: frame.inTangent, outTangent: frame.outTangent,
       progress: frame.easing === "auto" ? (t: number) => t : (t: number) => applyEasing(frame.easing as Easing, t),
-    })), "rove" in track && track.rove === true);
+    })), "rove" in track && track.rove === true, "timing" in track && track.timing === "parametric");
     return { track, color: false, value: () => 0, path };
   }
   if (track.keyframes.some(frame => typeof frame.value === "string")) {
@@ -653,7 +661,9 @@ function compile(input: unknown, fingerprint: string): Compiled {
     if (!slots.has(to)) slots.set(to, { ...refSlot(link.to), color: false });
     return { link, to, from };
   });
-  return { parsed: parsed.data, issues: [], entries, slots, byKey, links, linkByTo: new Map(links.map(entry => [entry.to, entry])), fingerprint };
+  const eyePath = entries.some(({ compiled: { track } }) => "space" in track && track.space === "stage-eye");
+  return { parsed: parsed.data, issues: [], entries, slots, byKey, links, linkByTo: new Map(links.map(entry => [entry.to, entry])), fingerprint,
+    ...(eyePath ? { cameraPositionSpace: "stage-eye" as const } : {}) };
 }
 function compiled(input: unknown): Compiled {
   const fingerprint = motionFingerprint(input);
@@ -754,6 +764,7 @@ export function evaluateMotion(input: unknown, timeMs: number): MotionState {
       message: "Scene time must be a finite number.",
     });
   if (!motion.parsed || result.issues.length) return result;
+  if (motion.cameraPositionSpace) result.cameraPositionSpace = motion.cameraPositionSpace;
   const time = Math.min(motion.parsed.durationMs, Math.max(0, timeMs) * motion.parsed.speed);
   const { values, additive } = frameValues(motion, time);
   for (const [key, value] of values) {
@@ -804,9 +815,14 @@ export function withAdditive<T extends Record<string, unknown>>(base: T, add: Re
   return next as T;
 }
 const cameraMotionDefaults = { ...CameraSchema.parse({}), zoom: 1 };
-export function withCameraAdditive<T extends Record<string, unknown> & { zoom?: number }>(base: T, add: Record<string, number> | undefined): T {
-  const camera = withAdditive(base, add, cameraMotionDefaults);
-  return add?.zoom !== undefined && camera.zoom !== undefined ? { ...camera, zoom: Math.min(8, Math.max(0.25, camera.zoom)) } : camera;
+export function withCameraAdditive<T extends Record<string, unknown> & { zoom?: number }>(base: T, add: Record<string, number> | undefined, space?: MotionState["cameraPositionSpace"]): T {
+  const values = withAdditive(base, add, cameraMotionDefaults);
+  const camera = add?.zoom !== undefined && values.zoom !== undefined ? { ...values, zoom: Math.min(8, Math.max(0.25, values.zoom)) } : values;
+  if (space === "stage-eye") {
+    const pose = { ...cameraMotionDefaults, ...camera };
+    return { ...camera, ...cameraAtStageEye([pose.x, pose.y, pose.z], pose) };
+  }
+  return camera;
 }
 /** Largest per-property difference between the first and last authored instant: 0 means a seamless loop.
  * Color tracks measure the largest sRGB channel (or alpha) difference in 0..255 units. */

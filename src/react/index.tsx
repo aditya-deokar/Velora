@@ -161,7 +161,7 @@ export function Scene({
     const state = motion ? RESOURCES["evaluate-motion"](motion, timeMs) : emptyMotion;
     const additive = state.additive;
     const input = {
-      camera: withCameraAdditive({ ...camera, ...state.camera }, additive?.camera),
+      camera: withCameraAdditive({ ...camera, ...state.camera }, additive?.camera, state.cameraPositionSpace),
       focus: withAdditive({ ...focus, ...state.focus }, additive?.focus, FOCUS_BASE),
       ...(constraints ? { constraints } : {}),
       nodes: bindings.map((binding) => ({

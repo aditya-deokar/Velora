@@ -205,3 +205,13 @@ velora edit lock --scene home-hero --frame subject:revenue-card --fill 0.6 --jso
 ```
 
 Review the diff and repeat with `--write` to save. Framing solves camera distance before aim and focus. Set `compose: [33.3, 50]` on a `lookAt` constraint to aim at the left third. Use the same scoped target refs for both ends of a live rack. Review the projected rect and blur at the beginning, middle and end.
+
+## Bake a physical camera rig
+
+Inspect the running scene first with `velora anchors --scene home-hero --time 0 --json`. A telephoto orbit keeps a named element framed while the camera moves. Backdrops placed thousands of scene pixels behind the target produce more separation. The rig report lists measured parallax and the required coverage of measured backdrops.
+
+```sh
+velora edit rig --scene home-hero --kind telephoto-parallax-orbit --target subject:revenue-card --arc 36 --mass heavy --json
+```
+
+A drone accepts ordered waypoints as named targets or stage-space points in `--params`. Check the minimum clearance report before using a through-flight. Keep the whip arrival visible for at least 300 ms before a cut.

@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { SUPPORTED_EXPORT_FPS, ExportFrameRateSchema, QualityPresetSchema, VideoCodecSchema, CODEC_CONTAINERS, type CameraInput, type PreviewDefinitionInput, type QualityPreset, type VideoCodec } from "../core";
-import { Scene, SceneErrorBoundary, useSceneCapture, createSceneInspector, type SceneInspector, type ThreeSelection } from "../react";
+import { Scene, SceneErrorBoundary, useSceneCapture, createSceneInspector, useSceneInspector, type SceneInspector, type ThreeSelection } from "../react";
 import { LookLayer } from "../kit";
-import { decodeBase64Url, hasExportFinishing, resolveLook, LookSchema, type LookInput } from "../core";
+import { decodeBase64Url, hasExportFinishing, resolveLook, LookSchema, velocityBlurAt, rigLayersFromAnchors, type LookInput } from "../core";
 import { usePreviewSession } from "./session";
 import { usePreviewConnection, type PreviewHot } from "./connection";
 import { BrandAttribution } from "./BrandAttribution";
@@ -140,7 +140,7 @@ function ExportMenu({disabled, panelHost, size}: {disabled: boolean; panelHost: 
 
 export function ScenePreview({definition: input, children, title = "Untitled scene", backHref, onBack, backLabel, initialTimeMs, revision, hot, timeline, fps = 60, exportSize, aside, layout, slots, editHref, sceneId, onStage, viewCamera, threeSelection, peaking, depthDisplay}: ScenePreviewProps) {
   const editor = layout === "editor";
-  const [inspector] = useState(() => editor ? createSceneInspector() : undefined);
+  const [inspector] = useState(createSceneInspector);
   const session = usePreviewSession(input, revision, timeline, initialTimeMs);
   const [overlays, setOverlays] = useOverlays();
   const frame = useRef<HTMLDivElement>(null);
@@ -179,6 +179,8 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
     if (!packed) return undefined;
     try { const parsed = LookSchema.safeParse(JSON.parse(decodeBase64Url(packed) ?? "")); return parsed.success ? parsed.data : undefined; } catch { return undefined; }
   }, [definition?.look]);
+  const optics = useSceneInspector(look?.velocityBlur ? inspector : undefined);
+  const velocity = definition && look?.velocityBlur ? velocityBlurAt({ ...definition, look }, session.timeMs, { layers: rigLayersFromAnchors(optics?.targets ?? []) }) : undefined;
   const exportOnly = useMemo(() => { try { return hasExportFinishing(resolveLook(look)); } catch { return false; } }, [look]);
   useTransportKeys(session, fps, !blocked);
   const targetDiagnostic = session.issues.length > 0 && session.issues.every(issue => issue.code === "target-missing" || issue.code === "target-ambiguous");
@@ -201,9 +203,9 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
       <div className="velora-canvas" data-velora-capture="scene" data-velora-valid={captureBlocked ? "false" : "true"}
         data-velora-view={editor && viewCamera ? "director" : undefined} style={{width: "100%", height: "100%"}}>
         <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
-          <LookLayer look={look} timeMs={session.timeMs} width={definition.width} height={definition.height}>
+          <LookLayer look={look} velocity={velocity} timeMs={session.timeMs} width={definition.width} height={definition.height}>
             <Scene stage={definition.stage} depth={definition.depth} depthDisplay={editor ? depthDisplay : undefined} camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
-              timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(inspector ? {inspector, threeSelection} : {})}
+              timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(editor || look?.velocityBlur ? {inspector, threeSelection} : {})}
               {...(editor && viewCamera ? {viewCamera} : {})}>
               {children}
             </Scene>
@@ -275,9 +277,9 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
               style={{width: "100%", height: "100%"}}>
               {/* One aspect-preserving cover frame fills preview and capture; overflow is cropped, never stretched. */}
               <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
-                <LookLayer look={look} timeMs={session.timeMs} width={definition.width} height={definition.height}>
+                <LookLayer look={look} velocity={velocity} timeMs={session.timeMs} width={definition.width} height={definition.height}>
                   <Scene stage={definition.stage} depth={definition.depth} camera={definition.scene.camera} focus={definition.scene.focus} constraints={definition.scene.constraints} motion={definition.motion}
-                    timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(inspector ? {inspector, threeSelection} : {})}>
+                    timeMs={session.timeMs} onDiagnostics={session.onDiagnostics} style={{width: definition.width, height: definition.height}} {...(editor || look?.velocityBlur ? {inspector, threeSelection} : {})}>
                     {children}
                   </Scene>
                 </LookLayer>

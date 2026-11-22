@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { evaluateMotion, loopSeam, motionDuration, SURFACE_VISUAL_PROPERTIES } from "../../src/core/motion";
 import { evaluateScene, cameraToCss, transformToCss, type Measurements } from "../../src/core/spatial";
 import { lensFor } from "../../src/core/lens";
-import { ASPECT_FRAMES, AspectSchema, IntensitySchema, SHOT_KINDS, buildShot, framingReport } from "../../src/core/shots";
+import { ASPECT_FRAMES, AspectSchema, IntensitySchema, LEGACY_SHOT_KINDS, buildShot, framingReport } from "../../src/core/shots";
 import { TEMPLATE_CATALOG, resolveTemplateParams, templateDefinition } from "../../src/core/templates";
 import { compositePreview } from "../../src/core/composites";
 
@@ -104,7 +104,7 @@ export function opticsRecord() {
   const lenses: Record<string, unknown> = {};
   for (const mm of LENS_TABLE_MM) for (const height of FRAME_HEIGHTS) lenses[`${mm}mm@${height}`] = attempt(() => lensFor(mm, height));
   const shots: Record<string, unknown> = {}, framing: Record<string, unknown> = {};
-  for (const kind of SHOT_KINDS)
+  for (const kind of LEGACY_SHOT_KINDS)
     for (const aspect of AspectSchema.options)
       for (const intensity of IntensitySchema.options) {
         const key = `${kind}@${aspect}@${intensity}`;

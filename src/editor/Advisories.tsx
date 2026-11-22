@@ -1,5 +1,5 @@
 import { useMemo, useRef } from "react";
-import { presentPreview, reviewAuthoring } from "../core";
+import { presentPreview, reviewAuthoring, rigLayersFromAnchors } from "../core";
 import { useEditor, useEditorState } from "./context";
 import { addressOf } from "./model";
 import type { Doc } from "./store";
@@ -17,20 +17,23 @@ export function useAdvisories(): Advisory[] {
   const sceneIssues = JSON.stringify(snapshot?.issues ?? []);
   const depthIssues = JSON.stringify(snapshot?.advisories ?? []);
   const textReadings = JSON.stringify((snapshot?.animatables ?? []).flatMap(entry => entry.readingTimeMs ? [{ id: entry.id, minMs: entry.readingTimeMs }] : []));
+  const rigGeometry = (doc as Doc | undefined)?.definition?.motion?.clips?.some((clip: Doc) => clip.source?.rig)
+    ? JSON.stringify(rigLayersFromAnchors(snapshot?.targets ?? []).filter(layer => layer.tier)) : undefined;
   const result = useMemo(() => {
     if (!doc) return undefined;
     const out: Advisory[] = [];
     const preview = presentPreview((doc as Doc).definition);
     if (preview.valid) {
-      const { scene, stage, width, height, motion, depth } = preview.definition;
-      const review = reviewAuthoring({ scene, stage, width, height, depth, motion: motion ?? { durationMs: 0, tracks: [] }, textReadings: JSON.parse(textReadings) });
+      const { scene, stage, width, height, motion, depth, look } = preview.definition;
+      const review = reviewAuthoring({ scene, stage, width, height, depth, look, motion: motion ?? { durationMs: 0, tracks: [] },
+        ...(rigGeometry ? { rigGeometry: JSON.parse(rigGeometry) } : {}), textReadings: JSON.parse(textReadings) });
       out.push(...review.issues.map(entry => ({ ...entry, severity: "issue" as const })), ...review.advice.map(entry => ({ ...entry, severity: "advice" as const })));
     } else out.push(...preview.issues.map(issue => ({ code: "invalid", path: issue.path, message: issue.message, severity: "issue" as const })));
     out.push(...(JSON.parse(sceneIssues) as { path: string; message: string }[]).map(issue => ({ code: "scene", path: issue.path, message: issue.message, severity: "scene" as const })));
     out.push(...(JSON.parse(depthIssues) as { code: string; path: string; message: string }[]).map(issue => ({ ...issue, severity: "advice" as const })));
     out.push(...state.issues.map(issue => ({ code: issue.code, path: issue.path, message: issue.message, severity: "issue" as const })));
     return out;
-  }, [doc, state.issues, sceneIssues, depthIssues, textReadings]);
+  }, [doc, state.issues, sceneIssues, depthIssues, textReadings, rigGeometry]);
   if (result) last.current = result;
   return result ?? last.current;
 }

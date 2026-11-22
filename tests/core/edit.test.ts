@@ -135,9 +135,9 @@ describe("edit ops", () => {
     expect(track.keyframes.map((k: { timeMs: number; value: number[] }) => [k.timeMs, k.value])).toEqual([[0, [0, 5, -20]], [500, [50, 7, -20]], [1000, [100, 9, -20]]]);
     expect(track.keyframes[0].outTangent).toEqual([0, 30, 0]);
   });
-  it("returns ERR_EDIT_UNSUPPORTED for later-phase ops", () => {
+  it("requires the kind and parameters for a rig edit", () => {
     const result = applyEdits(base(), [{ op: "rig.apply" }]);
-    expect(!result.ok && result.issues[0].code).toBe("ERR_EDIT_UNSUPPORTED");
+    expect(!result.ok && result.issues[0].code).toBe("ERR_EDIT_INVALID");
   });
   it("coalesces drag gestures and labels ops for history", () => {
     expect(coalesce({ op: "key.move", track: cardX, fromMs: 0, toMs: 100 }, { op: "key.move", track: cardX, fromMs: 100, toMs: 140 })).toEqual({ op: "key.move", track: cardX, fromMs: 0, toMs: 140 });

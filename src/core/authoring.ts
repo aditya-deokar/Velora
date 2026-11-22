@@ -11,6 +11,8 @@ import { SUPPORTED_EXPORT_FPS, CaptureManifestSchema, QUALITY_PRESETS, CODEC_CON
 import { DEFAULT_STAGE, StageSchema, STAGE_PRESETS, STAGE_DPRS, sceneStageBudget } from "./stage";
 import { DEFAULT_DEPTH_LIGHT, DEPTH_TIERS, DepthMapSchema } from "./depth";
 import { DELIVERY_PRESETS } from "./delivery";
+import { RIG_KINDS, RIG_MASSES, RigGeometrySchema, rigSmoothness, rigClearance, RigMassSchema } from "./rigs";
+import { LookSchema } from "./looks";
 import { PROMPT_LIBRARY } from "./prompts";
 
 /** SOURCE OF TRUTH: getAuthoringGuide, reviewAuthoring, AuthoringGuideSchema.
@@ -199,6 +201,11 @@ export function getAuthoringGuide(input?: { cliVersion?: string }): AuthoringGui
       "Show the shared paused product preview. Revise source code from user feedback; do not recreate playback or diagnostic controls per scene. ScenePreview registers capture for static and animated scenes and exposes the canonical CLI export command when valid. Export only when requested.",
     ],
     capabilities:{
+      rigs: { kinds: RIG_KINDS, stepHz: 240, bakeHz: 60, masses: RIG_MASSES, params: {
+        "drone-flyover": ["waypoints", "altitude", "durationMs", "speed", "lens", "mass", "bank", "through", "lookAhead", "margin"],
+        "telephoto-parallax-orbit": ["target", "lens", "arcDeg", "axis", "durationMs", "mass", "fill", "depthBoost"],
+        "whip-pan-macro": ["from", "to", "lens", "durationMs", "mass", "settle", "fill", "blur"],
+      } },
       brand:VELORA_BRAND,
       package:{name:VELORA_PACKAGE.name,preview:VELORA_PACKAGE.preview},
       example:{
@@ -276,6 +283,7 @@ export default function PageSurvey() {
   });
 }
 export const AuthoringReviewInputSchema=z.strictObject({scene:SceneSchema,motion:MotionSchema,depth:DepthMapSchema.optional(),
+ look: LookSchema.optional(), rigGeometry: RigGeometrySchema.optional(), shutterAccumulation: z.boolean().optional(),
  stage:StageSchema.optional(), width:z.number().positive().optional(), height:z.number().positive().optional(),
  textReadings:z.array(z.strictObject({id:z.string(),minMs:z.number().finite().positive()})).optional()});
 const ReviewIssueSchema=z.strictObject({code:z.string(),path:z.string(),message:z.string()});
@@ -294,13 +302,33 @@ export function reviewAuthoring(input:unknown):AuthoringReview {
   if(track.property.startsWith('rotate')&&track.keyframes.some((f,k)=>k>0&&Math.abs(Number(f.value)-Number(track.keyframes[k-1].value))>90))advice.push({code:'rotation-sweep',path,message:'A rotation segment over 90 degrees may show the edge/back or hide the UI. Inspect the path; retain it only when intentional.'});
   if(track.target.kind==='camera'&&(track.interpolation==='smooth'?track.ease!==undefined&&easingOvershoots(track.ease):track.keyframes.some((f,k)=>k<track.keyframes.length-1&&easingOvershoots(f.easing as Parameters<typeof easingOvershoots>[0]))))advice.push({code:'camera-overshoot',path,message:'An overshooting easing (back, elastic, under-damped spring) on a camera track reads as a jolt. Keep it only for an intentional snap; prefer cinematic or an out curve.'});
   if(track.interpolation==='smooth'&&track.keyframes.slice(0,-1).some(f=>f.easing!=='cinematic'))advice.push({code:'smooth-easing-ignored',path,message:'Smooth tracks ignore per-keyframe easing; set the track-level ease instead.'});
-  if(track.interpolation!=='smooth'&&track.keyframes.some((f,k)=>k<track.keyframes.length-1&&f.easing==='linear'&&f.value!==track.keyframes[k+1].value))advice.push({code:'linear-motion',path,message:'Linear movement has no gentle start/finish. Confirm that this override serves the intended shot.'});
+  if(track.interpolation!=='smooth'&&!("space" in track && track.space === "stage-eye")&&track.keyframes.some((f,k)=>k<track.keyframes.length-1&&f.easing==='linear'&&f.value!==track.keyframes[k+1].value))advice.push({code:'linear-motion',path,message:'Linear movement has no gentle start/finish. Confirm that this override serves the intended shot.'});
  }
  for(const [i,link] of (motion.links??[]).entries()) for(const ref of [link.to,link.from]) if('target' in ref&&(ref.target.kind==='surface'||ref.target.kind==='style')&&!ids.has(ref.target.id))issues.push({code:'unknown-surface',path:`motion.links.${i}`,message:`No supplied surface ${ref.target.id}.`});
  for(const {owner,speeds,rove} of pathSpeeds(motion)){const moving=speeds.filter(v=>v>1e-9);if(!rove&&moving.length>1&&Math.max(...moving)/Math.min(...moving)>4)advice.push({code:'path-speed-spike',path:`motion.${owner}`,message:'Path segments change speed more than 4x between keyframes, which reads as a lurch. Even out keyframe times, ease the segments or set rove: true for constant speed.'});}
  const changes=(track:typeof motion.tracks[number])=>!!track.noise?.amplitude||track.keyframes.some(f=>f.value!==track.keyframes[0].value);
  const tracks=expanded.map(({track})=>track);
- const cameraTravels=tracks.some(t=>t.target.kind==='camera'&&['x','y','z'].includes(t.property)&&changes(t));
+ for (const clip of motion.clips ?? []) {
+  const source = clip.source && "rig" in clip.source ? clip.source : undefined;
+  const bank = source?.params.bank;
+  const bankLimit = bank === "dramatic" ? 12 : bank === "standard" ? 9 : 6;
+  const bankTrack = clip.clips?.find(child => child.mode === "add" && child.label === "Horizon bank")?.tracks?.find(track => track.property === "rotateZ");
+  if (bankTrack?.keyframes.some(frame => typeof frame.value === "number" && Math.abs(frame.value) > bankLimit + 0.001))
+    advice.push({ code: "bank-excess", path: `motion.clips.${clip.id}`, message: `Horizon bank exceeds ${bankLimit}°.` });
+  if (!source) continue;
+  const parsedMass = RigMassSchema.safeParse(source.params.mass);
+  const definition = { ...parsed.data, motion: { durationMs: motion.durationMs, speed: motion.speed, tracks: [], clips: [clip] } };
+  const smoothness = rigSmoothness(definition, parsedMass.success ? parsedMass.data : undefined);
+  if (!smoothness.pass)
+    advice.push({ code: "rig-jerk", path: `motion.clips.${clip.id}`, message: `Peak jerk is ${smoothness.peakJerk} px/s³ and the largest velocity jump is ${smoothness.maxVelocityDiscontinuity} px/s.` });
+  if (parsed.data.rigGeometry?.length) {
+    const clearance = rigClearance(definition, parsed.data.rigGeometry, { margin: typeof source.params.margin === "number" ? source.params.margin : 40 });
+    if (!clearance.pass) advice.push({ code: "rig-clearance", path: `motion.clips.${clip.id}`, message: `Minimum clearance is ${clearance.minimum.toFixed(1)} px.` });
+  }
+ }
+ if (parsed.data.look?.velocityBlur && parsed.data.shutterAccumulation)
+  advice.push({ code: "double-motion-blur", path: "look.velocityBlur", message: "Shutter accumulation disables the directional velocity filter for this render." });
+ const cameraTravels=tracks.some(t=>t.target.kind==='camera'&&['x','y','z','position'].includes(t.property)&&changes(t));
  const surfacesMove=motion.tracks.some(t=>t.target.kind==='surface'&&['x','y','z','rotateX','rotateY','rotateZ','scale'].includes(t.property)&&changes(t));
  if(surfacesMove&&!cameraTravels)advice.push({code:'camera-travel-missing',path:'motion.tracks',message:'Surfaces move but the camera has no translational travel. Default dramatic shots establish a close oblique camera and a surface-aligned rail. Keep this stationary-camera variation only when intentional; element movement alone does not prove the requested shot.'});
  if(!tracks.some(changes))advice.push({code:'static-scene',path:'motion',message:'There is no changing track. A static composition is valid, but does it meet a request for cinematic motion?'});

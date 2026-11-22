@@ -56,3 +56,4 @@ export * from "./presets";
 export * from "./stage";
 export * from "./depth";
 export * from "./targets";
+export * from "./rigs";

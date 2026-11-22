@@ -214,7 +214,7 @@ function Toolbar() {
     <button className="ve-btn" onClick={() => controller.open("agent")}>Ask agent</button>
     <button className="ve-btn" onClick={() => controller.open("advisories")}><span aria-hidden="true">⚠</span> Advisories ({advisories.length})</button>
     <button className="ve-btn" onClick={() => controller.open("behaviors")}>Behaviors</button>
-    <button className="ve-btn" onClick={() => controller.open("camera-moves")}>Camera moves</button>
+    <button className="ve-btn" onClick={() => controller.open("camera-moves")}>{state.ui.tool === "camera" ? "Camera moves and rigs" : "Camera moves"}</button>
     <button className="ve-btn" onClick={() => controller.open("presets")}>Presets</button>
     {shared.hello?.capabilities.includes("source") && <>
       <button className="ve-btn" onClick={() => shared.pickSource()}>Source</button>

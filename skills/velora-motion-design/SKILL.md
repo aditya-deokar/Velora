@@ -158,3 +158,9 @@ overshoot. The easing library (E) offers Velora, After Effects, CSS, Penner, spr
 
 - Do not use graphics where the real product can speak; prefer a layered real-UI shot.
 - Do not use it for timeline or audio work (`velora-composition`, `velora-audio`).
+
+## Regenerate physical camera moves
+
+Studio's Camera moves panel can bake a drone flyover, telephoto orbit, or macro whip from live targets. A rig stores a timed Bézier path, channels, constraints, and its parameter provenance. Horizon banking adds to any authored camera roll.
+
+To regenerate from the command line, use `velora edit rig --scene home-hero --clip camera-rig --arc 36 --json`. Pass the running preview origin if it uses a non-default port. Review the diff before applying. A waypoint drag in Director view rebakes the flight in one undo step.

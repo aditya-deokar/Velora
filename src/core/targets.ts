@@ -35,15 +35,18 @@ export function parseElementTarget(text: string, defaultSurface?: string): Eleme
 }
 
 const rect = z.strictObject({ x: z.number(), y: z.number(), width: z.number().nonnegative(), height: z.number().nonnegative() });
+export const StagePointSchema = z.tuple([z.number(), z.number(), z.number()]);
 export const AnchorReportSchema = z.strictObject({
   target: ElementTargetSchema, tier: z.string().optional(), rect, elevation: z.number(), baseElevation: z.number(),
+  stagePoint: StagePointSchema.optional(), stageCorners: z.tuple([StagePointSchema, StagePointSchema, StagePointSchema, StagePointSchema]).optional(),
+  stageElevation: z.strictObject({ current: StagePointSchema, rest: StagePointSchema }).optional(),
   projected: rect.optional(), point: z.tuple([z.number(), z.number()]).optional(), depth: z.number(), blur: z.number().nonnegative(), visible: z.boolean(), ambiguous: z.literal(true).optional(),
 });
 export type AnchorReport = z.output<typeof AnchorReportSchema>;
 const AnchorInventorySchema = AnchorReportSchema.partial({ depth: true, blur: true, visible: true });
 export const AnchorsResultSchema = z.strictObject({ sceneId: z.string(), timeMs: z.number().nonnegative(), anchors: z.array(AnchorInventorySchema) });
 export type AnchorsResult = z.output<typeof AnchorsResultSchema>;
-export type AnchorMeasurement = { target: ElementMatch; rect: z.output<typeof rect>; elevation: number; baseElevation: number; tier?: string; layerMatch?: DepthMatch };
+export type AnchorMeasurement = { target: ElementMatch; rect: z.output<typeof rect>; elevation: number; baseElevation: number; restElevation?: number; restBaseElevation?: number; tier?: string; layerMatch?: DepthMatch };
 export const matchesDepthLayer = (match: DepthMatch, layer: string) => "anchor" in match ? match.anchor === layer : match.selector === layer || match.selector === `#${layer}`;
 export type AnchorMeasurements = { entries: readonly AnchorMeasurement[]; matches: Readonly<Record<string, readonly AnchorMeasurement[]>> };
 

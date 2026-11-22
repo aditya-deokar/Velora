@@ -67,7 +67,7 @@ export const ConstraintTargetSchema = z.union([
   z.strictObject({ point: z.tuple([finite, finite, finite]) }),
 ]);
 // A constant 0..1 or a channel track (the TrackRef shape) whose value is clamped to 0..1.
-const weight = z.union([unit, z.strictObject({ target: z.strictObject({ kind: z.literal("channel"), id: z.string().min(1).max(128) }), property: z.literal("value") })]);
+const weight = z.union([unit, z.strictObject({ target: z.strictObject({ kind: z.literal("channel"), id: z.string().min(1).max(128) }), property: z.literal("value"), fallback: z.literal(0).optional() })]);
 export const SceneConstraintSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("frame"), target: ConstraintTargetSchema, fill: finite.gt(0).max(1), axis: z.enum(["width", "height", "fit"]).optional(), weight: weight.optional() }),
   // Pan/tilt about the camera's eye so the target projects to frame center (derives rotateX/rotateY; camera x/y/z follow so the eye stays fixed).

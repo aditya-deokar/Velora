@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { applyEdits, describeOp, lineDiff, parseTrackShorthand, type EditOp, type EditIssue, type TrackAddress } from "../core/edit";
-import { isElementTarget, parseElementTarget } from "../core/targets";
+import { describeElementTarget, isElementTarget, parseElementTarget, targetPoseKey } from "../core/targets";
+import { buildRig, mergeRigParams, RigKindSchema, RigRequestSchema, rigTargets, rigSmoothness, type RigLayer } from "../core/rigs";
 import { stageFromSpec } from "../core/stage";
 import { DEFAULT_DEPTH_LIGHT, DepthConfigSchema, DepthIntensitySchema, DepthModeSchema, type DepthEvidence } from "../core/depth";
 import { focalLengthForPerspective, LENS_PRESETS, LensHoldSchema, LensPresetSchema } from "../core/lens";
@@ -28,7 +29,7 @@ import { compositionBridgeHandlers, readCompositionEdit } from "./composition-ed
  * WHERE: cli/index parses flags; core/edit and core/json own the reducer and writer; services own file I/O
  * (scoped paths, atomic writes); services/bridge owns the loopback transport and watcher.
  */
-export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "stage" | "depth" | "lens" | "rack" | "lock" | "bridge" | "preset" | "source";
+export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "stage" | "depth" | "lens" | "rack" | "lock" | "rig" | "bridge" | "preset" | "source";
 export type EditCommandResult =
   | { success: true; command: "edit"; data: Record<string, unknown>; warnings?: CliIssue[]; next?: string[]; server?: BridgeServer }
   | { success: false; command: "edit"; issues: CliIssue[]; next: string[] };
@@ -59,6 +60,9 @@ const EditInputSchema = z.strictObject({
   hold: LensHoldSchema.optional(),
   duration: z.number().positive().max(120_000).optional(),
   breathing: z.number().min(0).max(0.03).optional(),
+  rigKind: RigKindSchema.optional(),
+  rigClip: z.string().max(64).optional(),
+  rigParams: z.record(z.string(), z.unknown()).optional(),
   lookAt: z.string().max(512).optional(),
   focusFollow: z.string().max(512).optional(),
   frame: z.string().max(512).optional(),
@@ -169,7 +173,7 @@ function restBase(recipe: Doc, atMs: number) {
   const parsed = MotionSchema.safeParse(motion);
   const state = parsed.success ? evaluateMotion(parsed.data, atMs / parsed.data.speed) : undefined;
   const camera = CameraSchema.parse(scene.camera ?? {}), focus = FocusSchema.parse(scene.focus ?? {});
-  const cameraAt = withCameraAdditive({ ...camera, ...state?.camera }, state?.additive?.camera);
+  const cameraAt = withCameraAdditive({ ...camera, ...state?.camera }, state?.additive?.camera, state?.cameraPositionSpace);
   return ({ target, property }: { target: { kind: string; id?: string }; property: string }): number | number[] | undefined => {
     const read = (key: string) => {
       if (target.kind === "camera") return (cameraAt as Record<string, number>)[key] ?? (key === "zoom" ? 1 : undefined);
@@ -289,6 +293,7 @@ export async function startSceneBridge(root: string, options: { origin: string; 
 }
 
 export async function executeEditCommand(operation: EditOperation, input: EditInput, context: { root: string; version?: string; log?: (entry: Record<string, unknown>) => void;
+  readRigGeometry?: (root: string, scene: string, url: string, timeMs: number, targets: import("../core/targets").ElementTarget[]) => Promise<RigLayer[]>;
   readOptics?: (root: string, scene: string, url: string, times: readonly number[]) => Promise<DepthEvidence[][]> }): Promise<EditCommandResult> {
   const parsed = EditInputSchema.safeParse(input);
   if (!parsed.success) return failure(parsed.error.issues.map(issue => ({ code: "ERR_EDIT_INVALID", path: issue.path.join("."), message: issue.message })));
@@ -413,6 +418,37 @@ export async function executeEditCommand(operation: EditOperation, input: EditIn
       const preset = LensPresetSchema.safeParse(options.preset);
       if (!preset.success) return failure([{ code: "ERR_EDIT_INVALID", path: "preset", message: `Choose a lens preset: ${LensPresetSchema.options.join(", ")}.` }]);
       return await editScene(root, options.scene, [{ op: "lens.apply", preset: preset.data, hold: options.hold }], write);
+    }
+    if (operation === "rig") {
+      if (!!options.rigKind === !!options.rigClip)
+        return failure([{ code: "ERR_INVALID_FLAG_COMBINATION", message: "Choose --kind to bake a rig or --clip to regenerate an existing rig." }]);
+      const file = await readScene(root, options.scene);
+      if ("success" in file) return file;
+      const { definition } = parseJsonDocument(file.text) as Doc;
+      const clip = definition.motion?.clips?.find((item: Doc) => item.id === options.rigClip);
+      if (options.rigClip && !clip?.source?.rig)
+        return failure([{ code: "ERR_EDIT_TARGET", message: "Choose a generated rig clip; velora edit ls lists clips." }]);
+      const kind = options.rigKind ?? clip?.source?.rig;
+      const checked = RigRequestSchema.safeParse({ kind, params: mergeRigParams(kind, clip?.source?.params, options.rigParams) });
+      if (!checked.success) return failure(checked.error.issues.map(issue => ({ code: "ERR_EDIT_INVALID", path: issue.path.join("."), message: issue.message })));
+      const targets = rigTargets(checked.data);
+      let geometry: RigLayer[] | undefined;
+      if (targets.length || checked.data.kind === "drone-flyover" && checked.data.params.through) {
+        if (!context.readRigGeometry || !options.url)
+          return failure([{ code: "ERR_EDIT_TARGET", message: "Start the scene preview and provide its origin with --url to measure rig targets." }]);
+        const measured = await context.readRigGeometry(root, options.scene, options.url, options.at ?? 0, targets);
+        const missing = targets.find(target => !measured.some(layer => layer.target && targetPoseKey(layer.target) === targetPoseKey(target)));
+        if (missing) return failure([{ code: "ERR_TARGET_MISSING", path: describeElementTarget(missing), message: "The rig target must resolve to one visible element in the running scene." }]);
+        geometry = measured;
+      }
+      const op: EditOp = options.rigClip ? { op: "rig.update", clipId: options.rigClip, params: checked.data.params, geometry }
+        : { op: "rig.apply", kind: checked.data.kind, params: checked.data.params, geometry };
+      const result = await editScene(root, options.scene, [op], { ...write, expectSha: options.expectSha ?? file.sha });
+      if (!result.success) return result;
+      const built = buildRig(checked.data, { frame: { width: definition.width ?? 1400, height: definition.height ?? 980 }, stage: definition.stage,
+        id: options.rigClip, startMs: clip?.startMs, layers: geometry });
+      return { ...result, data: { ...result.data, rig: checked.data.kind, clip: built.clip.id,
+        smoothness: rigSmoothness(built.definition, checked.data.params.mass), clearance: built.clearance, parallax: built.parallax, peakMs: built.peakMs } };
     }
     if (operation === "lock") {
       const requested = Object.entries({ lookAt: options.lookAt, focusFollow: options.focusFollow, frame: options.frame })

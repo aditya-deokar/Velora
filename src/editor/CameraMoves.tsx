@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { BEHAVIOR_INTENSITIES, MotionClipSchema, SHOT_KINDS, applyEdits, buildShotClip, clipTiming, framingReport, shotVerdict, type EditOp, type ShotKind, type ShotVerdict } from "../core";
+import { BEHAVIOR_INTENSITIES, MotionClipSchema, LEGACY_SHOT_KINDS, RIG_KINDS, type RigKind, applyEdits, buildShotClip, clipTiming, framingReport, shotVerdict, type EditOp, type ShotKind, type ShotVerdict } from "../core";
 import { surfaceLayers } from "./commands";
 import { useEditor, useEditorState } from "./context";
 import { nextClipId } from "./group";
@@ -8,11 +8,13 @@ import { MotionPanel, NumericField } from "./MotionDesign";
 import { motionSpeed, toAuthored, toPresentation } from "./properties";
 import type { Doc } from "./store";
 import { toStage } from "./viewport/CameraTool";
+import { CameraRigFields } from "./CameraRigFields";
 import { sceneAt } from "./viewport/scene";
 
 export function CameraMoves({ onClose }: { onClose(): void }) {
   const { store, host, snapshot, notify } = useEditor();
   const state = useEditorState(store);
+  const [rig, setRig] = useState<RigKind>();
   const [kind, setKind] = useState<ShotKind>("push-in");
   const [intensity, setIntensity] = useState<(typeof BEHAVIOR_INTENSITIES)[number]>("subtle");
   const [lens, setLens] = useState<number>();
@@ -26,7 +28,7 @@ export function CameraMoves({ onClose }: { onClose(): void }) {
   const time = host.session.timeMs;
   const cameraTracks = useMemo(() => listTracks(doc).filter(({ address }) => address.target.kind === "camera" || address.target.kind === "focus"), [doc]);
   const candidate = useMemo(() => {
-    if (applied) return;
+    if (applied || rig) return;
     if (!selected || !snapshot || !(frame.width > 0 && frame.height > 0)) return { error: "Select one measured layer for the camera move." };
     if (cameraTracks.length && !replace) return { error: "Enable replacement to apply a move over existing camera or focus tracks." };
     try {
@@ -53,11 +55,16 @@ export function CameraMoves({ onClose }: { onClose(): void }) {
       } });
       return { ops, verdict: shotVerdict(report, { lens, intensity }), extendsScene: endMs > (doc.definition.motion?.durationMs ?? 0) };
     } catch (error) { return { error: (error as Error).message }; }
-  }, [kind, lens, durationMs, intensity, selected, snapshot, frame, cameraTracks, doc, time, replace, applied]);
+  }, [kind, lens, durationMs, intensity, selected, snapshot, frame, cameraTracks, doc, time, replace, applied, rig]);
   const result = applied ?? candidate?.verdict;
   return <MotionPanel title="Camera moves" onClose={onClose}>
+    <div className="ve-motion-row" role="group" aria-label="Physical camera rigs">
+      {RIG_KINDS.map(name => <button key={name} type="button" className="ve-btn" aria-pressed={rig === name}
+        onClick={() => setRig(rig === name ? undefined : name)}>{name}</button>)}
+    </div>
+    {rig ? <CameraRigFields key={rig} kind={rig}/> : <>
     <label>Move<select className="ve-input" value={kind} onChange={event => { setKind(event.target.value as ShotKind); setApplied(undefined); }}>
-      {SHOT_KINDS.map(value => <option key={value}>{value}</option>)}
+      {LEGACY_SHOT_KINDS.map(value => <option key={value}>{value}</option>)}
     </select></label>
     <label>Intensity<select className="ve-input" value={intensity} onChange={event => { setIntensity(event.target.value as typeof intensity); setApplied(undefined); }}>
       {BEHAVIOR_INTENSITIES.map(value => <option key={value}>{value}</option>)}
@@ -77,5 +84,6 @@ export function CameraMoves({ onClose }: { onClose(): void }) {
       const issues = store.commit(candidate.ops, `Apply ${kind} camera move`);
       if (issues.length) notify(issues[0].message); else setApplied(candidate.verdict);
     }}>{result && !result.ok ? "Apply camera move anyway" : "Apply camera move"}</button>
+    </>}
   </MotionPanel>;
 }

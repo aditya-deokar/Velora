@@ -51,6 +51,7 @@ const owners = new Map([
   ['AppStage','src/react/stage.tsx'], ['useAppStage','src/react/stage.tsx'],
   ...['DEPTH_TIERS','classifyDepth','evaluateDepthLayers'].map(name=>[name,'src/core/depth.ts']),
   ['createStyleLedger','src/react/depth/ledger.ts'],
+  ...['simulateFollower','buildDroneFlyover','buildTelephotoOrbit','buildWhipPan','velocityBlurAt'].map(name=>[name,'src/core/rigs.ts']),
   ['ElementTargetSchema','src/core/targets.ts'], ['resolveTarget','src/core/targets.ts'], ['measureAnchors','src/react/anchors.ts'],
   ['LENS_PRESETS','src/core/lens.ts'], ['lensPreset','src/core/lens.ts'], ['applyLens','src/core/lens.ts'],
   ['buildRackFocus','src/core/shots.ts'], ['coverScaleAt','src/core/spatial.ts'],

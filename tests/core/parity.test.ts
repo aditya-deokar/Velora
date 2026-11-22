@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { CLI_COMMANDS } from "../../src/core/cli-schema";
-import { EditOpSchema, DEFERRED_EDIT_OPS, describeOp, type EditOp } from "../../src/core/edit";
+import { EditOpSchema, describeOp, type EditOp } from "../../src/core/edit";
 import { isCompositionOp } from "../../src/core/composition-edit";
 import { EDITOR_COMMANDS } from "../../src/editor/commands";
 import { runCli } from "../../src/cli";
@@ -11,7 +11,7 @@ const ref = { track, atMs: 0 };
 const segment = { id: "intro", atMs: 1000 };
 const audio = { id: "bed", assetId: "bed", startMs: 0 };
 const clip = { id: "intro", startMs: 0 };
-const samples: Record<Exclude<EditOp["op"], (typeof DEFERRED_EDIT_OPS)[number]>, object> = {
+const samples: Record<EditOp["op"], object> = {
   "key.set": { ...ref, value: 30 }, "key.remove": ref, "key.move": { track, fromMs: 0, toMs: 50 }, "key.ease": { ...ref, easing: "linear" },
   "keys.shift": { refs: [ref], deltaMs: 50 }, "keys.scale": { refs: [ref], pivotMs: 0, factor: 2 },
   "keys.reverse": { refs: [ref, { ...ref, atMs: 50 }] }, "keys.retime": { refs: [{ ...ref, toMs: 80 }] },
@@ -25,6 +25,8 @@ const samples: Record<Exclude<EditOp["op"], (typeof DEFERRED_EDIT_OPS)[number]>,
   "depth.rule.remove": { surface: "subject", index: 0 },
   "depth.resolve": { surface: "subject", resolved: { hash: "741638a5", layers: [] } },
   "lens.apply": { preset: "200mm-telephoto", hold: "framing" },
+  "rig.apply": { kind: "drone-flyover", params: { waypoints: [[0, 0, 0], [200, 0, 0]] } },
+  "rig.update": { clipId: "camera-rig", params: { altitude: 180 } },
   "rack.add": { from: { depth: 1400 }, to: { depth: 1500 }, atMs: 0, durationMs: 500 },
   "clip.update": { ...clip, speed: 0.5 }, "clip.set": { clip }, "clip.dissolve": { id: clip.id },
   "stagger.set": { clipId: clip.id, members: ["a", "b"], eachMs: 150 },
@@ -48,8 +50,7 @@ describe("agent and editor parity", () => {
   it("documents each implemented EditOp and supplies a human label and CLI entry point", async () => {
     const text = await readFile(new URL("../../skills/velora-editor/SKILL.md", import.meta.url), "utf8");
     const tables = text.split(/\r?\n/).filter(line => line.startsWith("|")).join("\n");
-    const names = EditOpSchema.options.map(variant => variant.shape.op.value);
-    const implemented = names.filter((name): name is keyof typeof samples => !DEFERRED_EDIT_OPS.some(deferred => deferred === name));
+    const implemented = EditOpSchema.options.map(variant => variant.shape.op.value);
     expect(Object.keys(samples).sort()).toEqual([...implemented].sort());
     for (const name of implemented) {
       const parsed = EditOpSchema.parse({ op: name, ...samples[name] });
@@ -63,7 +64,6 @@ describe("agent and editor parity", () => {
     expect(help[0].stdout).toContain("velora edit apply --scene ID --ops FILE|-");
     expect(help[0].stdout).toContain("velora edit stage --scene ID");
     expect(help[1].stdout).toContain("velora compose edit --composition FILE --ops FILE|-");
-    for (const name of DEFERRED_EDIT_OPS) expect(tables).not.toContain(`\`${name}`);
     for (const helper of ["trim", "move", "split", "transition"]) expect(help[1].stdout).toContain(`velora compose ${helper}`);
   });
 

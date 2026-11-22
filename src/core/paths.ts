@@ -52,7 +52,7 @@ function parameterAt(seg: Segment, distance: number): number {
   return (low + (span > 0 ? (target - seg.lengths[low]) / span : 0)) / PATH_LUT_SAMPLES;
 }
 export type CompiledPath = { sample: (timeMs: number) => PathSample; segmentSpeeds: number[]; length: number };
-export function compilePath(keys: readonly PathKey[], rove = false): CompiledPath {
+export function compilePath(keys: readonly PathKey[], rove = false, parametric = false): CompiledPath {
   const points = keys.map(key => key.value);
   const segments: Segment[] = [];
   for (let i = 0; i < keys.length - 1; i++) {
@@ -78,7 +78,7 @@ export function compilePath(keys: readonly PathKey[], rove = false): CompiledPat
     while (i < segments.length - 1 && time > keys[i + 1].timeMs) i++;
     const start = keys[i], end = keys[i + 1];
     const progress = start.progress((time - start.timeMs) / (end.timeMs - start.timeMs));
-    return at(i, parameterAt(segments[i], progress * segments[i].length));
+    return at(i, parametric ? Math.max(0, Math.min(1, progress)) : parameterAt(segments[i], progress * segments[i].length));
   };
   const segmentSpeeds = segments.map((seg, i) => seg.length / Math.max(1e-9, keys[i + 1].timeMs - keys[i].timeMs));
   return { sample, segmentSpeeds, length: total };

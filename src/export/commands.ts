@@ -4,9 +4,10 @@ import { AUDIO_DRIFT_BUDGET_MS, SUPPORTED_AUDIO_CODECS, audioPlacement } from ".
 import { resolveAssetId } from "../core/assets";
 import { formatSrt, parseCaptions } from "../core/captions";
 import { findDeliveryPreset, deliveryWarnings } from "../core/delivery";
-import { isElementTarget } from "../core/targets";
+import { rigLayersFromAnchors } from "../core/rigs";
+import { isElementTarget, type ElementTarget } from "../core/targets";
 import { ASPECT_FRAMES, liveRacks } from "../core/shots";
-import { ALPHA_CODECS, CODEC_CONTAINERS, CaptureManifestSchema, RenderManifestSchema, resolveFinishing, shutterSamples, type ResolvedFinishing, type CheckRenderResult, type ExportVideoResult, type FrameRenderResult, type FramesRenderResult, type ShotRenderResult, type VideoRenderResult, type VisualCheck, type VideoCodec } from "../core/export";
+import { ALPHA_CODECS, CODEC_CONTAINERS, CaptureManifestSchema, RenderManifestSchema, resolveFinishing, shutterSamples, type CaptureManifest, type ResolvedFinishing, type CheckRenderResult, type ExportVideoResult, type FrameRenderResult, type FramesRenderResult, type ShotRenderResult, type VideoRenderResult, type VisualCheck, type VideoCodec } from "../core/export";
 import { frameAt, layersAt, localTime, segmentAt, timeAtFrame, timelineDuration, timelineFromComposition, validateTimeline, type Timeline, type TimelineSegment } from "../core/timeline";
 import { SceneRecipeSchema, SceneSnapshotSchema, type SceneCatalog } from "../core/recipes";
 import {executeRecipeCommand} from "../project/recipes";
@@ -45,6 +46,11 @@ const timelineStageFields = (stages: readonly (StageLineage & { sceneId: string 
   const same = stages.every(({ sceneId: _, ...value }) => JSON.stringify(value) === JSON.stringify(stage));
   return { fields: same ? { stage } : { stages }, checks: stages.map(value => stageCheck(value, value.sceneId)) };
 };
+const accumulates = (finishing: ResolvedFinishing) => finishing.motionBlur > 0 && finishing.motionSamples > 1;
+const shutterBlurCheck = (sceneId?: string) => ({ id: "double-motion-blur", pass: true,
+  detail: `${sceneId ? sceneId + ": " : ""}Shutter accumulation disables the directional velocity filter for this render.` });
+const timelineBlurChecks = (modes: NonNullable<import("../core/export").RenderManifest["blurModes"]>) =>
+  modes.flatMap(({ sceneId, mode }) => mode === "shutter" ? [shutterBlurCheck(sceneId)] : []);
 const depthLineage = (entries: DepthEvidence[] | undefined) => entries?.map(({ surface, hash }) => ({ surface, hash })) ?? [];
 
 export async function readSceneOptics(root: string, sceneId: string, url: string, times: readonly number[]) {
@@ -59,11 +65,11 @@ export async function readSceneOptics(root: string, sceneId: string, url: string
     return frames;
   } finally { await session.close(); }
 }
-export async function readSceneAnchors(root: string, sceneId: string, url: string, requestedTime?: number) {
+export async function readSceneAnchors(root: string, sceneId: string, url: string, requestedTime?: number, targetQueries?: ElementTarget[]) {
   const opened = await executeRecipeCommand("open-scene", { sceneId, url, launch: false }, { root });
   if (!opened.success) throw fault(opened.issues[0].code ?? "ERR_SCENE_INVALID", opened.issues[0].message);
   const { width, height, stage } = opened.data.selected!.definition;
-  const session = await services.openCapture({ url: opened.data.url!, width, height, scale: resolveFinishing({}, { width, height }, stage).supersample, measureTargets: true });
+  const session = await services.openCapture({ url: opened.data.url!, width, height, scale: resolveFinishing({}, { width, height }, stage).supersample, measureTargets: true, targetQueries });
   try {
     const first = CaptureManifestSchema.parse(await session.manifest());
     const timeMs = Math.min(requestedTime ?? 0, first.durationMs);
@@ -71,6 +77,10 @@ export async function readSceneAnchors(root: string, sceneId: string, url: strin
     const anchors = capture.anchors ?? [];
     return { sceneId, timeMs, anchors: requestedTime !== undefined ? anchors : anchors.map(({ projected, point, depth, blur, visible, ...layout }) => layout) };
   } finally { await session.close(); }
+}
+export async function readSceneRigGeometry(root: string, sceneId: string, url: string, timeMs: number, targets: ElementTarget[]) {
+  const { anchors } = await readSceneAnchors(root, sceneId, url, timeMs, targets);
+  return rigLayersFromAnchors(anchors);
 }
 async function capturedDepth(session: Awaited<ReturnType<typeof services.openCapture>>, timeMs?: number) {
   const capture = CaptureManifestSchema.safeParse(await session.manifest(timeMs).catch(() => undefined));
@@ -119,21 +129,22 @@ export async function executeVideoExport(input: unknown, context: { root: string
     const scope = await services.prepareScope(context.root, parsed.data.output);
     const initial = resolveFinishing(parsed.data, parsed.data);
     await requireEncoder(initial.codec);
-    session = await services.openCapture({ ...parsed.data, scale: initial.supersample, transparent: initial.transparent,
+    session = await services.openCapture({ ...parsed.data, scale: initial.supersample, transparent: initial.transparent, accumulateMotion: accumulates(initial),
       stageScale: stage => resolveFinishing(parsed.data, parsed.data, stage).supersample }, context.signal);
     const manifest = CaptureManifestSchema.safeParse(await session.manifest());
     if (!manifest.success) throw fault("invalid-capture", "Scene capture bridge must use version 1, the scene viewport selector and a duration between 0 and 120 seconds.");
     if(manifest.data.durationMs===0)throw fault("invalid-capture","Video export needs a scene with a nonzero duration. Static scenes support snapshots.");
     const finishing = resolveFinishing(parsed.data, parsed.data, manifest.data.stage);
     const stage = manifest.data.stage && stageLineage(manifest.data.stage, finishing, parsed.data.stageDpr);
+    const checks = [...(stage ? [stageCheck(stage)] : []), ...(manifest.data.blurMode === "shutter" ? [shutterBlurCheck()] : [])];
     const frames = Math.ceil(manifest.data.durationMs * parsed.data.fps / 1000);
     const data: { output: string; fps: number; frames: number; durationMs: number; codec: string; quality: string; poster?: string } & {
       audio?: { file: string; codec: string; driftMs: number; peakDb: number | null };
       captions?: { file: string; cues: number; burnIn: boolean };
       stage?: StageLineage; checks?: ReturnType<typeof stageCheck>[];
-      depth?: ReturnType<typeof depthLineage>;
+      depth?: ReturnType<typeof depthLineage>; blurMode?: CaptureManifest["blurMode"];
     } = { output: parsed.data.output, fps: parsed.data.fps, frames, durationMs: frames * 1000 / parsed.data.fps, codec: finishing.codec, quality: finishing.quality,
-      ...(stage ? { stage, checks: [stageCheck(stage)] } : {}) };
+      ...(stage ? { stage } : {}), ...(checks.length ? { checks } : {}), ...(manifest.data.blurMode ? { blurMode: manifest.data.blurMode } : {}) };
     // Every output frame goes through the shared finisher (motion blur, supersample downscale).
     const durationMs = manifest.data.durationMs;
     const exportLook = await loadExportLook(context.root, manifest.data.look);
@@ -305,6 +316,7 @@ async function renderTimelineFrames(options: {
   const sorted = [...wanted].sort((a, b) => a.frame - b.frame);
   const frames = new Map<number, RenderedFrame>();
   const stageEvidence = new Map<string, StageLineage & { sceneId: string }>();
+  const blurEvidence = new Map<string, NonNullable<CaptureManifest["blurMode"]>>();
   const depthEvidence = new Map<string, ReturnType<typeof depthLineage>>();
   // With a spill sink, results keep metadata only; the sink owns the PNG bytes.
   const results = { set: async (frame: number, entry: RenderedFrame) => {
@@ -373,13 +385,15 @@ async function renderTimelineFrames(options: {
     const transparent = finishing.transparent || entry.transparent;
     const baseVariant = unitFinishing.supersample !== 1 || transparent ? `scale=${unitFinishing.supersample};alpha=${transparent ? 1 : 0}` : undefined;
     const exportLook = await loadExportLook(root, durationLook);
-    const session = await services.openCapture({ url: opened, width, height, scale: unitFinishing.supersample, transparent }, signal);
+    const session = await services.openCapture({ url: opened, width, height, scale: unitFinishing.supersample, transparent, accumulateMotion: accumulates(unitFinishing) }, signal);
     try {
       const bridge = CaptureManifestSchema.safeParse(await session.manifest());
       if (!bridge.success) throw fault("invalid-capture", "Scene capture bridge must use version 1, the scene viewport selector and a duration between 0 and 120 seconds.");
+      if (bridge.data.blurMode) blurEvidence.set(sceneId, bridge.data.blurMode);
       if (authoredStage) stageEvidence.set(sceneId, { sceneId, ...stageLineage(authoredStage, unitFinishing, options.stageDpr) });
       const initialDepth = hasDepth ? await capturedDepth(session, Math.min(entry.items[0]?.localMs ?? 0, bridge.data.durationMs)) : depthLineage(bridge.data.depth);
-      const variant = initialDepth.length ? `${baseVariant ?? ""};depth=${JSON.stringify(initialDepth)}` : baseVariant;
+      const modeVariant = bridge.data.blurMode ? `${baseVariant ?? ""};blur=${bridge.data.blurMode}` : baseVariant;
+      const variant = initialDepth.length ? `${modeVariant ?? ""};depth=${JSON.stringify(initialDepth)}` : modeVariant;
       for (const item of entry.items) {
         if (signal?.aborted) throw fault("export-cancelled", "Render cancelled; no output was published.");
         const started = Date.now();
@@ -448,7 +462,7 @@ async function renderTimelineFrames(options: {
       png, sha: services.sha256Hex(png), cached: parts.length > 0 && cached, clamped, renderMs: renderMs + Date.now() - started, ...(parts.length > 1 ? { layers: parts } : {}) });
     if (!layers.segments.length && !layered) tick();
   }
-  return { rendered: frames, stages: [...stageEvidence.values()].sort((a, b) => a.sceneId.localeCompare(b.sceneId)),
+  return { rendered: frames, blurModes: [...blurEvidence].map(([sceneId, mode]) => ({ sceneId, mode })).sort((a, b) => a.sceneId.localeCompare(b.sceneId)), stages: [...stageEvidence.values()].sort((a, b) => a.sceneId.localeCompare(b.sceneId)),
     depth: [...depthEvidence.entries()].sort(([a], [b]) => a.localeCompare(b)).flatMap(([sceneId, values]) => values.map(value => ({ sceneId, ...value }))) };
 }
 
@@ -493,7 +507,7 @@ export async function executeFrameRender(
     const catalog = await discoverRecipes(root);
     const sourceText = await readText(root, parsed.data.composition, 256_000);
     if (sourceText === undefined) throw fault("source-changed", "Composition source disappeared. Restore it and retry.");
-    const { rendered, stages, depth } = await renderTimelineFrames({
+    const { rendered, stages, depth, blurModes } = await renderTimelineFrames({
       root, url: context.url ?? "http://127.0.0.1:5173", version,
       fps, width: composition.width, height: composition.height, seed: composition.seed, look: composition.look, overlays: composition.overlays, captions: await captionLayerFor(root, composition),
       catalog, timeline, wanted: [{ frame, timeMs }], cacheDir, noCache, parallel: 1, signal: context.signal, stageDpr: parsed.data.stageDpr,
@@ -508,8 +522,8 @@ export async function executeFrameRender(
       durationMs: timeline.durationMs,
       segments: timeline.segments.map((s) => ({ id: s.id, recipe: s.recipe, startMs: s.startMs, durationMs: s.durationMs, frames: frameAt(s.startMs + s.durationMs, fps) - frameAt(s.startMs, fps) })),
       frames: [{ frame: entry.frame, timeMs: entry.timeMs, sceneId: entry.sceneId, segmentId: entry.segmentId, file: parsed.data.out, sha: entry.sha, renderMs: entry.renderMs, ...(entry.cached ? { cached: true as const } : {}), ...(entry.clamped ? { clamped: true as const } : {}) }],
-      veloraVersion: version, ...evidence.fields, ...(depth.length ? { depth } : {}),
-      checks: [{ id: "bridge-present", pass: true, detail: entry.sceneId === "black-void" ? "Timeline gap renders black void without a browser." : "Capture bridge served this frame." }, ...evidence.checks],
+      veloraVersion: version, ...evidence.fields, ...(depth.length ? { depth } : {}), ...(blurModes.length ? { blurModes } : {}),
+      checks: [{ id: "bridge-present", pass: true, detail: entry.sceneId === "black-void" ? "Timeline gap renders black void without a browser." : "Capture bridge served this frame." }, ...evidence.checks, ...timelineBlurChecks(blurModes)],
       createdAt: new Date().toISOString(),
     });
     await services.writeNewFile(scope, entry.png!);
@@ -591,7 +605,7 @@ export async function executeVideoRender(
     const layerDir = `${tmpDir}/layers`;
     // Layer frames (transitions, overlays, captions) wait on disk so long renders stay bounded in memory.
     const layerStore: LayerStore = { write: (key, png) => services.spillFile(layerDir, key, png), read: key => services.readSpilledFile(layerDir, key) };
-    const { rendered, stages, depth } = await renderTimelineFrames({
+    const { rendered, stages, depth, blurModes } = await renderTimelineFrames({
       root, url, version, fps, width, height, seed: composition.seed, look: composition.look, overlays: composition.overlays, captions: await captionLayerFor(root, composition),
       catalog: full.catalog, timeline, wanted, cacheDir, noCache, parallel,
       signal: context.signal, onProgress: context.onProgress,
@@ -723,7 +737,7 @@ export async function executeVideoRender(
       quality: finishing.quality, codec: finishing.codec, container: extension.slice(1), colorimetry: finishing.codec === "gif" ? undefined : "bt709",
       ...(finishing.motionBlur > 0 ? { motionBlur: { shutter: finishing.motionBlur, samples: finishing.motionSamples } } : {}),
       supersample: Math.max(finishing.supersample, ...stages.map(stage => stage.effectiveDpr)), transparent: finishing.transparent, workers: parallel, ...(poster ? { poster } : {}),
-      ...evidence.fields, ...(depth.length ? { depth } : {}), checks: [{ id: "bridge-present", pass: true, detail: "Segments captured through the capture bridge; gaps render black void." }, ...evidence.checks],
+      ...evidence.fields, ...(depth.length ? { depth } : {}), ...(blurModes.length ? { blurModes } : {}), checks: [{ id: "bridge-present", pass: true, detail: "Segments captured through the capture bridge; gaps render black void." }, ...evidence.checks, ...timelineBlurChecks(blurModes)],
       createdAt: new Date().toISOString(),
     });
     await services.writeNewTextFile(await services.prepareFileOutput(root, manifestPath), JSON.stringify(manifest, null, 2) + "\n");
@@ -792,7 +806,7 @@ export async function executeFramesRender(
     await services.prepareFileOutput(root, manifestPath);
     const sourceText = await readText(root, parsed.data.composition, 256_000);
     if (sourceText === undefined) throw fault("source-changed", "Composition source disappeared. Restore it and retry.");
-    const { rendered, stages, depth } = await renderTimelineFrames({
+    const { rendered, stages, depth, blurModes } = await renderTimelineFrames({
       root, url, version, fps, width: composition.width, height: composition.height, seed: composition.seed, look: composition.look, overlays: composition.overlays, captions: await captionLayerFor(root, composition),
       catalog: full.catalog, timeline, wanted,
       cacheDir: parsed.data.cacheDir ?? await defaultFrameCacheDir(root), noCache: parsed.data.noCache ?? false,
@@ -815,8 +829,8 @@ export async function executeFramesRender(
       durationMs: timeline.durationMs,
       segments: timeline.segments.map((s) => ({ id: s.id, recipe: s.recipe, startMs: s.startMs, durationMs: s.durationMs, frames: frameAt(s.startMs + s.durationMs, fps) - frameAt(s.startMs, fps) })),
       frames: frames.map(({ entry, file }) => ({ frame: entry.frame, timeMs: entry.timeMs, sceneId: entry.sceneId, segmentId: entry.segmentId, file, sha: entry.sha, renderMs: entry.renderMs, ...(entry.cached ? { cached: true as const } : {}), ...(entry.clamped ? { clamped: true as const } : {}) })),
-      veloraVersion: version, ...evidence.fields, ...(depth.length ? { depth } : {}),
-      checks: [{ id: "bridge-present", pass: true, detail: "Frames captured through the capture bridge; gaps render black void." }, ...evidence.checks],
+      veloraVersion: version, ...evidence.fields, ...(depth.length ? { depth } : {}), ...(blurModes.length ? { blurModes } : {}),
+      checks: [{ id: "bridge-present", pass: true, detail: "Frames captured through the capture bridge; gaps render black void." }, ...evidence.checks, ...timelineBlurChecks(blurModes)],
       createdAt: new Date().toISOString(),
     });
     await services.writeNewTextFile(await services.prepareFileOutput(root, manifestPath), JSON.stringify(manifest, null, 2) + "\n");
@@ -858,7 +872,7 @@ export async function executeShotRender(
     const size = { width: selected.definition.width, height: selected.definition.height };
     // Still preview of export finishing: the same finisher as render and export.
     const finishing = resolveFinishing(parsed.data, size, selected.definition.stage);
-    session = await services.openCapture({ url: opened.data.url!, ...size, scale: finishing.supersample, transparent: finishing.transparent }, context.signal);
+    session = await services.openCapture({ url: opened.data.url!, ...size, scale: finishing.supersample, transparent: finishing.transparent, accumulateMotion: accumulates(finishing) }, context.signal);
     const bridge = CaptureManifestSchema.safeParse(await session.manifest());
     if (!bridge.success) throw fault("invalid-capture", "Scene capture bridge must use version 1, the scene viewport selector and a duration between 0 and 120 seconds.");
     const clamped = parsed.data.timeMs > bridge.data.durationMs;
@@ -870,7 +884,7 @@ export async function executeShotRender(
     const sha = services.sha256Hex(png);
     await services.writeNewFile(scope, png);
     const stage = selected.definition.stage && stageLineage(selected.definition.stage, finishing, parsed.data.stageDpr);
-    return { success: true, data: { out: parsed.data.out, sceneId: selected.id, timeMs: parsed.data.timeMs, sha, ...(clamped ? { clamped: true as const } : {}),
+    return { success: true, data: { out: parsed.data.out, sceneId: selected.id, timeMs: parsed.data.timeMs, sha, ...(clamped ? { clamped: true as const } : {}), ...(bridge.data.blurMode ? { blurMode: bridge.data.blurMode } : {}),
       ...(stage ? { stage, checks: [stageCheck(stage)] } : {}), ...(depth.length ? { depth } : {}) } };
   } catch (error) {
     const known = error as { code?: string; message?: string; target?: string };

@@ -54,7 +54,7 @@ export function sceneAt(doc: Doc, snapshot: SceneSnapshot, presentationMs: numbe
   const input = camera
     ? { camera, focus: { ...FOCUS_BASE, maxBlur: 0 }, nodes }
     : {
-      camera: withCameraAdditive({ ...definition.scene?.camera, ...state.camera }, additive?.camera),
+      camera: withCameraAdditive({ ...definition.scene?.camera, ...state.camera }, additive?.camera, state.cameraPositionSpace),
       focus: withAdditive({ ...definition.scene?.focus, ...state.focus }, additive?.focus, FOCUS_BASE),
       ...(definition.scene?.constraints ? { constraints: definition.scene.constraints } : {}),
       nodes,

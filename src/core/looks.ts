@@ -29,6 +29,7 @@ export const LookSchema = z.strictObject({
   grain: z.strictObject({ amount: z.number().finite().min(0).max(1), size: z.number().finite().min(0.5).max(4).default(1) }).optional(),
   vignette: z.strictObject({ amount: z.number().finite().min(0).max(1), softness: z.number().finite().min(0).max(1).default(0.5) }).optional(),
   letterbox: z.strictObject({ aspect: z.number().finite().min(1).max(4) }).optional(),
+  velocityBlur: z.strictObject({ shutterMs: z.number().positive().max(250), maxPx: z.number().positive().max(128) }).optional(),
   // Export finishing (Node, per frame): previewed with `velora shot --finish`.
   bloom: z.strictObject({ threshold: z.number().finite().min(0).max(1).default(0.8), intensity: z.number().finite().min(0).max(2), radius: z.number().finite().min(1).max(64).default(16) }).optional(),
   halation: z.strictObject({ amount: z.number().finite().min(0).max(1), radius: z.number().finite().min(1).max(64).default(12) }).optional(),
@@ -57,7 +58,7 @@ export function resolveLook(input: LookInput | undefined): ResolvedLook | undefi
   const { preset: _basePreset, grade: baseGrade, ...baseRest } = base;
   return { ...baseRest, ...Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== undefined)), grade: GradeSchema.parse({ ...baseGrade, ...grade }) };
 }
-export const hasBrowserLook = (look: ResolvedLook | undefined) => !!look && (!!look.grain || !!look.vignette || !!look.letterbox ||
+export const hasBrowserLook = (look: ResolvedLook | undefined) => !!look && (!!look.grain || !!look.vignette || !!look.letterbox || !!look.velocityBlur ||
   look.grade.contrast !== 0 || look.grade.saturation !== 0 || look.grade.temperature !== 0 || look.grade.tint !== 0 ||
   JSON.stringify([look.grade.lift, look.grade.gamma, look.grade.gain]) !== "[0,1,1]");
 export const hasExportFinishing = (look: ResolvedLook | undefined) => !!look && (!!look.bloom || !!look.halation || !!look.chromaticAberration || !!look.sharpen || !!look.lut);
