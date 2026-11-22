@@ -20,7 +20,7 @@ beforeAll(async () => {
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 });
-afterAll(async () => { await new Promise<void>(resolve => server.close(() => resolve())); await rm(root, {recursive:true,force:true}); });
+afterAll(async () => { await new Promise<void>(resolve => server.close(() => resolve())); await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 }); });
 const run = (input: object) => executeVideoExport({url,output:"clip.mp4",width:128,height:96,...input},{root});
 describe("live MP4 export", () => {
   it.each([30,120])("encodes real changing scene frames at %i FPS", async fps => {
@@ -73,13 +73,17 @@ describe("live MP4 export", () => {
   },15_000);
   it("cancels active encoding and removes temporary files", async () => {
     const controller = new AbortController();
-    const timer = setTimeout(()=>controller.abort(),1500);
+    const exporting = executeVideoExport({ url: `${url}/cancel`, output: "interrupted.mp4", width: 128, height: 96 }, { root, signal: controller.signal });
     try {
-      expect(await executeVideoExport({url:`${url}/cancel`,output:"interrupted.mp4",width:128,height:96},{root,signal:controller.signal})).toMatchObject({success:false,issues:[{code:"export-cancelled"}]});
-    } finally { clearTimeout(timer); }
+      await expect.poll(async () => {
+        const staging = (await readdir(root)).find(name => name.startsWith(".velora-export-"));
+        return staging !== undefined && (await readdir(path.join(root, staging))).includes("video.mp4");
+      }, { timeout: 45_000 }).toBe(true);
+    } finally { controller.abort(); await exporting; }
+    expect(await exporting).toMatchObject({ success: false, issues: [{ code: "export-cancelled" }] });
     expect(await readdir(root)).not.toContain("interrupted.mp4");
     expect((await readdir(root)).some(name=>name.startsWith('.velora-export-'))).toBe(false);
-  },15_000);
+  },75_000);
   it("cancels before browser effects", async () => {
     const controller=new AbortController(); controller.abort();
     expect(await executeVideoExport({url,output:"cancel.mp4"},{root,signal:controller.signal})).toMatchObject({success:false,issues:[{code:"export-cancelled"}]});

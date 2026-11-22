@@ -151,6 +151,8 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
       },
       async encode(scope: { root: string; output: string }, options: ExportVideo & Partial<ResolvedFinishing>, manifest: CaptureManifest, frames: number, produce?: FrameProducer, onFrame?: (index: number, png: Buffer) => Promise<void> | void) {
         let temporary: string | undefined;
+        let activeEncoder: ReturnType<typeof spawn> | undefined;
+        let closed: Promise<void> | undefined;
         try {
           check();
           const locator = page.locator(manifest.selector);
@@ -163,17 +165,18 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
           await scopedPath(scope.root, scope.output);
           temporary = await mkdtemp(path.join(path.dirname(target), ".velora-export-"));
           const video = path.join(temporary, "video" + path.extname(scope.output).toLowerCase());
-          encoder = spawn("ffmpeg", videoEncodeArgs({ fps: options.fps, width: options.width, height: options.height, frames,
+          const child = encoder = activeEncoder = spawn("ffmpeg", videoEncodeArgs({ fps: options.fps, width: options.width, height: options.height, frames,
             codec: options.codec, quality: options.quality, transparent: options.transparent, gifFps: options.gifFps, x264: options.x264, crf: options.crf }, video), { cwd: scope.root, shell: false, stdio: ["pipe", "ignore", "pipe"] });
-          const timeout = setTimeout(() => encoder?.kill("SIGKILL"), 15 * 60_000);
+          closed = new Promise(resolve => child.once("close", () => resolve()));
+          const timeout = setTimeout(() => child.kill("SIGKILL"), 15 * 60_000);
           let stderr = "";
-          encoder.stderr?.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-4096); });
+          child.stderr.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-4096); });
           const finished = new Promise<void>((resolve, reject) => {
-            encoder!.once("error", () => { clearTimeout(timeout); reject(fault("missing-ffmpeg", "Install FFmpeg and ensure ffmpeg is available on PATH.")); });
-            encoder!.once("close", code => { clearTimeout(timeout); code === 0 ? resolve() : reject(fault("encoding-failed", `FFmpeg failed. ${stderr.slice(-1000)}`)); });
+            child.once("error", () => { clearTimeout(timeout); reject(fault("missing-ffmpeg", "Install FFmpeg and ensure ffmpeg is available on PATH.")); });
+            child.once("close", code => { clearTimeout(timeout); code === 0 ? resolve() : reject(fault("encoding-failed", `FFmpeg failed. ${stderr.slice(-1000)}`)); });
           });
           void finished.catch(() => {});
-          encoder.stdin!.on("error", () => {});
+          child.stdin.on("error", () => {});
           const shoot = async (elapsed: number) => {
             check();
             await seek(elapsed);
@@ -184,15 +187,21 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
             const png = produce ? await produce(i, i * 1000 / options.fps, shoot) : await shoot(i * 1000 / options.fps);
             await onFrame?.(i, png);
             if(i>0 && i % (options.fps*2)===0) process.stderr.write(`Captured ${i}/${frames} frames\n`);
-            await Promise.race([new Promise<void>((resolve, reject) => encoder!.stdin!.write(png, error => error ? reject(error) : resolve())), finished.then(() => { throw fault("encoding-failed", "Encoder stopped before all scene frames were written."); })]);
+            await Promise.race([new Promise<void>((resolve, reject) => child.stdin.write(png, error => error ? reject(error) : resolve())), finished.then(() => { throw fault("encoding-failed", "Encoder stopped before all scene frames were written."); })]);
           }
-          encoder.stdin!.end();
+          child.stdin.end();
           await finished; check();
           await scopedPath(scope.root, scope.output);
           try { await link(video, target); }
           catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") throw fault("output-exists", "Output appeared during export. Choose another filename."); throw error; }
         } catch (error) { check(); throw error; }
-        finally { encoder?.kill("SIGKILL"); if (temporary) await rm(temporary, { recursive: true, force: true }); }
+        finally {
+          activeEncoder?.kill("SIGKILL");
+          // Windows keeps the temporary video locked until FFmpeg has closed its handles.
+          await closed;
+          if (encoder === activeEncoder) encoder = undefined;
+          if (temporary) await rm(temporary, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+        }
       },
     };
   } catch (error) { await close(); check(); throw error; }
