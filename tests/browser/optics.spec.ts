@@ -60,11 +60,13 @@ test("the 200 mm rack exchanges sharpness and breathes identically in preview an
   await seek(page, 0);
   expect(await blur(page, 1)).toBeLessThan(0.5);
   expect(await blur(page, 0)).toBeGreaterThan(1.8);
+  await expect(page.locator("#optics-chart")).toHaveCSS("filter", /^blur\(/);
   const startWidth = (await page.locator("#optics-chart").boundingBox())!.width;
   const startChart = await variance(page, "#optics-chart"), startModal = await variance(page, "#optics-modal");
   await seek(page, 1000);
   expect(await blur(page, 0)).toBeLessThan(0.5);
   expect(await blur(page, 1)).toBeGreaterThan(1.8);
+  await expect(page.locator("#optics-chart")).toHaveCSS("filter", "none");
   const endWidth = (await page.locator("#optics-chart").boundingBox())!.width;
   expect(endWidth / startWidth).toBeCloseTo(0.982, 3);
   await expect.poll(() => variance(page, "#optics-chart")).toBeGreaterThan(startChart * 1.35);

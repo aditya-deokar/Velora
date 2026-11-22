@@ -146,7 +146,10 @@ export function createLayerFocus(target: HTMLElement, ledger: Ledger, proxyRoot?
           descendants.set(sample.layer.parent, [...siblings, sample, ...(descendants.get(sample.layer.order) ?? [])]);
         }
         const sharp = 0.05;
-        const allBands = [...samples.filter(item => item.volume && item.signed > 0 && item.sigma > sharp).map(item => ({ z: item.layer.z, sigma: item.sigma })),
+        // Blur terminal layers directly. A backdrop filter in a preserve-3d tree can miss these
+        // layers on software compositors even when CSS.supports reports that the filter is available.
+        const allBands = [...samples.filter(item => item.volume && item.signed > 0 && item.sigma > sharp && descendants.has(item.layer.order))
+          .map(item => ({ z: item.layer.z, sigma: item.sigma })),
           ...(base.signed > 0 && base.sigma > sharp && samples.some(item => item.volume) ? [{ z: 0, sigma: base.sigma }] : [])];
         const depthBands = new Map<number, number>();
         for (const band of allBands) depthBands.set(band.z, Math.max(depthBands.get(band.z) ?? 0, band.sigma));
@@ -175,12 +178,17 @@ export function createLayerFocus(target: HTMLElement, ledger: Ledger, proxyRoot?
         for (const item of samples) {
           if (covered.has(item.layer.order) || item.sigma <= sharp) continue;
           const branch = descendants.get(item.layer.order) ?? [];
-          if (canVeil && item.volume && item.signed > 0) continue;
+          if (canVeil && item.volume && item.signed > 0 && branch.length) continue;
           if (branch.length && !(canVeil && item.volume && branch.every(child => child.signed < 0 && child.sigma > sharp))) {
             approximate = true;
             continue;
           }
           let sigma = item.sigma;
+          if (canVeil && item.volume && item.signed > 0) {
+            const inherited = bands.findLast(band => band.z >= item.layer.z)?.sigma ?? 0;
+            // The backdrop pass adds the remaining variance on these deeper terminal planes.
+            sigma = Math.sqrt(Math.max(0, sigma ** 2 - inherited ** 2));
+          }
           if (branch.length) {
             const total = [item, ...branch].reduce(({ area, weighted }, child) => {
               const weight = child.layer.rect.width * child.layer.rect.height / Math.max(1, child.depth) ** 2;
