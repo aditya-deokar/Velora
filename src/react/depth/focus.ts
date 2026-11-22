@@ -185,8 +185,8 @@ export function createLayerFocus(target: HTMLElement, ledger: Ledger, proxyRoot?
           }
           let sigma = item.sigma;
           if (canVeil && item.volume && item.signed > 0) {
-            const inherited = bands.findLast(band => band.z >= item.layer.z)?.sigma ?? 0;
-            // The backdrop pass adds the remaining variance on these deeper terminal planes.
+            const inherited = bands.reduce((sigma, band) => band.z >= item.layer.z ? Math.max(sigma, band.sigma) : sigma, 0);
+            // Subtract the variance contributed by veils in front of this plane.
             sigma = Math.sqrt(Math.max(0, sigma ** 2 - inherited ** 2));
           }
           if (branch.length) {
