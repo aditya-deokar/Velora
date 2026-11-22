@@ -1,5 +1,6 @@
 import type { Measurement, TransformInput, SceneIssue, AnimatableSpec } from "../core";
 import type { DepthReport } from "./depth";
+import { createAnchorRegistry } from "./anchors";
 
 /** SOURCE OF TRUTH: React registration and untransformed layout measurements.
  * WHAT: one ephemeral registry per Scene; entries use mount identity, not public IDs.
@@ -93,6 +94,25 @@ export function layoutReader() {
   };
 }
 
+/** Layout offsets including the kit's fitted logical viewport, excluding scene transforms. */
+export function layoutPlacement(surface: HTMLElement, anchor: HTMLElement, layout = layoutReader()) {
+  const outer = layout.origin(surface), inner = layout.origin(anchor);
+  let x = inner.x - outer.x, y = inner.y - outer.y, sx = 1, sy = 1;
+  for (let node: HTMLElement | null = anchor; node && node !== surface; node = node.parentElement) {
+    if (!node.hasAttribute("data-velora-app-stage")) continue;
+    const view = node.ownerDocument.defaultView;
+    const css = view?.getComputedStyle(node).transform;
+    if (!view || !css || css === "none") continue;
+    const matrix = new view.DOMMatrixReadOnly(css);
+    const base = layout.origin(node);
+    x = base.x - outer.x + (x - base.x + outer.x) * matrix.a + matrix.e;
+    y = base.y - outer.y + (y - base.y + outer.y) * matrix.d + matrix.f;
+    sx *= matrix.a;
+    sy *= matrix.d;
+  }
+  return { x, y, sx, sy };
+}
+
 
 // SOURCE OF TRUTH: unfiltered group content diagnostics. Spatial ancestors cannot
 // be filtered without flattening descendants. Check actual rendered host content,
@@ -151,6 +171,7 @@ export function createRegistry() {
     revision++;
     listeners.forEach((listener) => listener());
   };
+  const elementAnchors = createAnchorRegistry(entries, () => stage, publish);
   const measure = () => {
     if (!stage) return false;
     const layout = layoutReader();
@@ -183,10 +204,12 @@ export function createRegistry() {
   };
   const refresh = () => {
     if (measure()) publish();
+    elementAnchors.refresh();
   };
   return {
     entries,
     measurements,
+    elementAnchors,
     get coverageIssues(){return coverageIssues;},
     /** Read-only view of declared animatables (id -> spec and owning Surface id). */
     get animatables(): ReadonlyMap<string, AnimatableEntry> { return animatableView; },
@@ -245,6 +268,7 @@ export function createRegistry() {
     refresh,
     mount(element: HTMLDivElement) {
       stage = element;
+      const unobserveAnchors = elementAnchors.mount(element);
       if(typeof MutationObserver!=="undefined") {
         mutations=new MutationObserver(records=>{
           if(records.some(r=>!(r.target instanceof Element ? r.target : r.target.parentElement)?.closest('[data-velora-content],[data-velora-depth-proxies],svg[width="0"]'))) {
@@ -262,6 +286,7 @@ export function createRegistry() {
       element.addEventListener("scroll", refresh, true);
       refresh();
       return () => {
+        unobserveAnchors();
         mutations?.disconnect();
         observer?.disconnect();
         observer = undefined;

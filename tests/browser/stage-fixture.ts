@@ -28,7 +28,7 @@ document.body.dataset.stageProbe = JSON.stringify(probe);
 fetch("/stage-probe", {method:"POST",body:JSON.stringify(probe)});
 </script>`;
 
-export async function withStageProject(run: (fixture: { root: string; url: string; probes: StageProbe[] }) => Promise<void>) {
+export async function withStageProject(run: (fixture: { root: string; url: string; probes: StageProbe[] }) => Promise<void>, routeHtml = route) {
   const root = await mkdtemp(path.join(repository, ".test-dist", "stage-host-"));
   const put = (file: string, value: string) => writeFile(path.join(root, file), value);
   const probes: StageProbe[] = [];
@@ -39,7 +39,7 @@ export async function withStageProject(run: (fixture: { root: string; url: strin
     await mkdir(path.join(root, "__velora"));
     await mkdir(path.join(root, "app"));
     await put(".velora/project.json", JSON.stringify({ version: 1, projectId: id, entry: "main.tsx", packageManager: "npm", adapter: "site", site: "http://127.0.0.1:5555" }));
-    await put("app/index.html", route);
+    await put("app/index.html", routeHtml);
     await put("__velora/index.html", `<!doctype html><meta name="velora-project" content="${id}"><div id="root"></div><script type="module" src="/main.tsx"></script>`);
     await put("main.tsx", `import {createRoot} from 'react-dom/client';
       import {ProjectPreview} from '@adityadeokar/velora/preview';

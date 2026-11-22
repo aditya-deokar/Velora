@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ElementTargetSchema } from "./targets";
 
 // SOURCE OF TRUTH: the spatial viewport is a black void; host surface paint remains unchanged.
 export const SCENE_BACKGROUND = "#000000" as const;
@@ -57,10 +58,10 @@ export const FocusSchema = z.strictObject({
   focalLength: finite.min(1).max(4000).default(50),
   maxBlur: finite.min(0).max(32).default(6),
 });
-/** Constraint targets: a registered surface (anchor u, v in 0..1 of its box; default center) or a
- * stage-space point. Kept a discriminated shape so later phases can add element targets. */
+/** A live element, Surface point, registered 3D anchor, or stage-space point. */
 const unit = finite.min(0).max(1);
 export const ConstraintTargetSchema = z.union([
+  ElementTargetSchema,
   z.strictObject({ surface: id, anchor: z.tuple([unit, unit]).optional() }),
   z.strictObject({ three: id }),
   z.strictObject({ point: z.tuple([finite, finite, finite]) }),
@@ -68,8 +69,9 @@ export const ConstraintTargetSchema = z.union([
 // A constant 0..1 or a channel track (the TrackRef shape) whose value is clamped to 0..1.
 const weight = z.union([unit, z.strictObject({ target: z.strictObject({ kind: z.literal("channel"), id: z.string().min(1).max(128) }), property: z.literal("value") })]);
 export const SceneConstraintSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("frame"), target: ConstraintTargetSchema, fill: finite.gt(0).max(1), axis: z.enum(["width", "height", "fit"]).optional(), weight: weight.optional() }),
   // Pan/tilt about the camera's eye so the target projects to frame center (derives rotateX/rotateY; camera x/y/z follow so the eye stays fixed).
-  z.strictObject({ kind: z.literal("lookAt"), subject: z.literal("camera").optional(), target: ConstraintTargetSchema, weight: weight.optional(), up: z.literal("y").optional() }),
+  z.strictObject({ kind: z.literal("lookAt"), subject: z.literal("camera").optional(), target: ConstraintTargetSchema, weight: weight.optional(), up: z.literal("y").optional(), compose: z.tuple([finite.min(0).max(100), finite.min(0).max(100)]).optional() }),
   // Hold focus.distance on the target's camera-space depth (plus offset).
   z.strictObject({ kind: z.literal("focusFollow"), target: ConstraintTargetSchema, offset: finite.optional(), weight: weight.optional() }),
 ]);

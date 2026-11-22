@@ -206,7 +206,7 @@ export async function prepareSourceEdit(root: string, input: unknown): Promise<P
   const preview: SourcePreview = {
     previewId: createBridgeToken(), baseShas: Object.fromEntries(changes.map(change => [change.file, hash(change.before)])), outline,
     diffs: await Promise.all(changes.map(async change => ({ file: change.file, diff: withHeaders(change.file, change.before, change.after), git: await services.gitFileStatus(root, change.file) }))),
-    ...(request.kind !== "expose" ? { layoutWarning: "A Surface adds a positioned div with preserve-3d. Inline elements, flex items and grid items may reflow." } : {}),
+    ...((request.kind === "wrap" || request.kind === "group") ? { layoutWarning: "A Surface adds a positioned div with preserve-3d. Inline elements, flex items and grid items may reflow." } : {}),
   };
   return { changes, preview };
 }

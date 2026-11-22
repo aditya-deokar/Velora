@@ -12,13 +12,13 @@ import { PresetSchema } from "./presets";
  * Cross-field rules (distinct keyframe times, matching IDs) stay CLI-only; run velora validate for those.
  */
 export function jsonSchemas(): Record<string, object> {
-  const document = (schema: z.ZodType, id: string, title: string) => ({
-    ...z.toJSONSchema(schema, { io: "input", unrepresentable: "any" }),
+  const document = (schema: z.ZodType, id: string, title: string, reused: "inline" | "ref" = "inline") => ({
+    ...z.toJSONSchema(schema, { io: "input", unrepresentable: "any", reused }),
     $id: `https://unpkg.com/@adityadeokar/velora/schemas/${id}`,
     title,
   });
   return {
-    "scene-recipe.schema.json": document(SceneRecipeSchema, "scene-recipe.schema.json", "Velora scene recipe (src/velora/scenes/<id>.scene.json)"),
+    "scene-recipe.schema.json": document(SceneRecipeSchema, "scene-recipe.schema.json", "Velora scene recipe (src/velora/scenes/<id>.scene.json)", "ref"),
     "composition.schema.json": document(CompositionSchema, "composition.schema.json", "Velora composition (<id>.composition.json)"),
     "brand.schema.json": document(BrandSchema, "brand.schema.json", "Velora brand tokens (velora.brand.json)"),
     "preset.schema.json": document(PresetSchema, "preset.schema.json", "Velora project preset (src/velora/presets/<id>.preset.json)"),

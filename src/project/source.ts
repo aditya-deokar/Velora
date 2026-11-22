@@ -327,6 +327,19 @@ export function transformSource(request: SourceRequest, text: string, needsClien
   if (context.server || (needsClient && !context.client)) return refuse('Choose a client component. This file is server-only or lacks an explicit "use client" boundary in a Next App Router project.');
   if (externalOwner) for (const entry of context.nodes) entry.info.owner ??= externalOwner;
   const entry = find(context, request.node);
+  if (request.kind === "anchor") {
+    const { info, props } = entry;
+    if (!props || !/^[a-z][a-zA-Z0-9-]*$/.test(info.tag) || !info.owner || info.insideMap || info.insideConditional || info.insideProp || info.hasSpread)
+      return refuse("Choose a single DOM element rendered inside an identified Surface without JSX spreads.");
+    const name = "data-velora-anchor";
+    if (props.properties.some(prop => ts.isJsxAttribute(prop) && prop.name.getText(context.source) === name))
+      return refuse("The element already declares data-velora-anchor.");
+    if (context.nodes.some(candidate => candidate.info.attributes[name] === request.id && candidate.info.owner === info.owner))
+      return refuse("Choose an unused anchor name within this Surface.");
+    const opening = props.parent;
+    const start = opening.tagName.end;
+    return { text: splice(context, [{ start, end: start, text: ` ${name}=${JSON.stringify(request.id)}` }]), ops: [] };
+  }
   if (request.kind === "wrap") return wrapElement(context, entry, request.id, !!request.content);
   if (request.kind === "group") {
     if (!request.nodes.includes(request.node)) return refuse("The primary node must be among the selected siblings.");

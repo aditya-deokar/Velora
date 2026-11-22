@@ -76,21 +76,22 @@ export function readDepthSnapshot(root: HTMLElement, config: DepthConfig, viewpo
   return { snapshot: { ...snapshot, nodes }, elements };
 }
 
-export function depthMatch(element: Element): DepthMatch {
+export function depthMatch(element: Element, preferAnchor = true, scope?: Element): DepthMatch {
   const doc = element.ownerDocument;
-  const escape = (value: string) => doc.defaultView?.CSS.escape(value) ?? value;
+  const escape = (value: string) => doc.defaultView?.CSS?.escape?.(value) ?? value;
   const anchor = element.getAttribute("data-velora-anchor");
-  if (anchor && anchor.length <= 240 && doc.querySelectorAll(`[data-velora-anchor=${escape(anchor)}]`).length === 1) return { anchor };
+  if (preferAnchor && anchor && anchor.length <= 240 && doc.querySelectorAll(`[data-velora-anchor=${escape(anchor)}]`).length === 1) return { anchor };
   const parts: string[] = [];
-  for (let node: Element | null = element; node && node !== doc.body && node !== doc.documentElement; node = node.parentElement) {
-    if (node.id && doc.querySelectorAll(`#${escape(node.id)}`).length === 1) {
+  const root = scope ?? doc.body;
+  for (let node: Element | null = element; node && node !== root && node !== doc.documentElement; node = node.parentElement) {
+    if (node.id && (scope ?? doc).querySelectorAll(`#${escape(node.id)}`).length === 1) {
       parts.unshift(`#${escape(node.id)}`);
       break;
     }
     let index = 1;
     for (let sibling = node.previousElementSibling; sibling; sibling = sibling.previousElementSibling) if (sibling.localName === node.localName) index++;
     parts.unshift(`${escape(node.localName)}:nth-of-type(${index})`);
-    if (node.parentElement === doc.body) parts.unshift("body");
+    if (node.parentElement === root) parts.unshift(scope ? ":scope" : "body");
   }
   return { selector: parts.join(" > ") || "body" };
 }

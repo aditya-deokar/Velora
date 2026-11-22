@@ -53,6 +53,16 @@ describe("velora new scene", () => {
     expect(catalog.issues).toEqual([]);
     expect(catalog.scenes.map(scene => scene.id)).toEqual(["home-hero"]);
   });
+  it("scaffolds named focus without guessed distances in the motion", async () => {
+    const root = await host();
+    const outcome = await executeTemplateCommand("new-scene", { template: "orbit-reveal", id: "locked-orbit", route: "/pricing", focus: "revenue-card" }, { root });
+    expect(outcome.success, JSON.stringify(outcome)).toBe(true);
+    const { definition } = SceneRecipeSchema.parse(JSON.parse(await readFile(path.join(root, "src/velora/scenes/locked-orbit.scene.json"), "utf8")));
+    const target = { surface: "subject", anchor: "revenue-card" };
+    expect(definition.focusTarget).toEqual(target);
+    expect(definition.scene.constraints).toEqual([{ kind: "lookAt", target }, { kind: "focusFollow", target }]);
+    expect(definition.motion?.tracks.some(track => track.target.kind === "focus" && track.property === "distance")).toBe(false);
+  });
   it("slots a default export, a route (with a scroll channel) and a placeholder", async () => {
     const root = await host();
     expect((await executeTemplateCommand("new-scene", { template: "orbit-reveal", id: "app-orbit", component: "src/App.tsx" }, { root })).success).toBe(true);

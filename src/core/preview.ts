@@ -5,6 +5,7 @@ import { MotionSchema } from "./motion";
 import { reviewAuthoring } from "./authoring";
 import { StageSchema } from "./stage";
 import { DepthMapSchema } from "./depth";
+import { ElementTargetSchema } from "./targets";
 
 /** SOURCE OF TRUTH: PreviewDefinitionSchema, presentPreview.
  * WHAT: validate a source-authored preview revision using existing scene/motion owners.
@@ -18,6 +19,7 @@ export const PreviewDefinitionSchema = z.strictObject({
   look: LookSchema.optional(),
   stage: StageSchema.optional(),
   depth: DepthMapSchema.optional(),
+  focusTarget: ElementTargetSchema.optional(),
   width: z.number().finite().positive().max(7680).default(1400),
   height: z.number().finite().positive().max(7680).default(980),
 });

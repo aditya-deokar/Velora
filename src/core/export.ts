@@ -2,6 +2,7 @@ import { z } from "zod";
 import { LookSchema } from "./looks";
 import { StageDprSchema, StagePresetSchema, StageSizeSchema, type StageDpr, type StageSize, type Stage } from "./stage";
 import { DepthEvidenceSchema, DepthLineageSchema } from "./depth";
+import { AnchorReportSchema } from "./targets";
 
 /** SOURCE OF TRUTH: ExportVideoSchema, CaptureManifestSchema, FrameRenderSchema, RenderManifestSchema, QualityPresetSchema, VideoCodecSchema.
  * WHAT: runtime contracts for local video requests, the live browser capture bridge,
@@ -103,6 +104,7 @@ export const CaptureManifestSchema = z.strictObject({
   look: LookSchema.optional(),
   stage: StageSizeSchema.extend({ preset: StagePresetSchema.optional() }).optional(),
   depth: z.array(DepthEvidenceSchema).optional(),
+  anchors: z.array(AnchorReportSchema).optional(),
 });
 export const StageLineageSchema = StageSizeSchema.extend({
   preset: StagePresetSchema.optional(), effectiveDpr: z.number().positive(), dprCapped: z.literal(true).optional(),
@@ -341,5 +343,5 @@ export const ExportVideoResultSchema = z.discriminatedUnion("success", [
 export type ExportVideo = z.output<typeof ExportVideoSchema>;
 export type CaptureManifest = z.output<typeof CaptureManifestSchema>;
 // seek may return a promise when components registered async settle work; services await it.
-export type CaptureBridge = CaptureManifest & { seek: (elapsedMs: number) => void | Promise<void> };
+export type CaptureBridge = CaptureManifest & { seek: (elapsedMs: number, options?: { inventory?: boolean }) => void | Promise<void> };
 export type ExportVideoResult = z.output<typeof ExportVideoResultSchema>;

@@ -106,6 +106,21 @@ export function createStyleLedger(doc: Document, contested?: (element: DepthElem
     active.delete(revert);
   };
   return {
+    withoutTransform<T>(readLayout: () => T): T {
+      const originals = new Map<DepthElement, string | null>();
+      for (const element of touched) {
+        const state = memory.get(element)?.owned.get("transform");
+        if (!state || !same(read(element, "transform"), state.applied)) continue;
+        originals.set(element, element.getAttribute("style"));
+        if (state.before.value) element.style.setProperty("transform", state.before.value, state.before.priority);
+        else element.style.removeProperty("transform");
+      }
+      try { return readLayout(); }
+      finally { for (const [element, style] of originals) {
+        if (style === null) element.removeAttribute("style");
+        else element.setAttribute("style", style);
+      } }
+    },
     clear(element: DepthElement, property: Property) {
       const entry = memory.get(element);
       const state = entry?.owned.get(property);

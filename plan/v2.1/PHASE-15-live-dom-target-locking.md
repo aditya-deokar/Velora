@@ -111,8 +111,8 @@ measurements from the CLI, so they never write pixel coordinates blind either.
 - `tests/cli/anchors.test.ts`: the JSON envelope schema; values match the browser probe; read-only (no file changes).
 
 ## Validation criteria
-- [ ] An agent with only `velora anchors` output writes a 200 mm orbit locked on `revenue-card`. It contains no pixel numbers, and it renders centered and sharp.
-- [ ] Page reflow (changed copy that moves the card) needs no recipe edit: the lock follows the element.
+- [x] An agent with only `velora anchors` output writes a 200 mm orbit locked on `revenue-card`. It contains no pixel numbers, and it renders centered and sharp.
+- [x] Page reflow (changed copy that moves the card) needs no recipe edit: the lock follows the element.
 
 ## Anti-patterns
 - Measuring transformed rects for in-tree elements.

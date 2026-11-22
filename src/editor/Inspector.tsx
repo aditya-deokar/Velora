@@ -8,7 +8,9 @@ import { findTrack, listClips, listTracks, trackKey } from "./model";
 import { ClipInspector } from "./ClipInspector";
 import { CAMERA_PROPS, FOCUS_PROPS, TRANSFORM_PROPS, VISUAL_PROPS, keyAtPlayhead, stateAt, toAuthored, toPresentation, valueAt, type PropertySpec } from "./properties";
 import type { Doc } from "./store";
-import { rackOps } from "./viewport/FocusTool";
+import { describeElementTarget, elementKey, isElementTarget, parseElementTarget, targetPoseKey, type ElementTarget } from "../core/targets";
+import type { SceneConstraint } from "../core/scene";
+import { rackOps, targetOption } from "./viewport/FocusTool";
 
 /** Inspector (EDITOR-UX §2, §4, §6): grouped properties of the selection. Every change goes through
  * intentToOps; drags preview transient ops at pointer rate and commit once on release. */
@@ -170,7 +172,8 @@ function RackControls() {
     return focus ? [{ id: `depth:${source}:${index}`, label, focus }] : [];
   }));
   if (!snapshot) return null;
-  const options = [...snapshot.bindings.map(node => ({ id: node.id, label: node.id })), ...layers];
+  const targets = new Map((snapshot.targets ?? []).filter(report => !report.ambiguous).map(({ target }) => [targetOption(target), describeElementTarget(target)]));
+  const options = [...snapshot.bindings.map(node => ({ id: node.id, label: node.id })), ...layers, ...[...targets].map(([id, label]) => ({ id, label }))];
   const field = (label: string, value: string, update: (value: string) => void) => <select aria-label={label} className="ve-input" value={value} onChange={event => update(event.target.value)}>
     <option value="">{label}</option>{options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
   </select>;
@@ -228,17 +231,42 @@ function MotionGroup() {
   </>;
 }
 function Constraints({ surface }: { surface?: string }) {
-  const { store, controller } = useEditor();
+  const { store, controller, snapshot } = useEditor();
   const state = useEditorState(store);
-  const constraints = ((state.draft as Doc).definition?.scene?.constraints ?? []) as { kind: string; target: { surface?: string; point?: number[] }; weight?: unknown }[];
+  const [text, setText] = useState("");
+  const [kind, setKind] = useState<SceneConstraint["kind"]>("focusFollow");
+  const [fill, setFill] = useState(0.4);
+  const [weight, setWeight] = useState(1);
+  const constraints = ((state.draft as Doc).definition?.scene?.constraints ?? []) as SceneConstraint[];
+  const reports = new Map((snapshot?.targets ?? []).filter(report => !report.ambiguous && (!surface || report.target.surface === surface))
+    .map(report => [elementKey(report.target), report]));
+  const lock = (target: ElementTarget): EditOp => {
+    const index = constraints.findIndex(entry => entry.kind === kind);
+    const constraint: SceneConstraint = kind === "frame" ? { kind, target, fill, weight } : { kind, target, weight };
+    return { op: "constraint.set", constraint, ...(index >= 0 ? { index } : {}) };
+  };
   const commit = (op: EditOp) => { const issues = store.commit([op]); if (issues.length) controller.notify(issues[0].message); };
   return <div style={{ padding: "4px 10px", display: "grid", gap: 4 }}>
-    {constraints.map((constraint, index) => <div key={index} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-      <span>{constraint.kind} → {constraint.target.surface ?? JSON.stringify(constraint.target.point)}</span>
+    {constraints.map((constraint, index) => <div key={index} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+      <span>{constraint.kind} → {isElementTarget(constraint.target) ? describeElementTarget(constraint.target) : "surface" in constraint.target ? constraint.target.surface : "three" in constraint.target ? constraint.target.three : JSON.stringify(constraint.target.point)}</span>
+      {isElementTarget(constraint.target) && (() => {
+        const target = constraint.target;
+        const report = snapshot?.targets?.find(report => !report.ambiguous && targetPoseKey(report.target) === targetPoseKey(target));
+        return <small data-target-geometry="">{report ? `${report.rect.width.toFixed(1)} × ${report.rect.height.toFixed(1)} px · z ${report.elevation.toFixed(1)} · ${report.blur.toFixed(2)} px blur${report.visible ? "" : " · outside frame"}` : "Target unavailable"}</small>;
+      })()}
       <input className="ve-input" style={{ width: 56 }} aria-label={`Weight of ${constraint.kind} constraint`} defaultValue={typeof constraint.weight === "number" ? constraint.weight : 1}
         onKeyDown={event => { if (event.key === "Enter") commit({ op: "constraint.set", index, constraint: { ...constraint, weight: Math.max(0, Math.min(1, Number(event.currentTarget.value))) } } as EditOp); }}/>
       <button className="ve-btn" onClick={() => commit({ op: "constraint.remove", index })} aria-label={`Remove ${constraint.kind} constraint`}>Remove</button>
     </div>)}
+    <label>Target<select className="ve-input" aria-label="Live target" value={text} onChange={event => setText(event.target.value)}><option value="">Choose an element</option>
+      {[...reports.values()].map(({ target }) => <option key={elementKey(target)} value={describeElementTarget(target)}>{describeElementTarget(target)}</option>)}
+    </select></label>
+    <label>Lock<select className="ve-input" value={kind} onChange={event => setKind(event.target.value as typeof kind)}>
+      <option value="focusFollow">Follow focus</option><option value="lookAt">Aim camera</option><option value="frame">Frame element</option>
+    </select></label>
+    {kind === "frame" && <label>Frame fill<input className="ve-input" type="number" min="0.01" max="1" step="0.01" value={fill} onChange={event => setFill(Number(event.target.value))}/></label>}
+    <label>Lock weight<input className="ve-input" type="number" min="0" max="1" step="0.01" value={weight} onChange={event => setWeight(Number(event.target.value))}/></label>
+    <button className="ve-btn" disabled={!text} onClick={() => { const target = parseElementTarget(text); if (target) commit(lock(target)); }}>Set target lock</button>
     {surface && <div style={{ display: "flex", gap: 6 }}>
       <button className="ve-btn" onClick={() => commit({ op: "constraint.set", constraint: { kind: "lookAt", target: { surface } } } as EditOp)}>Aim camera here</button>
       <button className="ve-btn" onClick={() => commit({ op: "constraint.set", constraint: { kind: "focusFollow", target: { surface } } } as EditOp)}>Follow focus here</button>

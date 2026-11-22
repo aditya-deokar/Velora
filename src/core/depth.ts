@@ -15,6 +15,7 @@ export const DEPTH_TIERS = Object.freeze({
 });
 export const DEFAULT_DEPTH_LIGHT = Object.freeze({ azimuthDeg: -35, elevationDeg: 55, intensity: 1, sheen: 0.12 });
 const intensityFactors = { subtle: 0.5, standard: 1, dramatic: 2 } as const;
+export const depthIntensity = (intensity: keyof typeof intensityFactors = "standard") => intensityFactors[intensity];
 export const DepthTierSchema = z.enum(["base", "container", "card", "control", "floating", "cursor"]);
 export const DepthModeSchema = z.enum(["auto", "rules", "off"]);
 export const DepthIntensitySchema = z.enum(["subtle", "standard", "dramatic"]);
@@ -183,7 +184,7 @@ export function evaluateDepthLayers(surfaceWorld: Matrix, layers: readonly Depth
   const az = setup.azimuthDeg * radians, el = setup.elevationDeg * radians;
   const direction: Vec3 = [Math.cos(az) * Math.cos(el), Math.sin(az) * Math.cos(el), Math.sin(el)];
   const [lx, ly, lz] = direction;
-  const factor = intensityFactors[intensity] * Math.max(0, elevation);
+  const factor = depthIntensity(intensity) * Math.max(0, elevation);
   const absolute = new Map<number, { x: number; y: number; u: number; v: number; scale: number }>();
   const project = (world: Vec3) => {
     const pixel = projectWorld(camera, viewportOrigin, world, "view");

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { RouteSchema } from "../core/templates";
 import { useAnimatableState, useCaptureSettle } from "../react";
 import { useProjectedDepth } from "../react/depth";
+import { useSceneContext } from "../react/context";
 import { SCROLL_SPEC, animatableIdFor } from "./brand";
 
 /** RouteFrame: a same-origin route of the running app, framed as live material in a Surface.
@@ -37,6 +38,8 @@ function visibleImagesDecoded(document: Document): Promise<unknown> {
   return Promise.all(images.map(image => image.decode().catch(() => undefined)));
 }
 export function RouteFrame({ route, width, height, scrollChannel, scrollY = 0, freezeAnimations = true, hideScrollbars = true, title, style }: RouteFrameProps) {
+  const { context, parent } = useSceneContext();
+  const anchors = context?.registry.elementAnchors;
   const parsed = RouteSchema.safeParse(route);
   const scrollState = useAnimatableState(animatableIdFor(scrollChannel), SCROLL_SPEC, scrollChannel ? { channels: { scroll: scrollChannel } } : {});
   const scroll = scrollChannel && scrollState.animated.has("scroll") ? scrollState.values.scroll : scrollY;
@@ -55,6 +58,8 @@ export function RouteFrame({ route, width, height, scrollChannel, scrollY = 0, f
     sheetRef.current?.remove();
     sheetRef.current = null;
   });
+  useLayoutEffect(() => frame.current && loadedDocument && loadedDocument === document() && parent && anchors
+    ? anchors.route({ frame: frame.current, document: loadedDocument, owner: parent }) : undefined, [loadedDocument, parent, anchors, src]);
   useLayoutEffect(() => () => { sheetRef.current?.remove(); sheetRef.current = null; }, [src]);
   const apply = () => {
     const doc = document();

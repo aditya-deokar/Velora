@@ -17,7 +17,7 @@ export function PromoteDialog({ onClose, hint, undoId, rememberUndo }: {
   const [active, setActive] = useState<string>();
   const [candidatePaths, setCandidatePaths] = useState<string[]>([]);
   const [checked, setChecked] = useState<string[]>([]);
-  const [kind, setKind] = useState<SourceRequest["kind"]>("wrap");
+  const [kind, setKind] = useState<SourceRequest["kind"]>(hint?.anchorEdit ? "anchor" : "wrap");
   const [id, setId] = useState("");
   const [content, setContent] = useState(false);
   const [prop, setProp] = useState("");
@@ -48,6 +48,7 @@ export function PromoteDialog({ onClose, hint, undoId, rememberUndo }: {
         setFiles(outlines);
         setCandidatePaths(candidates.map(candidate => candidate.node.path));
         setActive(mapped?.path);
+        if (hint?.anchorEdit) { setKind("anchor"); setPreview(undefined); }
         setChecked([]);
       } catch (error) { if (current) setProblem((error as Error).message); }
       finally { if (current) setLoading(false); }
@@ -133,12 +134,12 @@ export function PromoteDialog({ onClose, hint, undoId, rememberUndo }: {
       </div>}
       <form className="ve-motion-fields" onSubmit={event => void draft(event)}>
         <label>Operation<select className="ve-input" value={kind} onChange={event => { setKind(event.target.value as typeof kind); setProblem(""); }}>
-          <option value="wrap">Promote to layer</option><option value="group">Group spatial layers</option><option value="expose">Expose prop</option>
+          <option value="anchor">Add target anchor</option><option value="wrap">Promote to layer</option><option value="group">Group spatial layers</option><option value="expose">Expose prop</option>
         </select></label>
         {kind === "group" && <><p>{checked.length} layers selected. Choose contiguous siblings in one file.</p>
           {selectedSourceLayers.length > 1 && <button type="button" className="ve-btn" onClick={() => setChecked(selectedSourceLayers)}>Use selected layers</button>}
           {groupFiles.length > 1 && <p role="alert">Group layers from one source file.</p>}</>}
-        <label>{kind === "expose" ? "Animatable ID" : "Layer ID"}<input className="ve-input" value={id} onChange={event => setId(event.target.value)} required maxLength={80}/></label>
+        <label>{kind === "anchor" ? "Anchor name" : kind === "expose" ? "Animatable ID" : "Layer ID"}<input className="ve-input" value={id} onChange={event => setId(event.target.value)} required maxLength={80}/></label>
         {kind === "wrap" && <label><input type="checkbox" checked={content} onChange={event => setContent(event.target.checked)}/> Wrap as visual content</label>}
         {kind === "expose" && <>
           <label>Prop<select className="ve-input" value={prop} onChange={event => setProp(event.target.value)} required><option value="">Choose a literal</option>

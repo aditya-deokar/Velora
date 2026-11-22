@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { applyEdits, describeOp, lineDiff, parseTrackShorthand, type EditOp, type EditIssue, type TrackAddress } from "../core/edit";
+import { isElementTarget, parseElementTarget } from "../core/targets";
 import { stageFromSpec } from "../core/stage";
 import { DEFAULT_DEPTH_LIGHT, DepthConfigSchema, DepthIntensitySchema, DepthModeSchema, type DepthEvidence } from "../core/depth";
 import { focalLengthForPerspective, LENS_PRESETS, LensHoldSchema, LensPresetSchema } from "../core/lens";
@@ -7,7 +8,7 @@ import { rackLayerDepth, rackSurfaceDepth, rackTargetFromText } from "../core/sh
 import { formatJsonDocument, parseJsonDocument } from "../core/json";
 import { SceneRecipeIdSchema, SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 import { MotionSchema, clipTiming, evaluateMotion, withCameraAdditive } from "../core/motion";
-import { CameraSchema, FocusSchema, TransformSchema } from "../core/scene";
+import { CameraSchema, FocusSchema, TransformSchema, type SceneConstraint } from "../core/scene";
 import { parseClipboard, pasteOps } from "../core/clipboard";
 import { normalizeIssue, nextForIssues, type CliIssue } from "../core/cli-schema";
 import * as services from "./services";
@@ -27,7 +28,7 @@ import { compositionBridgeHandlers, readCompositionEdit } from "./composition-ed
  * WHERE: cli/index parses flags; core/edit and core/json own the reducer and writer; services own file I/O
  * (scoped paths, atomic writes); services/bridge owns the loopback transport and watcher.
  */
-export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "stage" | "depth" | "lens" | "rack" | "bridge" | "preset" | "source";
+export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "stage" | "depth" | "lens" | "rack" | "lock" | "bridge" | "preset" | "source";
 export type EditCommandResult =
   | { success: true; command: "edit"; data: Record<string, unknown>; warnings?: CliIssue[]; next?: string[]; server?: BridgeServer }
   | { success: false; command: "edit"; issues: CliIssue[]; next: string[] };
@@ -37,7 +38,7 @@ const failure = (issues: { code: string; message: string; path?: string; hint?: 
 };
 const scenePath = (id: string) => `${SCENE_RECIPE_DIRECTORY}/${id}.scene.json`;
 const EditInputSchema = z.strictObject({
-  sourceAction: z.enum(["outline", "wrap", "group", "expose"]).optional(),
+  sourceAction: z.enum(["outline", "wrap", "group", "expose", "anchor"]).optional(),
   file: z.string().max(1200).optional(),
   node: z.string().optional(),
   nodes: z.array(z.string()).optional(),
@@ -58,6 +59,11 @@ const EditInputSchema = z.strictObject({
   hold: LensHoldSchema.optional(),
   duration: z.number().positive().max(120_000).optional(),
   breathing: z.number().min(0).max(0.03).optional(),
+  lookAt: z.string().max(512).optional(),
+  focusFollow: z.string().max(512).optional(),
+  frame: z.string().max(512).optional(),
+  fill: z.number().positive().max(1).optional(),
+  weight: z.number().min(0).max(1).optional(),
   expectSha: z.string().regex(/^[0-9a-f]{64}$/, "Use the 64-character hex sha256 printed by a previous command.").optional(),
   write: z.boolean().optional(),
   track: z.string().optional(),
@@ -69,7 +75,7 @@ const EditInputSchema = z.strictObject({
   // Presets (velora edit preset ls|show|save|apply)
   action: z.enum(["ls", "show", "save", "apply"]).optional(),
   preset: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use a kebab-case preset id.").max(64).optional(),
-  to: z.string().min(1).max(128).optional(),
+  to: z.string().min(1).max(512).optional(),
   layer: z.string().min(1).max(128).optional(),
   title: z.string().min(1).max(80).optional(),
   values: z.enum(["absolute", "relative"]).optional(),
@@ -408,17 +414,38 @@ export async function executeEditCommand(operation: EditOperation, input: EditIn
       if (!preset.success) return failure([{ code: "ERR_EDIT_INVALID", path: "preset", message: `Choose a lens preset: ${LensPresetSchema.options.join(", ")}.` }]);
       return await editScene(root, options.scene, [{ op: "lens.apply", preset: preset.data, hold: options.hold }], write);
     }
+    if (operation === "lock") {
+      const requested = Object.entries({ lookAt: options.lookAt, focusFollow: options.focusFollow, frame: options.frame })
+        .filter((entry): entry is ["lookAt" | "focusFollow" | "frame", string] => entry[1] !== undefined);
+      if (!requested.length || (options.frame === undefined) !== (options.fill === undefined))
+        return failure([{ code: "ERR_INVALID_FLAG_COMBINATION", path: "lock", message: "Choose --look-at, --focus-follow, or --frame with --fill (0–1)." }]);
+      const file = await readScene(root, options.scene);
+      if ("success" in file) return file;
+      const { definition } = parseJsonDocument(file.text) as Doc;
+      const ops: EditOp[] = [];
+      for (const [kind, ref] of requested) {
+        const target = parseElementTarget(ref);
+        if (!target) return failure([{ code: "ERR_EDIT_INVALID", path: kind, message: "Use surface:name or surface:css(selector), optionally followed by @u,v." }]);
+        const weight = options.weight ?? 1;
+        const constraint: SceneConstraint = kind === "frame"
+          ? { kind, target, fill: options.fill!, weight }
+          : { kind, target, weight };
+        const index = definition.scene.constraints?.findIndex((entry: SceneConstraint) => entry.kind === kind) ?? -1;
+        ops.push({ op: "constraint.set", constraint, ...(index >= 0 ? { index } : {}) });
+      }
+      return await editScene(root, options.scene, ops, { ...write, expectSha: options.expectSha ?? file.sha });
+    }
     if (operation === "rack") {
       const from = rackTargetFromText(options.from ?? ""), to = rackTargetFromText(options.to ?? "");
       if (!from || !to || options.at === undefined || options.duration === undefined)
-        return failure([{ code: "ERR_EDIT_INVALID", path: "rack", message: "Provide --from and --to as layer:<id>, <surface>@u,v or depth:<px>, plus --at and --duration in ms." }]);
+        return failure([{ code: "ERR_EDIT_INVALID", path: "rack", message: "Provide --from and --to as surface:name, surface:css(selector), layer:<id>, surface@u,v or depth:<px>, plus --at and --duration in ms." }]);
       const file = await readScene(root, options.scene);
       if ("success" in file) return file;
       const { definition } = parseJsonDocument(file.text) as Doc;
       const speed = definition?.motion?.speed ?? 0.5;
       const times = [options.at / speed, (options.at + options.duration) / speed];
       let depths: { from: number; to: number } | undefined;
-      if ("layer" in from || "layer" in to) {
+      if (!isElementTarget(from) && !isElementTarget(to) && ("layer" in from || "layer" in to)) {
         if (!context.readOptics || !options.url) return failure([{ code: "ERR_EDIT_TARGET", path: "rack", message: "Live layer targets need a running preview. Pass its origin as --url." }]);
         try {
           const frames = await context.readOptics(root, options.scene, options.url, times);

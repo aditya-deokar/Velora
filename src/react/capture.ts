@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import type { Stage } from "../core/stage";
 import { captureDepth, revertCaptureDepth } from "./depth/evidence";
+import { captureTargets, refreshTargetScenes } from "./anchors";
 /** SOURCE OF TRUTH: useSceneCapture, useCaptureSettle.
  * WHAT: expose a single explicitly registered live viewport to local frame capture, and let
  * components that paint asynchronously (iframes, lazy media) settle each seek before capture.
@@ -32,12 +33,15 @@ export function useSceneCapture({durationMs,seek,selector='[data-velora-capture=
     const host=window as typeof window & {__VELORA_CAPTURE__?:unknown};
     if(host.__VELORA_CAPTURE__) throw new Error("Only one capture viewport can be registered per page.");
     let activeViewport: Element | null = null;
-    const verify=()=>{
+    const verify=(inventory?: boolean)=>{
       const viewport=document.querySelector(selector);
       if(viewport?.matches('[data-velora-view="director"]') || viewport?.querySelector('[data-velora-view="director"]'))
         throw new Error("Return to camera view before exporting.");
       if (viewport?.querySelector('[data-velora-depth-view]')) throw new Error("Close Depth view before exporting.");
-      if(viewport?.matches('[data-velora-valid="false"]') || viewport?.querySelector('[data-velora-valid="false"]'))
+      const target = viewport?.getAttribute('data-velora-target-error') ?? viewport?.querySelector('[data-velora-target-error]')?.getAttribute('data-velora-target-error');
+      if (target && !inventory) throw new Error(`ERR_TARGET_MISSING: ${target}`);
+      const invalid = inventory ? '[data-velora-valid="false"]:not([data-velora-target-only])' : '[data-velora-valid="false"]';
+      if(viewport?.matches(invalid) || viewport?.querySelector(invalid))
         throw new Error("Correct scene diagnostics before exporting.");
     };
     const captureStage = stage && { width: stage.width, height: stage.height, dpr: stage.dpr, ...(stage.preset ? { preset: stage.preset } : {}) };
@@ -45,13 +49,20 @@ export function useSceneCapture({durationMs,seek,selector='[data-velora-capture=
       get depth() {
         const depth = captureDepth(document.querySelector(selector));
         return depth.length ? depth : undefined;
-      }, seek:(elapsedMs:number)=>{
+      }, get anchors() {
+        const targets = captureTargets(document.querySelector(selector));
+        return targets.length ? targets : undefined;
+      }, seek:(elapsedMs:number, options)=>{
       if(!Number.isFinite(elapsedMs)||elapsedMs<0||elapsedMs>durationMs) throw new Error("Capture time is outside the scene.");
       settlers.forEach(entry => entry.current.beforeSeek?.());
       activeViewport = document.querySelector(selector);
       flushSync(()=>current.current(elapsedMs));
-      if(!settlers.size){verify();return;}
-      return Promise.all([...settlers].map(entry=>entry.current.settle())).then(verify);
+      if(!settlers.size){flushSync(()=>refreshTargetScenes(activeViewport));verify(options?.inventory);return;}
+      const settle = () => Promise.all([...settlers].map(entry=>entry.current.settle()));
+      return settle().then(async () => {
+        if (flushSync(() => refreshTargetScenes(activeViewport))) await settle();
+        verify(options?.inventory);
+      });
     }};
     host.__VELORA_CAPTURE__=bridge;
     return ()=>{

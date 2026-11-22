@@ -25,6 +25,7 @@ import { componentExport, sceneImportPath, scaffoldScene, COMPOSITION_SCHEMA_POI
 import { BLUEPRINT_CATALOG, TEMPLATE_CATALOG, RouteSchema, certifyTemplate, findBlueprint, findTemplate, resolveTemplateParams, templateDefinition, templateSubject, type Blueprint, type TemplateManifest } from "../core/templates";
 import { DEFAULT_STAGE, sceneStageBudget, stageFromSpec, type Stage } from "../core/stage";
 import { resolveFinishing } from "../core/export";
+import { AnchorsResultSchema, parseElementTarget, type AnchorsResult } from "../core/targets";
 import { ASPECT_FRAMES, AspectSchema, type Aspect } from "../core/shots";
 import { SCENE_RECIPE_DIRECTORY } from "../core/recipes";
 import { BRAND_FILE, BrandSchema, brandTokensFromCss, completeBrandColors, contrastRatio } from "../core/brand";
@@ -1421,6 +1422,20 @@ export async function executeSkillsCommand(
 }
 
 
+const AnchorsInputSchema = z.strictObject({ scene: SceneRecipeIdSchema, url: z.string().min(1), time: z.number().nonnegative().optional() });
+export async function executeAnchorsCommand(input: unknown, context: { root: string },
+  read: (root: string, sceneId: string, url: string, time?: number) => Promise<AnchorsResult>) {
+  try {
+    const { scene, url, time } = AnchorsInputSchema.parse(input);
+    const data = AnchorsResultSchema.parse(await read(context.root, scene, url, time));
+    return { success: true as const, command: "anchors" as const, data };
+  } catch (error) {
+    const known = error as { code?: string; message?: string };
+    const issue = normalizeIssue({ code: error instanceof z.ZodError ? "invalid-input" : known.code ?? "invalid-capture", message: known.message ?? "Anchor inspection failed." });
+    return { success: false as const, command: "anchors" as const, issues: [issue], next: nextForIssues([issue]) };
+  }
+}
+
 // SOURCE OF TRUTH: executeTemplateCommand template catalog and scaffolding operations.
 // WHAT: list/show/check the shipped templates, and create-only scaffolding of templated scenes
 // (new scene) and blueprint compositions (new video) from the user's real component or route.
@@ -1434,7 +1449,7 @@ export type TemplateCommandResult =
 const NewSceneInputSchema = z.strictObject({
   template: z.string().min(1), id: z.string().min(1), title: z.string().trim().min(1).max(200).optional(),
   component: z.string().min(1).optional(), route: z.string().optional(),
-  aspect: z.string().optional(), stage: z.string().optional(), durationMs: z.number().optional(), set: z.record(z.string(), z.string()).default({}),
+  aspect: z.string().optional(), stage: z.string().optional(), durationMs: z.number().optional(), focus: z.string().max(512).optional(), set: z.record(z.string(), z.string()).default({}),
 });
 const NewVideoInputSchema = z.strictObject({
   blueprint: z.string().min(1), id: z.string().min(1), title: z.string().trim().min(1).max(200).optional(),
@@ -1475,13 +1490,17 @@ function authoredStage(spec = DEFAULT_STAGE as string) {
     ? "Use the Studio to detect your viewport or pass the exact size with --stage 1512x982@2."
     : "Use a named stage preset or a size such as --stage 1512x982@2.", "stage");
 }
-function planScene(manifest: TemplateManifest, overrides: Record<string, string | number>, id: string, title: string | undefined, aspect: Aspect, slot: Slot, extension: "tsx" | "jsx", stage: Stage): { files: PlannedFile[]; durationMs: number } {
+function planScene(manifest: TemplateManifest, overrides: Record<string, string | number>, id: string, title: string | undefined, aspect: Aspect, slot: Slot, extension: "tsx" | "jsx", stage: Stage, focus?: string): { files: PlannedFile[]; durationMs: number } {
   if (!SceneRecipeIdSchema.safeParse(id).success) templateFault("invalid-input", "Use a lowercase scene slug for --id (letters, digits and single hyphens).", "id");
   if (!manifest.aspects.includes(aspect)) templateFault("ERR_TEMPLATE_ASPECT", `Template ${manifest.id} supports ${manifest.aspects.join(", ")}, not ${aspect}.`, "aspect");
   const resolved = resolveTemplateParams(manifest, overrides);
   if (resolved.issues.length) throw Object.assign(new Error(resolved.issues.map(issue => issue.message).join(" ")), { code: "ERR_TEMPLATE_PARAM", target: resolved.issues[0].path, issues: resolved.issues });
   const subject = templateSubject(aspect, stage);
-  const definition = templateDefinition(manifest, resolved.params, aspect, subject);
+  const focusTarget = focus === undefined ? undefined : parseElementTarget(focus, "subject");
+  if (focus !== undefined && !focusTarget) templateFault("ERR_TEMPLATE_PARAM", "Use an anchor name, surface:name or surface:css(selector) for --focus.", "focus");
+  if (focusTarget && typeof resolved.params.focusRegion === "object") templateFault("ERR_TEMPLATE_PARAM", "Choose --focus or --set focusRegion.", "focus");
+  const definition = templateDefinition(manifest, resolved.params, aspect, subject, focusTarget);
+  if (focusTarget && !definition.scene.nodes?.some(node => node.id === focusTarget.surface)) templateFault("ERR_TEMPLATE_PARAM", `The template has no surface ${focusTarget.surface}.`, "focus");
   const scaffold = scaffoldScene({ id, title: title ?? manifest.title, manifest, params: resolved.params, aspect, definition, subject, slot, stage });
   const base = `${SCENE_RECIPE_DIRECTORY}/${id}`;
   return { files: [{ path: `${base}.scene.json`, text: scaffold.recipe }, { path: `${base}.${extension}`, text: scaffold.binding }], durationMs: definition.motion.durationMs };
@@ -1581,7 +1600,7 @@ export async function executeTemplateCommand(operation: "list-templates" | "show
       const project = await initializedProject(root);
       const { slot, warnings } = await resolveSlot(root, request);
       const overrides: Record<string, string | number> = { ...request.set, ...(request.durationMs !== undefined ? { durationMs: request.durationMs } : {}) };
-      const plan = planScene(manifest, overrides, request.id, request.title, aspect.data, slot, await bindingExtension(root, project), authoredStage(request.stage));
+      const plan = planScene(manifest, overrides, request.id, request.title, aspect.data, slot, await bindingExtension(root, project), authoredStage(request.stage), request.focus);
       await withBrandFile(root, [manifest], plan.files);
       await writePlanned(root, plan.files);
       const catalog = await discoverRecipes(root);

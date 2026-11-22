@@ -66,6 +66,15 @@ describe("JSX outline and source splices", () => {
     expect(() => transformSource({ ...request, prop: "mode" }, text, true)).toThrow(/enum options/);
   });
 
+  it("adds a static anchor inside the source transaction and refuses repeated names", () => {
+    const text = `${sourceImport}\nexport default function Card(){return <Surface id="card"><button>Price</button><input/></Surface>}`;
+    const request = { kind: "anchor" as const, file, id: "price", node: node(text, "button").path };
+    const changed = transformSource(request, text, false);
+    expect(changed).toEqual({ text: text.replace("<button>", '<button data-velora-anchor="price">'), ops: [] });
+    expect(() => transformSource({ ...request, node: node(changed.text, "input").path }, changed.text, false)).toThrow(/unused anchor name/);
+    expect(() => transformSource(request, changed.text, false)).toThrow(/already declares/);
+  });
+
   it("shows separate hunks for an import and JSX without showing distant unchanged lines as edits", () => {
     const lines = Array.from({ length: 30 }, (_, index) => `// keep line ${index}`).join("\n");
     const original = `${lines}\nexport default function Card(){return <h1/>}\n`;

@@ -4,7 +4,8 @@ import { AUDIO_DRIFT_BUDGET_MS, SUPPORTED_AUDIO_CODECS, audioPlacement } from ".
 import { resolveAssetId } from "../core/assets";
 import { formatSrt, parseCaptions } from "../core/captions";
 import { findDeliveryPreset, deliveryWarnings } from "../core/delivery";
-import { ASPECT_FRAMES } from "../core/shots";
+import { isElementTarget } from "../core/targets";
+import { ASPECT_FRAMES, liveRacks } from "../core/shots";
 import { ALPHA_CODECS, CODEC_CONTAINERS, CaptureManifestSchema, RenderManifestSchema, resolveFinishing, shutterSamples, type ResolvedFinishing, type CheckRenderResult, type ExportVideoResult, type FrameRenderResult, type FramesRenderResult, type ShotRenderResult, type VideoRenderResult, type VisualCheck, type VideoCodec } from "../core/export";
 import { frameAt, layersAt, localTime, segmentAt, timeAtFrame, timelineDuration, timelineFromComposition, validateTimeline, type Timeline, type TimelineSegment } from "../core/timeline";
 import { SceneRecipeSchema, SceneSnapshotSchema, type SceneCatalog } from "../core/recipes";
@@ -56,6 +57,19 @@ export async function readSceneOptics(root: string, sceneId: string, url: string
     const frames: DepthEvidence[][] = [];
     for (const time of times) frames.push(CaptureManifestSchema.parse(await session.manifest(Math.min(time, first.durationMs))).depth ?? []);
     return frames;
+  } finally { await session.close(); }
+}
+export async function readSceneAnchors(root: string, sceneId: string, url: string, requestedTime?: number) {
+  const opened = await executeRecipeCommand("open-scene", { sceneId, url, launch: false }, { root });
+  if (!opened.success) throw fault(opened.issues[0].code ?? "ERR_SCENE_INVALID", opened.issues[0].message);
+  const { width, height, stage } = opened.data.selected!.definition;
+  const session = await services.openCapture({ url: opened.data.url!, width, height, scale: resolveFinishing({}, { width, height }, stage).supersample, measureTargets: true });
+  try {
+    const first = CaptureManifestSchema.parse(await session.manifest());
+    const timeMs = Math.min(requestedTime ?? 0, first.durationMs);
+    const capture = CaptureManifestSchema.parse(await session.manifest(timeMs, true));
+    const anchors = capture.anchors ?? [];
+    return { sceneId, timeMs, anchors: requestedTime !== undefined ? anchors : anchors.map(({ projected, point, depth, blur, visible, ...layout }) => layout) };
   } finally { await session.close(); }
 }
 async function capturedDepth(session: Awaited<ReturnType<typeof services.openCapture>>, timeMs?: number) {
@@ -288,7 +302,6 @@ async function renderTimelineFrames(options: {
   const cacheDir = options.cacheDir ?? await defaultFrameCacheDir(options.root);
   // Host edits change pixels without touching the binding; an unfingerprintable tree renders uncached.
   const hostSha = noCache ? undefined : await services.hostFingerprint(root);
-  const caching = hostSha !== undefined;
   const sorted = [...wanted].sort((a, b) => a.frame - b.frame);
   const frames = new Map<number, RenderedFrame>();
   const stageEvidence = new Map<string, StageLineage & { sceneId: string }>();
@@ -330,7 +343,7 @@ async function renderTimelineFrames(options: {
   // Capture one unit (a V1 segment, an overlay or the captions layer) at its items' local times.
   const captureUnit = async (entry: CaptureUnit): Promise<void> => {
     let opened: string, recipeSha: string, bindingSha: string, durationLook: LookInput | undefined, authoredStage: Stage | undefined;
-    let hasDepth = false;
+    let hasDepth = false, hasLocks = false;
     let sceneId = entry.recipeId ?? "captions";
     if (entry.captions) {
       const captions = entry.captions;
@@ -352,8 +365,10 @@ async function renderTimelineFrames(options: {
       bindingSha = services.sha256Hex(bindingText);
       durationLook = recipe.definition.look ?? (entry.inheritLook ? options.look : undefined);
       authoredStage = recipe.definition.stage;
+      hasLocks = (recipe.definition.scene.constraints ?? []).some(constraint => "target" in constraint && isElementTarget(constraint.target)) || liveRacks(recipe.definition.motion).length > 0;
       hasDepth = Object.values(recipe.definition.depth ?? {}).some(config => config.mode !== "off");
     }
+    const caching = hostSha !== undefined && !hasLocks;
     const unitFinishing = { ...finishing, supersample: resolveFinishing({ quality: finishing.quality, stageDpr: options.stageDpr }, { width, height }, authoredStage).supersample };
     const transparent = finishing.transparent || entry.transparent;
     const baseVariant = unitFinishing.supersample !== 1 || transparent ? `scale=${unitFinishing.supersample};alpha=${transparent ? 1 : 0}` : undefined;

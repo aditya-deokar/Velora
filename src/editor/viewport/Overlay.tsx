@@ -13,7 +13,8 @@ import { dragFactor, scaleAxis, scaleUniform } from "./ScaleHandles";
 import { pivotTo } from "./Pivot";
 import { cameraChanges, dolly, dollyZoom, focalLengthOf, lens, orbit, panTilt, pivotPoint, toStage, truck, type Camera } from "./CameraTool";
 import { cameraGizmo, dragCamera } from "./DirectorView";
-import { focusHit, followOps } from "./FocusTool";
+import { describeElementTarget, elementKey, isElementTarget, targetPoseKey, type AnchorReport } from "../../core/targets";
+import { focusHit, followOps, targetAt } from "./FocusTool";
 import { cameraPath, keyDotOps, layerPath, pathKeys, pathWindow, sampleTimes } from "./MotionPath";
 import { onionSkin } from "./OnionSkin";
 import { GizmoHandles, gizmoGeometry, type HandleId } from "./Gizmo";
@@ -46,6 +47,7 @@ export function Overlay() {
   const state = useEditorState(store);
   const svg = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<Drag>();
+  const [cursor, setCursor] = useState<Point>();
   const dragRef = useRef<Drag | undefined>(undefined);
   dragRef.current = drag;
   const threeDrag = useRef<{ drag: GizmoDrag; ops: EditOp[]; id: string; toPoint(client: Point, frame: Point): Point | undefined } | undefined>(undefined);
@@ -57,6 +59,15 @@ export function Overlay() {
   const real = realCamera(snapshot, doc);
   const director = state.ui.director;
   const tool = state.ui.tool;
+  const reports = director ? snapshot?.viewTargets ?? snapshot?.targets : snapshot?.targets;
+  const hover = tool === "focus" && cursor ? targetAt(reports, cursor) : undefined;
+  const liveConstraints = (doc?.definition?.scene?.constraints ?? []) as import("../../core").SceneConstraint[];
+  const targetLocks = liveConstraints.flatMap(constraint => {
+    const target = constraint.target;
+    if (!isElementTarget(target)) return [];
+    const report = reports?.find(report => !report.ambiguous && targetPoseKey(report.target) === targetPoseKey(target));
+    return report ? [{ report, focus: constraint.kind === "focusFollow" }] : [];
+  });
   const locked: string[] = doc?.editor?.locked ?? [];
   const lockedKey = locked.join("\u0000"), hiddenKey = state.ui.hidden.join("\u0000");
   const items = useMemo(() => pickables(snapshot, camera, frame, { locked, hidden: state.ui.hidden }),
@@ -251,7 +262,7 @@ export function Overlay() {
     const target = event.target as Element;
     const handle = target.closest?.("[data-handle]")?.getAttribute("data-handle") as HandleId | null;
     const keyDot = target.closest?.("[data-key-dot]")?.getAttribute("data-key-dot");
-    if (!handle && !keyDot && !event.altKey) {
+    if (!handle && !keyDot && !event.altKey && tool !== "focus") {
       const hit = threeAt(event);
       const point = hit?.toPoint({ x: event.clientX, y: event.clientY }, p);
       if (hit && point) {
@@ -291,6 +302,21 @@ export function Overlay() {
       const mode = handle === "rotateZ" ? "roll" : event.shiftKey ? "truck" : event.ctrlKey || event.metaKey ? "pan" : event.altKey ? "dolly" : "orbit";
       next = { ...base, kind: "camera", mode, start, pivot, depth, navigate, label: { orbit: "Orbit camera", truck: "Truck camera", pan: "Pan/tilt camera", dolly: "Dolly camera", roll: "Roll camera" }[mode] };
     } else if (tool === "focus") {
+      const measured = targetAt(reports, p);
+      if (measured) {
+        const label = describeElementTarget(measured.target);
+        const optical = snapshot.targets?.find(report => !report.ambiguous && elementKey(report.target) === elementKey(measured.target)) ?? measured;
+        if (event.altKey && "selector" in measured.target && pickSource) {
+          const hint = pickSourceElement(event.clientX, event.clientY);
+          if (hint?.surface === measured.target.surface && hint.tag !== "iframe") { pickSource({ ...hint, anchorEdit: true }); return; }
+        }
+        const live = event.shiftKey;
+        const ops = live ? followOps(committed, measured.target)
+          : setOps(committed, { kind: "focus" }, { distance: optical.depth }, { distance: snapshot.focus?.distance }, context());
+        const issues = store.commit(ops, live ? `Follow focus on ${label}` : `Focus on ${label}`);
+        if (issues.length) notify(issues[0].message);
+        return;
+      }
       const id = pick(items, p, { scope: undefined });
       const leaf = id && items.find(item => item.id === id) ? hitLeaf(items, p, id) : undefined;
       const node = leaf ? nodeOf(leaf) : undefined;
@@ -384,6 +410,17 @@ export function Overlay() {
   const poly = (points: ({ x: number; y: number } | null)[]) => points.filter(Boolean).map(p => `${p!.x},${p!.y}`).join(" ");
   const primary = selected[0] && tool !== "camera" && tool !== "focus" ? gizmoFor(selected[0]) : null;
   const typed = drag?.typed;
+  const reticle = (report: AnchorReport, focus: boolean, key: string) => {
+    const box = report.projected, point = report.point;
+    if (!box || !point) return null;
+    const [x, y] = point, r = 7 * s;
+    const label = describeElementTarget(report.target);
+    return <g key={key} pointerEvents="none" data-target-reticle={label} aria-label={label}>
+      <rect x={box.x} y={box.y} width={box.width} height={box.height} className={focus ? "ve-focus-plane" : "ve-outline"} {...(focus ? { "data-focus-plane": "" } : {})}/>
+      <path d={`M ${x-r} ${y} h ${2*r} M ${x} ${y-r} v ${2*r}`} className="ve-outline"/>
+      {key === "hover" && <text x={box.x} y={Math.max(14 * s, box.y - 6 * s)} className="ve-badge" style={{ paintOrder: "stroke", stroke: "#181822", strokeWidth: 3 * s }}>{label}{("selector" in report.target && pickSource) ? " · Alt-click to name in source" : ""}</text>}
+    </g>;
+  };
   return <svg ref={svg} data-velora-viewport-overlay="" data-tool={tool} viewBox={`0 0 ${frame.width} ${frame.height}`} width={frame.width} height={frame.height}
     role="application" tabIndex={-1} aria-label={`Viewport (${tool} tool${director ? ", director view" : ""})`} aria-roledescription="viewport"
     style={{ position: "absolute", inset: 0, pointerEvents: "all", cursor: sourcePicking || tool === "focus" ? "crosshair" : tool === "camera" ? "grab" : "default", touchAction: "none", overflow: "visible" }}
@@ -394,8 +431,12 @@ export function Overlay() {
     onPointerMove={event => {
       const current = dragRef.current;
       if (current) update(current, pointOf(event), { shift: event.shiftKey, alt: event.altKey });
-      else updateThree(event);
+      else {
+        if (tool === "focus") setCursor(pointOf(event));
+        updateThree(event);
+      }
     }}
+    onPointerLeave={() => setCursor(undefined)}
     onPointerUp={() => { finishThree(true); const current = dragRef.current; if (current) finish(current); }}
     onPointerCancel={() => { finishThree(false); if (dragRef.current) { store.cancel(); setDrag(undefined); } }}
     onLostPointerCapture={() => finishThree(false)}
@@ -409,6 +450,8 @@ export function Overlay() {
 .ve-frustum{fill:none;stroke:#e879f9;stroke-width:${1.5 * s}px}.ve-focus-plane{fill:rgba(232,121,249,.12);stroke:rgba(232,121,249,.6);stroke-width:${s}px}
 .ve-marquee{fill:rgba(76,194,255,.1);stroke:#4cc2ff;stroke-dasharray:${4 * s} ${3 * s};stroke-width:${s}px}
 .ve-badge{font:${12 * s}px system-ui,sans-serif;fill:#fff}.ve-badge-bg{fill:rgba(20,20,28,.85)}`}</style>
+    {targetLocks.map(({ report, focus }, index) => reticle(report, focus, String(index)))}
+    {hover && reticle(hover, false, "hover")}
     {ghosts.map((ghost, index) => <polygon key={`g${index}`} className="ve-ghost" data-ghost={`${ghost.id}${ghost.offset}`} points={poly(ghost.quad)} opacity={1 - Math.abs(ghost.offset) * 0.22}/>)}
     {pathsFor.map(path => <g key={path.id} data-motion-path={path.id}>
       <polyline className="ve-path" points={poly(path.samples.map(sample => sample?.point ?? null))}/>

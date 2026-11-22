@@ -6,6 +6,7 @@ import { EasingSchema } from "./easing";
 import { framingDistance, lensFor, lensPreset, perspectiveForFocalLength } from "./lens";
 import type { EasingInput } from "./easing";
 import type { PreviewDefinitionInput } from "./preview";
+import { ElementTargetSchema, isElementTarget, matchesDepthLayer, parseElementTarget, type ElementTarget } from "./targets";
 
 /** SOURCE OF TRUTH: ShotInputSchema, buildShot, framingReport, projectSubject, projectPoints, ASPECT_FRAMES, buildOrbitRig, buildRackFocus.
  * WHAT: the camera-move vocabulary (push, survey, orbit, crane, rise, dolly zoom, rack focus,
@@ -48,15 +49,22 @@ export const ShotInputSchema = z.strictObject({
   lens: z.number().finite().min(16).max(200).optional(),
   // Subject pixels, top-left origin: what the shot frames and keeps in focus.
   focusRegion: RegionSchema.optional(),
+  focusTarget: ElementTargetSchema.optional(),
   scrollDistance: z.number().finite().min(0).max(20_000).default(2400),
   seed: z.number().int().nonnegative().max(4_294_967_295).default(1),
-});
+}).refine(shot => !(shot.focusRegion && shot.focusTarget), { path: ["focusTarget"], message: "Choose a focus target or a focus region." });
 export type ShotInput = z.input<typeof ShotInputSchema>;
 export type ShotDefinition = {
   width: number; height: number;
   scene: { camera: z.input<typeof CameraSchema>; focus: z.input<typeof FocusSchema>; nodes: { id: string }[]; constraints?: z.input<typeof SceneConstraintSchema>[] };
   motion: MotionInput;
+  focusTarget?: ElementTarget;
 };
+export function lockShotFocus<T extends ShotDefinition>(definition: T, target: ElementTarget): T {
+  const motion = { ...definition.motion, tracks: definition.motion.tracks.filter(track => track.target.kind !== "focus" || track.property !== "distance") };
+  const constraints = [...(definition.scene.constraints ?? []), { kind: "lookAt" as const, target }, { kind: "focusFollow" as const, target }];
+  return { ...definition, focusTarget: target, motion, scene: { ...definition.scene, constraints } };
+}
 export const SUBJECT_ID = "subject";
 export const SCROLL_CHANNEL = "subject-scroll";
 
@@ -82,7 +90,7 @@ function resolvedLens(definition: Pick<ShotDefinition, "scene" | "motion">, stat
   const constraints = definition.scene.constraints?.map(constraint => SceneConstraintSchema.parse(constraint));
   return resolveConstraints(constraints, camera, focus, target => {
     if ("point" in target) return [...target.point] as [number, number, number];
-    if (!("surface" in target) || target.surface !== SUBJECT_ID) return undefined;
+    if (isElementTarget(target) || !("surface" in target) || target.surface !== SUBJECT_ID) return undefined;
     const [u, v] = target.anchor ?? [0.5, 0.5];
     return [(u - 0.5) * (subject?.width ?? 0), (v - 0.5) * (subject?.height ?? 0), 0];
   }, { channels: state.channels });
@@ -104,6 +112,7 @@ const round = (value: number) => Math.round(value * 100) / 100;
 const rackUnit = z.number().min(0).max(1);
 const transformFields = TransformSchema.parse({});
 export const RackTargetSchema = z.union([
+  ElementTargetSchema,
   z.strictObject({ depth: z.number().finite().positive() }),
   z.strictObject({ surface: z.string().min(1).max(128), anchor: z.tuple([rackUnit, rackUnit]) }),
   z.strictObject({ layer: z.string().min(1).max(4096), surface: z.string().min(1).max(128).optional() }),
@@ -122,7 +131,7 @@ export function rackTargetFromText(text: string) {
   const shorthand = /^([^@]+)@([^,]+),([^,]+)$/.exec(text);
   const target = text.startsWith("depth:") ? { depth: Number(text.slice(6)) }
     : text.startsWith("layer:") ? { layer: text.slice(6) }
-    : shorthand ? { surface: shorthand[1], anchor: [Number(shorthand[2]), Number(shorthand[3])] } : undefined;
+    : parseElementTarget(text) ?? (shorthand ? { surface: shorthand[1], anchor: [Number(shorthand[2]), Number(shorthand[3])] } : undefined);
   const parsed = RackTargetSchema.safeParse(target);
   return parsed.success ? parsed.data : undefined;
 }
@@ -130,15 +139,14 @@ export function rackTargetFromText(text: string) {
 export function rackLayerDepth(target: RackTarget, entries: readonly import("./depth").DepthEvidence[]) {
   if (!("layer" in target)) return undefined;
   const samples = entries.flatMap(entry => target.surface && target.surface !== entry.surface ? [] : entry.layers.flatMap(({ match }, index) => {
-    const matches = "anchor" in match ? match.anchor === target.layer : match.selector === target.layer || match.selector === `#${target.layer}`;
-    return matches && entry.focus?.[index] ? [entry.focus[index].depth] : [];
+    return matchesDepthLayer(match, target.layer) && entry.focus?.[index] ? [entry.focus[index].depth] : [];
   }));
   return samples.length === 1 ? samples[0] : undefined;
 }
 
 export function rackSurfaceDepth(definition: PreviewDefinitionInput, target: RackTarget, timeMs: number) {
   if ("depth" in target) return target.depth;
-  if (!("anchor" in target)) return undefined;
+  if (isElementTarget(target) || !("anchor" in target)) return undefined;
   const state = evaluateMotion(definition.motion ?? { durationMs: 0, tracks: [] }, timeMs);
   const frame = { width: definition.width ?? 1400, height: definition.height ?? 980 };
   const stage = definition.stage ?? frame;
@@ -159,6 +167,15 @@ export function rackSurfaceDepth(definition: PreviewDefinitionInput, target: Rac
 export function buildRackFocus(input: RackFocusInput, resolve?: (target: RackTarget, timeMs: number) => number | undefined): MotionClipInput {
   const params = RackFocusSchema.parse(input);
   const { atMs, durationMs, ease = "cinematic", breathing, fStopDip, hold = 0 } = params;
+  const id = params.id ?? `rack-${String(atMs).replace(".", "-")}`;
+  const keys = (start: number, end: number) => [{ timeMs: 0, value: start, easing: ease }, { timeMs: durationMs, value: end, easing: ease },
+    ...(hold ? [{ timeMs: durationMs + hold, value: end, easing: ease }] : [])];
+  if (isElementTarget(params.from) || isElementTarget(params.to)) {
+    const { depths: _, ...authored } = params;
+    return { id, label: "Live rack focus", startMs: atMs, durationMs: durationMs + hold,
+      tracks: [{ target: { kind: "channel", id: rackProgressChannel(id) }, property: "value", keyframes: keys(0, 1) }],
+      source: { rack: "element", version: 1, params: authored } };
+  }
   const targetDepth = (key: "from" | "to", timeMs: number) => {
     const target = params[key];
     return "depth" in target ? target.depth : params.depths?.[key] ?? resolve?.(target, timeMs);
@@ -166,9 +183,6 @@ export function buildRackFocus(input: RackFocusInput, resolve?: (target: RackTar
   const from = targetDepth("from", atMs), to = targetDepth("to", atMs + durationMs);
   if (from === undefined || to === undefined || !Number.isFinite(from) || !Number.isFinite(to) || from <= 0 || to <= 0)
     throw new RangeError("Rack targets must resolve to positive camera-axis depths.");
-  const id = params.id ?? `rack-${String(atMs).replace(".", "-")}`;
-  const keys = (start: number, end: number) => [{ timeMs: 0, value: start, easing: ease }, { timeMs: durationMs, value: end, easing: ease },
-    ...(hold ? [{ timeMs: durationMs + hold, value: end, easing: ease }] : [])];
   const tracks: NonNullable<MotionClipInput["tracks"]> = [{ target: focus, property: "distance", keyframes: keys(from, to) }];
   if (fStopDip) tracks.push({ target: focus, property: "fStop", keyframes: [
     { timeMs: 0, value: fStopDip.from, easing: ease }, { timeMs: durationMs / 2, value: fStopDip.to, easing: ease },
@@ -180,9 +194,20 @@ export function buildRackFocus(input: RackFocusInput, resolve?: (target: RackTar
     source: { rack: "focus", version: 1, params: { ...params, depths: { from, to } } } };
 }
 
+const rackProgressChannel = (id: string) => `velora-rack:${id}`;
+export function liveRacks(motion: MotionInput | undefined) {
+  return (motion?.clips ?? []).flatMap(clip => {
+    if (!clip.source || !("rack" in clip.source) || clip.source.rack !== "element") return [];
+    const params = RackFocusSchema.safeParse(clip.source.params);
+    return params.success ? [{ ...params.data, startMs: clip.startMs, channel: rackProgressChannel(clip.id) }] : [];
+  }).sort((a, b) => a.startMs - b.startMs);
+}
+export type LiveRack = ReturnType<typeof liveRacks>[number] & { progress: number };
+
 export function rackReport(clip: MotionClipInput, lens: z.input<typeof FocusSchema>, authoredZoom = 1) {
   const params = RackFocusSchema.parse(clip.source && "rack" in clip.source ? clip.source.params : undefined);
-  const from = params.depths!.from, to = params.depths!.to;
+  if (!params.depths) throw new Error("Use live capture to inspect an element rack.");
+  const { from, to } = params.depths;
   const motion = { durationMs: clip.startMs + clip.durationMs!, speed: 1, tracks: [], clips: [clip] };
   const endpoint = (timeMs: number, fixed: number, other: number) => {
     const state = evaluateMotion(motion, timeMs);
@@ -359,7 +384,7 @@ export function buildShot(input: ShotInput, { stageFit = false }: { stageFit?: b
     }
   }
   const settled: Camera = { ...pose, x: shot.kind === "whip" ? 0 : pose.x };
-  return {
+  const definition: ShotDefinition = {
     width: frame.width, height: frame.height,
     scene: {
       camera: { perspective: round(p), x: settled.x, y: settled.y, z: settled.z, rotateX: settled.rotateX, rotateY: settled.rotateY, rotateZ: settled.rotateZ },
@@ -368,6 +393,7 @@ export function buildShot(input: ShotInput, { stageFit = false }: { stageFit?: b
     },
     motion: { durationMs, speed: 1, ...(loop ? { loop: true } : {}), tracks: tracks as MotionInput["tracks"] },
   };
+  return shot.focusTarget ? lockShotFocus(definition, shot.focusTarget) : definition;
 }
 
 export type FramingSample = { timeMs: number; subjectVisible: number; regionVisible: number; regionBlur: number; depthMargin: number };

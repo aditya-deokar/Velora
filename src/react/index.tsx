@@ -40,6 +40,9 @@ import type { DepthConfig, DepthMap } from "../core/depth";
 import { DepthSurfaceContext, useVolumetricDepth, type DepthDisplay } from "./depth";
 export { useSceneTime, type ThreeSelection } from "./context";
 import type { SceneInspector } from "./inspector";
+import { isElementTarget, type ElementTarget } from "../core/targets";
+import { registerTargetScene } from "./anchors";
+import { liveRacks } from "../core/shots";
 
 /** SOURCE OF TRUTH: Scene / Surface / Motion live DOM adapter.
  * WHAT: bind existing React subtrees to the canonical core spatial operation.
@@ -79,6 +82,7 @@ const pick = (values: Record<string, number> | undefined, visual: boolean) =>
   values ? Object.fromEntries(Object.entries(values).filter(([key]) => key !== "elevation" && visualKeys.has(key) === visual)) : undefined;
 const emptyMotion: MotionState = { surfaces: {}, camera: {}, focus: {}, channels: {}, issues: [] };
 const useLayout = typeof window === "undefined" ? useEffect : useLayoutEffect;
+const noTargets: readonly ElementTarget[] = [];
 export type SceneProps = {
   stage?: Stage;
   depth?: DepthMap;
@@ -140,6 +144,13 @@ export function Scene({
     registry.snapshot,
   );
   const stage = useRef<HTMLDivElement>(null);
+  const measureTargets = !!inspector || typeof window !== "undefined" && !!(window as Window & { __VELORA_MEASURE_TARGETS__?: boolean }).__VELORA_MEASURE_TARGETS__;
+  const racks = useMemo(() => liveRacks(motion), [motion]);
+  const lockedTargets = useMemo(() => [...(constraints ?? []).map(({ target }) => target), ...racks.flatMap(rack => [rack.from, rack.to])]
+    .filter(isElementTarget), [constraints, racks]);
+  const inspectTargets = typeof window === "undefined" ? noTargets : (window as Window & { __VELORA_TARGET_QUERIES__?: ElementTarget[] }).__VELORA_TARGET_QUERIES__ ?? noTargets;
+  const measuredTargets = useMemo(() => [...lockedTargets, ...inspectTargets], [lockedTargets, inspectTargets]);
+  const haveElementTargets = measureTargets || measuredTargets.length > 0;
   useLayout(() => registry.mount(stage.current!), [registry]);
   useLayout(() => {
     registry.refresh();
@@ -176,7 +187,16 @@ export function Scene({
         return measurement ? [[binding.id, measurement] as const] : [];
       }),
     );
-    const evaluation = RESOURCES["evaluate-spatial"](input, measurements, { channels: state.channels, anchors: registry.sampleAnchors(state.channels) });
+    const frame = haveElementTargets || constraints?.length ? stage.current && { width: stage.current.offsetWidth, height: stage.current.offsetHeight } : undefined;
+    const elements = haveElementTargets ? registry.elementAnchors.snapshot() : undefined;
+    const authored = racks.length && motion ? motionTime(motion, timeMs) : 0;
+    const rack = racks.filter(item => item.startMs <= authored).at(-1) ?? racks[0];
+    const evaluation = RESOURCES["evaluate-spatial"](input, measurements, { channels: state.channels, anchors: registry.sampleAnchors(state.channels),
+      elements, frame: frame ?? undefined, inspectTargets: measuredTargets, ...(rack ? { rack: { ...rack, progress: Math.max(0, Math.min(1, state.channels[rack.channel] ?? 0)) } } : {}) });
+    if (!validated.success) for (const target of lockedTargets) if (!bindings.some(binding => binding.id === target.surface)) {
+      const issue = evaluation.issues.find(issue => issue.path.startsWith("constraints.") && issue.path.endsWith(".target.surface") && issue.message.endsWith(`: ${target.surface}`));
+      if (issue) issue.code = "target-missing";
+    }
     const ids = new Set(bindings.map((b) => b.id));
     evaluation.issues.push(
       ...state.issues,
@@ -202,10 +222,10 @@ export function Scene({
       });
     // Director view: the same nodes seen from the editor's viewpoint, sharp (focus would mislead).
     const view = viewCamera
-      ? RESOURCES["evaluate-spatial"]({ camera: viewCamera, focus: { ...input.focus, maxBlur: 0 }, nodes: input.nodes }, measurements, { channels: state.channels })
+      ? RESOURCES["evaluate-spatial"]({ camera: viewCamera, focus: { ...input.focus, maxBlur: 0 }, nodes: input.nodes }, measurements, { channels: state.channels, elements, frame: frame ?? undefined, inspectTargets: measuredTargets })
       : undefined;
     return { evaluation, validated, state, view };
-  }, [registry, revision, camera, focus, constraints, motion, timeMs, viewCamera]);
+  }, [registry, revision, camera, focus, constraints, motion, timeMs, viewCamera, haveElementTargets, measuredTargets, racks]);
   const context = useMemo(
     () => ({
       registry,
@@ -242,7 +262,14 @@ export function Scene({
     [registry, result, timeMs, motion, threeSelection, depth, depthDisplay],
   );
   const depthReports = [...registry.depthReports.values()];
-  const depthAdvisories = depthReports.flatMap(report => report.issues);
+  const depthAdvisories = [...depthReports.flatMap(report => report.issues), ...(result.evaluation.advisories ?? [])];
+  const targetErrors = result.evaluation.issues.filter(issue => issue.code === "target-missing" || issue.code === "target-ambiguous");
+  const targetError = targetErrors[0];
+  const reportRef = useRef(result.evaluation.targets);
+  reportRef.current = result.evaluation.targets;
+  useLayout(() => registry.elementAnchors.configure(measuredTargets, measureTargets, context.elevations, !!inspector), [registry, measuredTargets, measureTargets, context.elevations, inspector]);
+  useLayout(() => haveElementTargets && stage.current ? registerTargetScene({ scope: stage.current,
+    refresh: registry.refresh, reports: () => reportRef.current ?? [] }) : undefined, [registry, haveElementTargets]);
   // Editor consumers observe the committed evaluation; no instances, elements or callbacks leave the Scene.
   useLayout(() => {
     if (!inspector) return;
@@ -260,6 +287,8 @@ export function Scene({
       issues: result.evaluation.issues,
       ...(depthAdvisories.length ? { advisories: depthAdvisories } : {}),
       ...(depthReports.length ? { depth: depthReports.map(({ surface, hash, layers, explicitTiers, focus }) => ({ surface, hash, layers, explicitTiers, ...(focus ? { focus } : {}) })) } : {}),
+      ...(result.evaluation.targets ? { targets: result.evaluation.targets } : {}),
+      ...(result.view?.targets ? { viewTargets: result.view.targets } : {}),
       ...(result.evaluation.camera ? { camera: { ...result.evaluation.camera } } : {}),
       ...(result.evaluation.focus ? { focus: { ...result.evaluation.focus } } : {}),
       ...(result.view?.camera ? { view: { ...result.view.camera } } : {}),
@@ -289,6 +318,8 @@ export function Scene({
           data-velora-scene=""
           data-velora-view={viewCamera ? "director" : undefined}
           data-velora-depth-view={depthDisplay && (depthDisplay.tint || depthDisplay.explode !== undefined) ? "" : undefined}
+          data-velora-target-error={targetError?.message}
+          data-velora-target-only={targetError && targetErrors.length === result.evaluation.issues.length ? "" : undefined}
           data-velora-valid={result.evaluation.issues.length===0 ? "true" : "false"}
           style={{
             ...style,

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { CameraDefinition, DepthEvidence, FocusDefinition, Matrix, MotionState, Measurement, SceneIssue, TransformInput } from "../core";
+import type { AnchorReport, CameraDefinition, DepthEvidence, FocusDefinition, Matrix, MotionState, Measurement, SceneIssue, TransformInput } from "../core";
 import type { AnimatableEntry } from "./registry";
 
 /** SOURCE OF TRUTH: useSceneInspector.
@@ -23,6 +23,8 @@ export type SceneSnapshot = {
   issues: readonly SceneIssue[];
   advisories?: readonly SceneIssue[];
   depth?: readonly (DepthEvidence & { explicitTiers?: readonly number[] })[];
+  targets?: readonly AnchorReport[];
+  viewTargets?: readonly AnchorReport[];
   /** The resolved camera and focus (after motion, add clips and constraints): what capture renders. */
   camera?: CameraDefinition;
   focus?: FocusDefinition;

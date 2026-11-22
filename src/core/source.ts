@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AnchorNameSchema } from "./targets";
 import { ANIMATABLE_ID_PATTERN } from "./animatable";
 import { SceneRecipeIdSchema } from "./recipes";
 
@@ -24,6 +25,7 @@ export type SourceOutline = z.output<typeof SourceOutlineSchema>;
 export type SourceNode = SourceOutline["nodes"][number];
 const fields = { file: SourceFileSchema, scene: SceneRecipeIdSchema.optional(), node: z.string().min(1).max(1000), id: z.string().regex(ANIMATABLE_ID_PATTERN).max(80), expectedSha: z.string().regex(/^[a-f0-9]{64}$/).optional() };
 export const SourceRequestSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ ...fields, kind: z.literal("anchor"), id: AnchorNameSchema }),
   z.strictObject({ ...fields, kind: z.literal("wrap"), content: z.boolean().optional() }),
   z.strictObject({ ...fields, kind: z.literal("group"), nodes: z.array(z.string().min(1).max(1000)).min(2).max(100) }),
   z.strictObject({ ...fields, kind: z.literal("expose"), prop: z.string().regex(/^[a-zA-Z][a-zA-Z0-9]{0,63}$/), options: z.array(z.string().min(1).max(64)).min(2).max(32).optional() }),

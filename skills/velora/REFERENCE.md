@@ -29,11 +29,12 @@ Version-pinned to CLI `0.1.2`. Run `velora guide --json` for the canonical `comm
 | `review` | `--composition`, `--platform`, `--project`, `--json` | `velora review --composition launch.composition.json --platform youtube-1080p --json` |
 | `brand` | `--from-css`, `--name`, `--project`, `--json` | `velora brand init --from-css src/index.css --json` |
 | `templates` | `--category`, `--tag`, `--aspect`, `--id`, `--json` | `velora templates ls --json` |
-| `new` | `--template`, `--blueprint`, `--id`, `--component`, `--route`, `--set`, `--aspect`, `--stage`, `--duration`, `--title`, `--project`, `--json` | `velora new scene --template hero-push --id home-hero --route / --json` |
+| `new` | `--template`, `--blueprint`, `--id`, `--component`, `--route`, `--set`, `--aspect`, `--stage`, `--duration`, `--focus`, `--title`, `--project`, `--json` | `velora new scene --template hero-push --id home-hero --route / --json` |
 | `transitions` | `--type`, `--json` | `velora transitions ls --json` |
 | `deliver` | `--composition`, `--targets`, `--out`, `--quality`, `--stage-dpr`, `--parallel`, `--no-cache`, `--no-stream`, `--url`, `--project`, `--json` | `velora deliver --composition launch.composition.json --targets youtube,reels,website-hero --json` |
 | `studio` | `--site`, `--port`, `--check`, `--edit`, `--scene`, `--read-only`, `--project`, `--json` | `velora studio --site http://127.0.0.1:4321 --json` |
-| `edit` | `--scene`, `--composition`, `--at`, `--ops`, `--expect-sha`, `--write`, `--track`, `--value`, `--ease`, `--label`, `--from`, `--onto`, `--preset`, `--size`, `--surface`, `--mode`, `--intensity`, `--hold`, `--duration`, `--breathing`, `--to`, `--layer`, `--title`, `--values`, `--file`, `--node`, `--nodes`, `--id`, `--content`, `--prop`, `--options`, `--expect-recipe-sha`, `--port`, `--url`, `--read-only`, `--no-open`, `--project`, `--json` | `velora edit lens --scene home-hero --preset 200mm-telephoto --hold framing --json` |
+| `anchors` | `--scene`, `--time`, `--url`, `--project`, `--json` | `velora anchors --scene home-hero --time 1200 --json` |
+| `edit` | `--scene`, `--composition`, `--at`, `--ops`, `--expect-sha`, `--write`, `--track`, `--value`, `--ease`, `--label`, `--from`, `--onto`, `--preset`, `--size`, `--surface`, `--mode`, `--intensity`, `--hold`, `--duration`, `--breathing`, `--look-at`, `--focus-follow`, `--frame`, `--fill`, `--weight`, `--to`, `--layer`, `--title`, `--values`, `--file`, `--node`, `--nodes`, `--id`, `--content`, `--prop`, `--options`, `--expect-recipe-sha`, `--port`, `--url`, `--read-only`, `--no-open`, `--project`, `--json` | `velora edit lens --scene home-hero --preset 200mm-telephoto --hold framing --json` |
 | `create` | `--name`, `--blueprint`, `--json` | `velora create my-launch --name Fieldnote --json` |
 | `prompts` | `--id`, `--json` | `velora prompts show --id launch-film --json` |
 | `skills` | `--dir`, `--agent`, `--source`, `--json` | `velora skills install --dir <path> --json` |
@@ -63,6 +64,7 @@ Success: `{ success: true, command, data, warnings?, next? }`. Failure: `{ succe
 | `ERR_PROMPT_NOT_FOUND` | Prompt library | `velora prompts ls --json` |
 | `ERR_DELIVER_TARGET` | Unknown deliver target | `velora deliver --composition <file> --targets youtube --json` |
 | `ERR_SITE_NOT_LOOPBACK`, `ERR_SITE_UNREACHABLE`, `ERR_SITE_REDIRECT_EXTERNAL`, `ERR_STUDIO_FAILED` | Any-site studio | `velora studio --site <url> --check --json` |
+| `ERR_TARGET_MISSING` | A live target is missing or ambiguous | `velora anchors --scene <id> --json` |
 | `ERR_EDIT_INVALID`, `ERR_EDIT_TARGET`, `ERR_EDIT_UNSUPPORTED` | Edit op failed (path names the op) | `velora edit ls --scene <id> --json` |
 | `ERR_EDIT_CONFLICT` | The file changed since it was read | Re-read with `velora edit ls --scene <id> --json`, then apply again |
 | `ERR_PRESET_NOT_FOUND`, `ERR_PRESET_INVALID`, `ERR_PRESET_TARGET` | A project preset is missing, does not match `schemas/preset.schema.json`, or animates another kind of target | `velora edit preset ls --json` |

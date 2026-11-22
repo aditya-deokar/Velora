@@ -299,8 +299,8 @@ export function readingTimeMs(copy: readonly string[]): number {
 }
 /** The recipe definition part (what presentPreview and recipe JSON hold), without layout metadata. */
 export function compositePreview(definition: ShotDefinition | CompositeDefinition): ShotDefinition {
-  const { width, height, scene, motion } = definition;
-  return { width, height, scene, motion };
+  const { width, height, scene, motion, focusTarget } = definition;
+  return { width, height, scene, motion, ...(focusTarget ? { focusTarget } : {}) };
 }
 
 /** Keep authored layout boxes and resize the hosted route inside each box. */

@@ -194,3 +194,14 @@ Use `velora edit lens --scene hero --preset 200mm-telephoto --hold framing` to p
 Chromium uses depth-sorted blur veils behind the focal plane and reversible filters for front layers. RouteFrame applies an SVG blur map to the iframe. A `dof-approximate` advisory reports when the renderer uses terminal-layer filters to preserve lifted children. Studio and `velora inspect --scene hero --at 1200 --json` expose signed focus distance and blur.
 
 Start at subtle intensity and orbit the app enough to see the difference between a card and its controls. Use **Depth view** to inspect tiers. Keep sheen restrained, and angle the light so the contact shadows make the layers legible. Examine the beginning and end of the move before freezing depth. Whole-leaf focus blur is deferred on volumetric surfaces, and projected RouteFrames retain the surface focus blur.
+
+## Lock onto a live element
+
+Run `velora anchors --scene home-hero --time 1200 --json` to see the elements in the running scene. Use a named anchor for an orbit, a scrolling route or a reflowing layout.
+
+```sh
+velora edit lock --scene home-hero --look-at subject:revenue-card --focus-follow subject:revenue-card --json
+velora edit lock --scene home-hero --frame subject:revenue-card --fill 0.6 --json
+```
+
+Review the diff and repeat with `--write` to save. Framing solves camera distance before aim and focus. Set `compose: [33.3, 50]` on a `lookAt` constraint to aim at the left third. Use the same scoped target refs for both ends of a live rack. Review the projected rect and blur at the beginning, middle and end.

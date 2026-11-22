@@ -12,6 +12,9 @@ import {
   type FocusDefinition,
   type NodeDefinition,
 } from "./scene";
+import { applyPoint, type Matrix, type Vec3 } from "./matrix";
+import { describeElementTarget, elementKey, isElementTarget, matchesDepthLayer, resolveTarget, targetPoseKey, type AnchorMeasurements, type AnchorReport, type ElementTarget } from "./targets";
+import type { LiveRack, RackTarget } from "./shots";
 
 /** SOURCE OF TRUTH: evaluateScene, transformToCss, cameraToCss, focusForSurface, sampleFocus, focusMask, uniformFocusBlur, resolveConstraints, projectWorld, screenRay, intersectPlane, surfaceQuad, coverScaleAt.
  * WHAT: camera-space transforms, scene constraints (lookAt, focusFollow) resolved from layout,
@@ -19,7 +22,7 @@ import {
  * WHY: one mathematical definition keeps DOM preview and future output adapters consistent.
  * WHERE: React registration provides untransformed layout measurements; no DOM or transport is imported here.
  */
-export type Matrix = readonly number[];
+export { applyPoint, type Matrix } from "./matrix";
 export type Measurement = {
   width: number;
   height: number;
@@ -43,24 +46,26 @@ export type Evaluation = {
   /** Camera and focus after constraints (equal to the input values without constraints). */
   camera?: CameraDefinition;
   focus?: FocusDefinition;
+  targets?: AnchorReport[];
+  advisories?: SceneIssue[];
 };
-export type SpatialOptions = { channels?: Readonly<Record<string, number>>; anchors?: ReadonlyMap<string, readonly [number, number, number]> };
+type TargetGeometry = { point: Vec3; corners?: Vec3[] };
+export type SpatialOptions = { channels?: Readonly<Record<string, number>>; anchors?: ReadonlyMap<string, readonly [number, number, number]>;
+  elements?: AnchorMeasurements; frame?: Frame; inspectTargets?: readonly ElementTarget[]; rack?: LiveRack;
+  targetGeometry?: (target: SceneConstraint["target"]) => TargetGeometry | undefined };
 /** The stage camera matrix: scene positions minus camera, after stage rotation (cameraToCss convention). */
 export function cameraMatrix(c: Pick<CameraDefinition, "x" | "y" | "z" | "rotateX" | "rotateY" | "rotateZ">): Matrix {
   return matrixFor(TransformSchema.parse({ x: -c.x, y: -c.y, z: -c.z, rotateX: c.rotateX, rotateY: c.rotateY, rotateZ: c.rotateZ }));
 }
-type Vec3 = [number, number, number];
 /** Camera pose in CSS stage coordinates, including the perspective eye's positive Z offset. */
 export function cameraWorld(camera: CameraDefinition): Matrix {
   return multiply(invertAffine(cameraMatrix(camera))!, matrixFor(TransformSchema.parse({ z: camera.perspective })));
 }
-export const applyPoint = (m: Matrix, [x, y, z]: readonly number[]): Vec3 =>
-  [m[0] * x + m[1] * y + m[2] * z + m[3], m[4] * x + m[5] * y + m[6] * z + m[7], m[8] * x + m[9] * y + m[10] * z + m[11]];
 const wrap = (degrees: number) => ((((degrees + 180) % 360) + 360) % 360) - 180;
 /** Pan/tilt about the camera's eye: rotateX/rotateY (degrees, nearest the authored ones, target in
  * front) that put stage point p at frame center, with camera x/y/z re-derived so the eye stays fixed.
  * In camera space the eye sits at (0, 0, perspective), so eye = R^T (c + (0, 0, P)) in stage space. */
-function aimAt(camera: CameraDefinition, p: Vec3, weight: number): CameraDefinition {
+function aimAt(camera: CameraDefinition, p: Vec3, weight: number, frame?: Frame, compose?: readonly [number, number]): CameraDefinition {
   if (weight === 0) return camera;
   const rad = Math.PI / 180;
   const rotationOf = (rotateX: number, rotateY: number) => cameraMatrix({ x: 0, y: 0, z: 0, rotateX, rotateY, rotateZ: camera.rotateZ });
@@ -85,13 +90,53 @@ function aimAt(camera: CameraDefinition, p: Vec3, weight: number): CameraDefinit
     }
   }
   candidates.sort((a, b) => Number(b.front) - Number(a.front) || a.cost - b.cost);
-  const rotateX = camera.rotateX + weight * (candidates[0].rotateX - camera.rotateX);
-  const rotateY = camera.rotateY + weight * (candidates[0].rotateY - camera.rotateY);
-  const r = rotationOf(rotateX, rotateY);
-  const [x, y, z] = applyPoint(r, eye);
-  return { ...camera, rotateX, rotateY, x, y, z: z - camera.perspective };
+  const pose = (rotateX: number, rotateY: number) => {
+    const [x, y, z] = applyPoint(rotationOf(rotateX, rotateY), eye);
+    return { ...camera, rotateX, rotateY, x, y, z: z - camera.perspective };
+  };
+  let { rotateX, rotateY } = candidates[0];
+  if (frame && compose && (compose[0] !== 50 || compose[1] !== 50)) {
+    const [wantX, wantY] = [frame.width * compose[0] / 100, frame.height * compose[1] / 100];
+    const step = 0.001;
+    for (let i = 0; i < 12; i++) {
+      const p0 = projectWorld(pose(rotateX, rotateY), frame, p);
+      const px = projectWorld(pose(rotateX + step, rotateY), frame, p), py = projectWorld(pose(rotateX, rotateY + step), frame, p);
+      if (!p0 || !px || !py) break;
+      const dx = wantX - p0.x, dy = wantY - p0.y;
+      if (Math.hypot(dx, dy) < 1e-7) break;
+      const a = px.x - p0.x, b = py.x - p0.x, c = px.y - p0.y, d = py.y - p0.y, det = a * d - b * c;
+      if (Math.abs(det) < 1e-12) break;
+      rotateX += step * (d * dx - b * dy) / det;
+      rotateY += step * (a * dy - c * dx) / det;
+    }
+  }
+  return pose(camera.rotateX + weight * (rotateX - camera.rotateX), camera.rotateY + weight * (rotateY - camera.rotateY));
 }
-/** Resolve lookAt then focusFollow. `stagePoint` locates a target before the camera transform. */
+
+function frameTarget(camera: CameraDefinition, geometry: TargetGeometry, frame: Frame, fill: number, axis: "width" | "height" | "fit", weight: number): CameraDefinition {
+  if (!weight || !geometry.corners?.length || frame.width <= 0 || frame.height <= 0) return camera;
+  const matrix = cameraMatrix(camera), center = applyPoint(matrix, geometry.point);
+  const ray: Vec3 = [center[0], center[1], center[2] - camera.perspective];
+  const corners = geometry.corners.map(point => applyPoint(matrix, point));
+  if (ray[2] >= -1e-7 || corners.every(p => Math.hypot(p[0] - center[0], p[1] - center[1], p[2] - center[2]) < 1e-7)) return camera;
+  let near = Math.max(1e-6, ...corners.map(p => (p[2] - center[2] + 1e-4) / -ray[2]));
+  const size = (scale: number) => {
+    const pixels = corners.map(p => projectWorld(camera, frame, p.map((n, i) => n + ray[i] * (scale - 1)), "view")!);
+    if (pixels.some(p => !p)) return Infinity;
+    const x = pixels.map(p => p.x), y = pixels.map(p => p.y);
+    const w = (Math.max(...x) - Math.min(...x)) / frame.width, h = (Math.max(...y) - Math.min(...y)) / frame.height;
+    return axis === "width" ? w : axis === "height" ? h : Math.max(w, h);
+  };
+  let far = Math.max(1, near * 2);
+  while (size(far) > fill && far < 1e8) far *= 2;
+  for (let i = 0; i < 48; i++) {
+    const middle = (near + far) / 2;
+    if (size(middle) > fill) near = middle; else far = middle;
+  }
+  const move = weight * (1 - far);
+  return { ...camera, x: camera.x + ray[0] * move, y: camera.y + ray[1] * move, z: camera.z + ray[2] * move };
+}
+/** Resolve framing, aim, then focus. `stagePoint` locates a target before the camera transform. */
 export function resolveConstraints(constraints: readonly SceneConstraint[] | undefined, camera: CameraDefinition, focus: FocusDefinition,
   stagePoint: (target: SceneConstraint["target"]) => Vec3 | undefined, options: SpatialOptions = {}): { camera: CameraDefinition; focus: FocusDefinition } {
   if (!constraints?.length) return { camera, focus };
@@ -104,10 +149,16 @@ export function resolveConstraints(constraints: readonly SceneConstraint[] | und
   };
   let resolvedCamera = camera, resolvedFocus = focus;
   for (const constraint of constraints) {
+    if (constraint.kind !== "frame" || !options.frame || !weightOf(constraint)) continue;
+    const geometry = options.targetGeometry?.(constraint.target);
+    if (geometry) resolvedCamera = frameTarget(resolvedCamera, geometry, options.frame, constraint.fill, constraint.axis ?? "fit", weightOf(constraint));
+    break;
+  }
+  for (const constraint of constraints) {
     if (constraint.kind !== "lookAt") continue;
     const point = stagePoint(constraint.target);
     if (!point) continue;
-    resolvedCamera = aimAt(resolvedCamera, point, weightOf(constraint));
+    resolvedCamera = aimAt(resolvedCamera, point, weightOf(constraint), options.frame, constraint.compose);
   }
   for (const constraint of constraints) {
     if (constraint.kind !== "focusFollow") continue;
@@ -282,18 +333,86 @@ export function evaluateScene(
     stage.set(id, world);
     return world;
   };
-  const resolved = resolveConstraints(parsed.data.constraints, parsed.data.camera, parsed.data.focus, target => {
-    if ("point" in target) return [...target.point] as Vec3;
+  const issues: SceneIssue[] = [];
+  const targets = parsed.data.constraints ?? [];
+  const targetGeometry = (target: SceneConstraint["target"]): TargetGeometry | undefined => {
+    if (isElementTarget(target)) {
+      if (!options.elements) return;
+      const found = resolveTarget(target, options.elements, { nodes: [{ id: target.surface, world: stageWorld(target.surface) }] });
+      return found.ok ? { point: found.point, corners: found.corners } : undefined;
+    }
+    if ("point" in target) return { point: [...target.point] };
     if ("three" in target) {
       const point = options.anchors?.get(target.three);
-      return point ? [...point] as Vec3 : undefined;
+      return point ? { point: [...point] } : undefined;
     }
     const size = measurements[target.surface], [u, v] = target.anchor ?? [0.5, 0.5];
-    return applyPoint(stageWorld(target.surface), [(u - 0.5) * (size?.width ?? 0), (v - 0.5) * (size?.height ?? 0), 0]);
-  }, options);
+    const width = size?.width ?? 0, height = size?.height ?? 0, world = stageWorld(target.surface);
+    const point = (x: number, y: number) => applyPoint(world, [(x - 0.5) * width, (y - 0.5) * height, 0]);
+    return { point: point(u, v), corners: [point(0, 0), point(1, 0), point(1, 1), point(0, 1)] };
+  };
+  const isActive = (constraint: SceneConstraint) => typeof constraint.weight === "number" ? constraint.weight > 0
+    : !constraint.weight || (options.channels?.[constraint.weight.target.id] ?? 1) > 0;
+  const activeFrames = targets.filter(c => c.kind === "frame" && isActive(c));
+  if (options.frame && activeFrames.length > 1) issues.push({ code: "target-frame-conflict", path: "constraints", message: "Only one frame constraint can be active at a time." });
+  const reportMissing = (target: ElementTarget, path: string) => {
+    if (!options.elements) return;
+    const count = options.elements.matches[elementKey(target)]?.length ?? 0;
+    if (count === 1) return;
+    const names = [...new Set(options.elements.entries.flatMap(({ target: other }) => other.surface === target.surface && "anchor" in other ? [other.anchor] : []))];
+    const commonPrefix = (name: string, anchor: string) => {
+      let count = 0;
+      while (count < Math.min(name.length, anchor.length) && name[count] === anchor[count]) count++;
+      return count;
+    };
+    const nearby = names.sort((a, b) => ("anchor" in target ? commonPrefix(b, target.anchor) - commonPrefix(a, target.anchor) : 0) || a.localeCompare(b)).slice(0, 5);
+    issues.push({ code: count ? "target-ambiguous" : "target-missing", path,
+      message: `${describeElementTarget(target)} matched ${count} visible elements. Choose a unique anchor${nearby.length ? ` such as ${nearby.join(", ")}` : ""}.` });
+  };
+  for (const [index, constraint] of targets.entries()) {
+    if (isElementTarget(constraint.target) && isActive(constraint)) reportMissing(constraint.target, `constraints.${index}.target`);
+  }
+  const resolve = (camera: CameraDefinition) => resolveConstraints(targets, camera, parsed.data.focus, target => targetGeometry(target)?.point, { ...options, targetGeometry });
+  let resolved = resolve(parsed.data.camera);
+  const rack = options.rack;
+  if (rack) {
+    const endpoint = (target: RackTarget, path: string) => {
+      if ("depth" in target) return target.depth;
+      if ("layer" in target) {
+        if (!options.elements) return;
+        const layers = options.elements.entries.filter(entry => nodeMap.has(entry.target.surface) && entry.layerMatch && matchesDepthLayer(entry.layerMatch, target.layer)
+          && (!target.surface || entry.target.surface === target.surface));
+        if (layers.length !== 1) {
+          issues.push({ code: layers.length ? "target-ambiguous" : "target-missing", path,
+            message: `Layer ${target.layer} matched ${layers.length} visible elements. Choose a unique scoped anchor.` });
+          return;
+        }
+        const entry = layers[0], key = elementKey(entry.target);
+        const geometry = resolveTarget(entry.target, { entries: [], matches: { [key]: [entry] } }, { nodes: [{ id: entry.target.surface, world: stageWorld(entry.target.surface) }] });
+        return geometry.ok ? geometry.point : undefined;
+      }
+      if (isElementTarget(target)) reportMissing(target, path);
+      if (nodeMap.has(target.surface)) return targetGeometry(target)?.point;
+    };
+    const from = endpoint(rack.from, "motion.rack.from"), to = endpoint(rack.to, "motion.rack.to");
+    const distance = (point: Vec3 | number | undefined, camera: CameraDefinition) =>
+      typeof point === "number" || point === undefined ? point : camera.perspective - applyPoint(cameraMatrix(camera), point)[2];
+    let a = distance(from, resolved.camera), b = distance(to, resolved.camera);
+    if (a !== undefined && b !== undefined && a > 0 && b > 0) {
+      if (rack.breathing?.amount) {
+        const { direction, amount } = rack.breathing;
+        const zoom = (parsed.data.camera.zoom ?? 1) + amount * Math.sign(a - b) * (direction === "in" ? 1 : -1) * rack.progress;
+        resolved = resolve({ ...parsed.data.camera, zoom: Math.max(0.25, Math.min(8, zoom)) });
+        a = distance(from, resolved.camera) ?? a;
+        b = distance(to, resolved.camera) ?? b;
+      }
+      const dip = rack.fStopDip;
+      const fStop = dip ? dip.from + (dip.to - dip.from) * (1 - Math.abs(rack.progress * 2 - 1)) : resolved.focus.fStop;
+      resolved.focus = { ...resolved.focus, fStop, distance: Math.max(resolved.focus.focalLength + 1e-3, a + (b - a) * rack.progress) };
+    }
+  }
   const scene = resolved.camera === parsed.data.camera && resolved.focus === parsed.data.focus ? parsed.data : { ...parsed.data, camera: resolved.camera, focus: resolved.focus };
   const cache = new Map<string, Matrix>();
-  const issues: SceneIssue[] = [];
   for (const [index, constraint] of (scene.constraints ?? []).entries()) {
     if ("three" in constraint.target && !options.anchors?.has(constraint.target.three))
       issues.push({ path: "constraints." + index, message: "3D anchor is unavailable: " + constraint.target.three });
@@ -388,7 +507,58 @@ export function evaluateScene(
       height: m?.height ?? 0,
     };
   });
-  return { nodes, focusDepth, issues, camera: scene.camera, focus: scene.focus };
+  const result: Evaluation = { nodes, focusDepth, issues, camera: scene.camera, focus: scene.focus };
+  if (options.elements && options.frame) {
+    const { elements, frame } = options;
+    const inverse = invertAffine(camera)!;
+    result.targets = elements.entries.flatMap(entry => {
+      const report = reportTarget(entry.target, { entries: [], matches: { [elementKey(entry.target)]: [entry] } }, result, inverse, frame);
+      return report ? [{ ...report, ...((elements.matches[elementKey(entry.target)]?.length ?? 0) > 1 ? { ambiguous: true as const } : {}) }] : [];
+    });
+    for (const target of options.inspectTargets ?? []) {
+      const report = reportTarget(target, elements, result, inverse, frame);
+      if (report && !result.targets.some(existing => targetPoseKey(existing.target) === targetPoseKey(target))) result.targets.push(report);
+    }
+    const advisories: SceneIssue[] = [];
+    for (const [index, constraint] of targets.entries()) {
+      const target = constraint.target;
+      if (!isElementTarget(target) || !isActive(constraint)) continue;
+      const report = reportTarget(target, elements, result, inverse, frame);
+      if (!report) continue;
+      if (!result.targets.some(existing => targetPoseKey(existing.target) === targetPoseKey(target))) result.targets.push(report);
+      const path = `constraints.${index}.target`;
+      const label = describeElementTarget(target);
+      if (!report.visible) advisories.push({ code: "target-out-of-frame", path, message: `${label} is outside the frame.` });
+      if (report.blur > 0.5) advisories.push({ code: "target-soft", path, message: `${label} has ${report.blur.toFixed(2)} px blur.` });
+      if (report.projected && scene.camera.perspective >= frame.height * 200 / 24 && activeFrames.length && Math.max(report.projected.width / frame.width, report.projected.height / frame.height) < 0.04)
+        advisories.push({ code: "target-too-small", path, message: `${label} fills less than 4% of the telephoto frame.` });
+    }
+    if (advisories.length) result.advisories = advisories;
+  }
+  return result;
+}
+
+type XYZ = readonly [number, number, number];
+function bounds(points: readonly (XYZ | { x: number; y: number })[]) {
+  const xs = points.map(p => "x" in p ? p.x : p[0]), ys = points.map(p => "y" in p ? p.y : p[1]);
+  const x = Math.min(...xs), y = Math.min(...ys);
+  return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+}
+function reportTarget(target: ElementTarget, anchors: AnchorMeasurements, evaluation: Evaluation, stageWorld: Matrix, frame: Frame): AnchorReport | undefined {
+  if (!evaluation.camera) return;
+  const resolved = resolveTarget(target, anchors, evaluation);
+  if (!resolved.ok) return;
+  const { camera } = evaluation;
+  const { point, corners, measurement, node } = resolved;
+  const pixels = corners.map(point => projectWorld(camera, frame, point, "view"));
+  const projected = pixels.every(pixel => pixel !== null) ? bounds(pixels) : undefined;
+  const center = projectWorld(camera, frame, point, "view");
+  const depth = camera.perspective - point[2];
+  const stageRect = bounds(corners.map(point => applyPoint(stageWorld, point)));
+  const blur = sampleFocus({ ...node.focus, depth, depthX: 0, depthY: 0 }, 0, 0) * camera.perspective / Math.max(1, depth) * (camera.zoom ?? 1);
+  return { target, ...(measurement.tier ? { tier: measurement.tier } : {}), elevation: measurement.elevation, baseElevation: measurement.baseElevation,
+    rect: { ...stageRect, x: stageRect.x + frame.width / 2, y: stageRect.y + frame.height / 2 }, projected, ...(center ? { point: [center.x, center.y] } : {}),
+    depth, blur, visible: !!projected && projected.x < frame.width && projected.y < frame.height && projected.x + projected.width > 0 && projected.y + projected.height > 0 };
 }
 
 /** SOURCE OF TRUTH: FocusField, focusForSurface, sampleFocus, focusMask, uniformFocusBlur.

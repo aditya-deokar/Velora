@@ -181,13 +181,16 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
   }, [definition?.look]);
   const exportOnly = useMemo(() => { try { return hasExportFinishing(resolveLook(look)); } catch { return false; } }, [look]);
   useTransportKeys(session, fps, !blocked);
+  const targetDiagnostic = session.issues.length > 0 && session.issues.every(issue => issue.code === "target-missing" || issue.code === "target-ambiguous");
+  // The capture bridge checks live target diagnostics after the next seek settles.
+  const captureBlocked = blocked && (!targetDiagnostic || !connection.connected || !!connection.error || !!renderError);
   const captureSeek = useCallback((ms: number) => {
-    if (blocked) {
+    if (captureBlocked) {
       const problem = session.issues[0]?.message;
       throw new Error(problem ? `Correct the scene before exporting. ${problem}` : "Correct the scene before exporting.");
     }
     session.seek(ms);
-  }, [blocked, session.seek, session.issues]);
+  }, [captureBlocked, session.seek, session.issues]);
   // The preview covers its viewport; the editor contains the whole frame so every edge stays editable.
   const scale = definition && size.width && size.height ? (editor ? Math.min : Math.max)(size.width / definition.width, size.height / definition.height) : 1;
   const stateText = !connection.connected ? "Reconnecting to your app…" : connection.error ? "Source needs a correction" :
@@ -195,7 +198,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
     !definition ? "Waiting for a scene" : session.playing ? "Playing" : "Live preview";
   const capture = <SceneErrorBoundary resetKey={resetKey} onError={failure} onReset={() => setRenderError("")}>
     {definition && viewport && createPortal(
-      <div className="velora-canvas" data-velora-capture="scene" data-velora-valid={blocked ? "false" : "true"}
+      <div className="velora-canvas" data-velora-capture="scene" data-velora-valid={captureBlocked ? "false" : "true"}
         data-velora-view={editor && viewCamera ? "director" : undefined} style={{width: "100%", height: "100%"}}>
         <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>
           <LookLayer look={look} timeMs={session.timeMs} width={definition.width} height={definition.height}>
@@ -268,7 +271,7 @@ export function ScenePreview({definition: input, children, title = "Untitled sce
         {/* Recovery stays in the controls; only live scene content enters the capture viewport. */}
         <SceneErrorBoundary resetKey={resetKey} onError={failure} onReset={() => setRenderError("")}>
           {definition && viewport && createPortal(
-            <div className="velora-canvas" data-velora-capture="scene" data-velora-valid={blocked ? "false" : "true"}
+            <div className="velora-canvas" data-velora-capture="scene" data-velora-valid={captureBlocked ? "false" : "true"}
               style={{width: "100%", height: "100%"}}>
               {/* One aspect-preserving cover frame fills preview and capture; overflow is cropped, never stretched. */}
               <div ref={frame} style={{position: "absolute", left: "50%", top: "50%", width: definition.width, height: definition.height, transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin: "center"}}>

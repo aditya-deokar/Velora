@@ -388,7 +388,8 @@ function applyOne(draft: Draft, op: EditOp) {
       catch (error) { throw new EditFault("ERR_EDIT_TARGET", error instanceof Error ? error.message : "The rack targets could not be resolved."); }
       const end = clip.startMs + clip.durationMs!;
       const durationMs = Math.max(end, d.motion?.durationMs ?? 0);
-      if (priorKeys?.length) {
+      const live = clip.source && "rack" in clip.source && clip.source.rack === "element";
+      if (!live && priorKeys?.length) {
         const distance = clip.tracks![0];
         const keys = priorKeys.filter(key => key.timeMs < options.atMs || key.timeMs > end);
         distance.keyframes = [...keys, ...distance.keyframes.map(key => ({ ...key, timeMs: key.timeMs + options.atMs }))]
@@ -398,7 +399,7 @@ function applyOne(draft: Draft, op: EditOp) {
         clip.startMs = 0;
         clip.durationMs = durationMs;
       }
-      if (prior) applyOne(draft, { op: "track.remove", track: { target: { kind: "focus" }, property: "distance" } });
+      if (!live && prior) applyOne(draft, { op: "track.remove", track: { target: { kind: "focus" }, property: "distance" } });
       if (durationMs !== d.motion?.durationMs) applyOne(draft, { op: "motion.set", durationMs });
       applyOne(draft, { op: "clip.set", clip });
       return;

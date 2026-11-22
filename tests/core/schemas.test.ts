@@ -30,6 +30,12 @@ describe("editor JSON Schemas", () => {
     for (const term of ["clips", "stagger", "members", "center-out", "position", "inTangent", "rove", "orient", "links", "delayMs", "constraints", "lookAt", "focusFollow", "anchor"])
       expect(recipe, term).toContain(term);
   });
+  it("documents live locks in reusable schema definitions", () => {
+    const schema = jsonSchemas()["scene-recipe.schema.json"];
+    expect(schema).toHaveProperty("$defs");
+    const recipe = JSON.stringify(schema);
+    for (const term of ["focusTarget", "selector", "plane", "compose", "fill", "focusFollow"]) expect(recipe, term).toContain(term);
+  });
   it("lets recipes and compositions carry a $schema pointer", () => {
     const $schema = "../../../node_modules/@adityadeokar/velora/schemas/scene-recipe.schema.json";
     expect(SceneRecipeSchema.safeParse({ $schema, version: 1, id: "a", title: "A", definition: { scene: { nodes: [] } } }).success).toBe(true);

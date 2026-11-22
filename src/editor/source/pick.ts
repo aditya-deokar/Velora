@@ -3,6 +3,7 @@ import type { SourceDocument, SourceNode } from "../../core";
 export type SourceHint = {
   tag: string; text: string; surface?: string; id?: string; className?: string;
   element?: Element;
+  anchorEdit?: boolean;
   location?: { file: string; line: number; column: number },
 };
 

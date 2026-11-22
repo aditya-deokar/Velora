@@ -183,3 +183,11 @@ Choose a stable, unique layer ID and verify the new wrapper's layout in Edit mod
 Set `definition.depth` by Surface ID or run `velora edit depth --scene home-hero --surface subject --mode auto --intensity subtle --write`. Scene props are a fallback. In rule mode, match `data-velora-anchor`, a CSS selector, or a detected tier. The first rule wins after explicit `data-velora-tier` markup. Use `flat` for a subtree or `none` to exclude one node. Use the `elevation` surface track to animate the tier multiplier from 0 to 1.
 
 Run `velora depth resolve --scene home-hero --url http://127.0.0.1:5173 --write` after checking the shot. This freezes stable anchor or selector matches at the opening frame. Re-enable live depth before freezing a changed layout.
+
+## Give an element a stable target
+
+Add `data-velora-anchor="revenue-card"` to the real DOM element inside a Surface or a same-origin RouteFrame. Choose a name that appears once on visible elements within the Surface, starts with a lowercase letter or digit and contains up to 64 lowercase letters, digits and hyphens.
+
+Inventory live anchors and depth layers with `velora anchors --scene home-hero --time 1200 --json`. The full target ref is `subject:revenue-card`. Where you cannot edit the markup, use a unique selector such as `subject:css(#revenue-card)`. Append `@0.5,0.25` to lock onto a point inside the element. In Studio's Focus tool, Shift-click follows an element and Alt-click offers a source edit for an unnamed JSX element.
+
+To lock the subject when creating a scene, run `velora new scene --template orbit-reveal --id pricing-orbit --route /pricing --focus revenue-card --json`.

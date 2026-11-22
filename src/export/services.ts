@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
 import { parsePng, pngChunk } from "./compositor";
 import type { Browser, Page } from "playwright";
+import type { ElementTarget } from "../core/targets";
 import { CaptureManifestSchema, type CaptureBridge, type CaptureManifest, type ExportVideo, type ResolvedFinishing, type VideoCodec } from "../core/export";
 import { AUDIO_DRIFT_BUDGET_MS, SUPPORTED_AUDIO_CODECS } from "../core/audio";
 import { DEFAULT_LOUDNESS, SFX_PRESETS, sfxGraph, type Loudness, type SfxEntry } from "../core/sound";
@@ -35,6 +36,8 @@ export type CaptureOptions = Pick<ExportVideo, "url" | "width" | "height"> & {
   scale?: number;
   stageScale?: (stage: NonNullable<CaptureManifest["stage"]>) => number;
   transparent?: boolean;
+  measureTargets?: boolean;
+  targetQueries?: readonly ElementTarget[];
 };
 // Frame finishing applied before encoding: sub-frame capture and compositing for one output frame.
 export type FrameProducer = (index: number, timeMs: number, shoot: (timeMs: number) => Promise<Buffer>) => Promise<Buffer>;
@@ -60,6 +63,7 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
     } catch { throw fault("missing-chromium", "Install Playwright and its browser: npm install playwright && npx playwright install chromium."); }
     page = await browser.newPage({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: input.scale ?? 1 });
     await page.addInitScript(() => { (window as Window & { __VELORA_CAPTURING__?: boolean }).__VELORA_CAPTURING__ = true; });
+    if (input.measureTargets) await page.addInitScript(targets => Object.assign(window, { __VELORA_MEASURE_TARGETS__: true, __VELORA_TARGET_QUERIES__: targets }), input.targetQueries ?? []);
     const transparent = !!input.transparent;
     page.setDefaultTimeout(10_000);
     await page.route("**/*", route => {
@@ -78,8 +82,9 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
     const manifest = () => page.evaluate(() => {
       const bridge = (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__;
       const depth = bridge.depth;
+      const anchors = bridge.anchors;
       return { version: bridge.version, durationMs: bridge.durationMs, selector: bridge.selector,
-        ...(bridge.look ? { look: bridge.look } : {}), ...(bridge.stage ? { stage: bridge.stage } : {}), ...(depth?.length ? { depth } : {}) };
+        ...(bridge.look ? { look: bridge.look } : {}), ...(bridge.stage ? { stage: bridge.stage } : {}), ...(depth?.length ? { depth } : {}), ...(anchors?.length ? { anchors } : {}) };
     });
     const assertBridge = async () => {
       if (await waitForBridge() !== "ready") throw fault("missing-capture", "This page has no ready Velora capture bridge. Open a scene with capture enabled and retry.");
@@ -111,11 +116,18 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
       ]);
     });
     let networkSettle: Promise<void> | undefined;
-    const seek = (timeMs: number) => page.evaluate(elapsed => (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__.seek(elapsed), timeMs);
+    const seek = async (timeMs: number, inventory?: boolean) => {
+      try { await page.evaluate(({ timeMs, inventory }) => (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__.seek(timeMs, inventory ? { inventory } : undefined), { timeMs, inventory }); }
+      catch (error) {
+        const target = error instanceof Error && /ERR_TARGET_MISSING: ([^\r\n]+)/.exec(error.message);
+        if (target) throw fault("ERR_TARGET_MISSING", target[1]);
+        throw error;
+      }
+    };
     return {
       close,
-      async manifest(timeMs?: number) {
-        if (timeMs !== undefined) await seek(timeMs);
+      async manifest(timeMs?: number, inventory?: boolean) {
+        if (timeMs !== undefined) await seek(timeMs, inventory);
         return manifest();
       },
       async snapshot(timeMs:number, manifest:CaptureManifest){

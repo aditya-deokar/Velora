@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
-import { evaluateDepthLayers, hashDepthLayers, sampleDepthFocus, type DepthConfig, type DepthEvidence, type DepthFocusSample, type ResolvedDepth } from "../../core/depth";
+import { depthIntensity, evaluateDepthLayers, hashDepthLayers, sampleDepthFocus, type DepthConfig, type DepthEvidence, type DepthFocusSample, type ResolvedDepth } from "../../core/depth";
 import type { CameraDefinition, FocusDefinition, SceneIssue } from "../../core/scene";
 import { multiply, type Matrix } from "../../core/spatial";
-import { layoutReader, type Registry } from "../registry";
+import { layoutPlacement, type Registry } from "../registry";
+import { bindTargetDepth } from "../anchors";
 import { useCaptureSettle } from "../capture";
 import { createStyleLedger, type DepthElement } from "./ledger";
 import { describeDepth, depthMatch, readDepthSnapshot } from "./snapshot";
@@ -32,23 +33,7 @@ function hostRoot(surface: HTMLElement) {
   return app?.hasAttribute("data-velora-app-stage") ? app as HTMLElement : surface;
 }
 function placementFor(surface: HTMLElement, anchor: HTMLElement) {
-  const layout = layoutReader();
-  const outer = layout.origin(surface), inner = layout.origin(anchor);
-  let x = inner.x - outer.x, y = inner.y - outer.y, sx = 1, sy = 1;
-  // AppStage owns a top-left 2D fit transform. Include it in the layout plane,
-  // so the iframe's CSS pixels project through the fitted Surface like its pixels do.
-  for (let node: HTMLElement | null = anchor; node && node !== surface; node = node.parentElement) {
-    if (!node.hasAttribute("data-velora-app-stage")) continue;
-    const view = node.ownerDocument.defaultView;
-    const css = view?.getComputedStyle(node).transform;
-    if (!view || !css || css === "none") continue;
-    const matrix = new view.DOMMatrixReadOnly(css);
-    const base = layout.origin(node);
-    x = base.x - outer.x + (x - base.x + outer.x) * matrix.a + matrix.e;
-    y = base.y - outer.y + (y - base.y + outer.y) * matrix.d + matrix.f;
-    sx *= matrix.a;
-    sy *= matrix.d;
-  }
+  const { x, y, sx, sy } = layoutPlacement(surface, anchor);
   return { x, y, sx, sy, css: `translate(${px(x)}, ${px(y)}) scale(${sx}, ${sy})` };
 }
 
@@ -87,6 +72,8 @@ function mountDepth(depth: SurfaceDepth, target: HTMLElement, proxyRoot?: HTMLDi
   let usable = new Map<number, { element: DepthElement; volume: boolean; radius: string; color: string;
     origin: [number, number]; paintedZ?: number; proxy?: ReturnType<typeof makeDepthProxy> }>();
   let pose: DepthPose = depth;
+  const unbindTargets = bindTargetDepth(target, () => layers.map((layer, index) => ({ element: usable.get(layer.order)!.element, z: layer.z * depthIntensity(pose.intensity), base: (layer.z - layer.localZ) * depthIntensity(pose.intensity), tier: layer.tier, match: resolved.layers[index]?.match })),
+    route ? read => ledger.withoutTransform(read) : undefined);
   const optics = createLayerFocus(target, ledger, proxyRoot);
   const report = () => {
     const issues = [...diagnostics, ...contested.values(), ...(approximate ? [issue("dof-approximate", "Terminal layers approximate focus where a depth veil would flatten or blur the wrong region.")] : [])];
@@ -135,6 +122,7 @@ function mountDepth(depth: SurfaceDepth, target: HTMLElement, proxyRoot?: HTMLDi
     resize?.observe(root!);
     if (surfaceRoot !== root && surfaceRoot.ownerDocument === doc) resize?.observe(surfaceRoot);
     for (const { element } of usable.values()) resize?.observe(element);
+    registry.elementAnchors.schedule();
   }
   const paint = () => {
     if (disposed) return;
@@ -229,13 +217,15 @@ function mountDepth(depth: SurfaceDepth, target: HTMLElement, proxyRoot?: HTMLDi
     ledger.revert();
     proxyRoot?.replaceChildren();
     unpublish();
+    unbindTargets();
+    registry.elementAnchors.schedule();
     controllers.delete(dispose);
     registry.reportDepth(token);
   }
   view.addEventListener("pagehide", dispose);
   controllers.add(dispose);
   paint();
-  return { update(next: DepthPose) { pose = next; paint(); }, flush, dispose };
+  return { update(next: DepthPose) { if (next.intensity !== pose.intensity) registry.elementAnchors.schedule(); pose = next; paint(); }, flush, dispose };
 }
 
 function useDepth(depth: SurfaceDepth | undefined, target: RefObject<HTMLElement | null>, proxyRoot?: RefObject<HTMLDivElement | null>, doc?: Document, route = false, finishCapture?: () => void) {
