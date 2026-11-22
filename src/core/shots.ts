@@ -1,12 +1,13 @@
 import { z } from "zod";
-import { CameraSchema, FocusSchema, SceneConstraintSchema, ConstraintTargetSchema, type SceneConstraint } from "./scene";
-import { evaluateMotion, withAdditive, type MotionInput, type MotionClipInput, type MotionState } from "./motion";
-import { matrixFor, multiply, focusForSurface, sampleFocus, cameraMatrix as stageCamera, resolveConstraints, projectWorld, type Matrix } from "./spatial";
+import { CameraSchema, FocusSchema, SceneConstraintSchema, ConstraintTargetSchema, TransformSchema, PERSPECTIVE_MAX, type SceneConstraint } from "./scene";
+import { evaluateMotion, withAdditive, withCameraAdditive, type MotionInput, type MotionClipInput, type MotionState } from "./motion";
+import { applyPoint, evaluateScene, matrixFor, multiply, focusForSurface, sampleFocus, cameraMatrix as stageCamera, resolveConstraints, projectWorld, type Matrix } from "./spatial";
 import { EasingSchema } from "./easing";
-import { lensFor } from "./lens";
+import { framingDistance, lensFor, lensPreset, perspectiveForFocalLength } from "./lens";
 import type { EasingInput } from "./easing";
+import type { PreviewDefinitionInput } from "./preview";
 
-/** SOURCE OF TRUTH: ShotInputSchema, buildShot, framingReport, projectSubject, projectPoints, ASPECT_FRAMES, buildOrbitRig.
+/** SOURCE OF TRUTH: ShotInputSchema, buildShot, framingReport, projectSubject, projectPoints, ASPECT_FRAMES, buildOrbitRig, buildRackFocus.
  * WHAT: the camera-move vocabulary (push, survey, orbit, crane, rise, dolly zoom, rack focus,
  * scroll-through, macro, float loop, handheld, whip) compiled into plain scene + motion data,
  * plus a pure framing report that projects the subject through the canonical camera math.
@@ -76,7 +77,7 @@ const cameraMatrix = (c: Camera): Matrix => stageCamera(c);
 /** Camera and focus at one time: tracks, add-clip offsets, then constraints. The subject Surface is
  * centered on the stage with the given size; point targets need no measurement. */
 function resolvedLens(definition: Pick<ShotDefinition, "scene" | "motion">, state: MotionState, subject?: { width: number; height: number }) {
-  const camera = CameraSchema.parse(withAdditive({ ...definition.scene.camera, ...state.camera }, state.additive?.camera, CameraSchema.parse({})));
+  const camera = CameraSchema.parse(withCameraAdditive({ ...definition.scene.camera, ...state.camera }, state.additive?.camera));
   const focus = FocusSchema.parse(withAdditive({ ...definition.scene.focus, ...state.focus }, state.additive?.focus, FocusSchema.parse({})));
   const constraints = definition.scene.constraints?.map(constraint => SceneConstraintSchema.parse(constraint));
   return resolveConstraints(constraints, camera, focus, target => {
@@ -87,11 +88,6 @@ function resolvedLens(definition: Pick<ShotDefinition, "scene" | "motion">, stat
   }, { channels: state.channels });
 }
 const rotation = (c: Pick<Camera, "rotateX" | "rotateY" | "rotateZ">) => cameraMatrix({ x: 0, y: 0, z: 0, ...c });
-// Camera distance that makes the subject's limiting side fill `fill` of the frame (at the stage center plane).
-function distanceFor(fill: number, perspective: number, frame: { width: number; height: number }, subject: { width: number; height: number }): number {
-  const scale = fill / Math.max(subject.width / frame.width, subject.height / frame.height);
-  return perspective * (1 / scale - 1);
-}
 // Camera-axis depth of a subject point (subject-center coordinates) for a camera pose.
 function depthAt(c: Camera, perspective: number, point: readonly [number, number]): number {
   return perspective - apply(cameraMatrix(c), [point[0], point[1], 0])[2];
@@ -105,6 +101,101 @@ const camera = { kind: "camera" as const };
 const focus = { kind: "focus" as const };
 const round = (value: number) => Math.round(value * 100) / 100;
 
+const rackUnit = z.number().min(0).max(1);
+const transformFields = TransformSchema.parse({});
+export const RackTargetSchema = z.union([
+  z.strictObject({ depth: z.number().finite().positive() }),
+  z.strictObject({ surface: z.string().min(1).max(128), anchor: z.tuple([rackUnit, rackUnit]) }),
+  z.strictObject({ layer: z.string().min(1).max(4096), surface: z.string().min(1).max(128).optional() }),
+]);
+export type RackTarget = z.output<typeof RackTargetSchema>;
+export const RackFocusSchema = z.strictObject({
+  from: RackTargetSchema, to: RackTargetSchema, atMs: z.number().nonnegative().max(120_000), durationMs: z.number().positive().max(120_000),
+  id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,48}$/).optional(), ease: EasingSchema.optional(), hold: z.number().nonnegative().max(120_000).optional(),
+  breathing: z.strictObject({ amount: z.number().min(0).max(0.03), direction: z.enum(["in", "out"]) }).optional(),
+  fStopDip: z.strictObject({ from: FocusSchema.shape.fStop.removeDefault(), to: FocusSchema.shape.fStop.removeDefault() }).optional(),
+  depths: z.strictObject({ from: z.number().positive(), to: z.number().positive() }).optional(),
+});
+export type RackFocusInput = z.input<typeof RackFocusSchema>;
+
+export function rackTargetFromText(text: string) {
+  const shorthand = /^([^@]+)@([^,]+),([^,]+)$/.exec(text);
+  const target = text.startsWith("depth:") ? { depth: Number(text.slice(6)) }
+    : text.startsWith("layer:") ? { layer: text.slice(6) }
+    : shorthand ? { surface: shorthand[1], anchor: [Number(shorthand[2]), Number(shorthand[3])] } : undefined;
+  const parsed = RackTargetSchema.safeParse(target);
+  return parsed.success ? parsed.data : undefined;
+}
+
+export function rackLayerDepth(target: RackTarget, entries: readonly import("./depth").DepthEvidence[]) {
+  if (!("layer" in target)) return undefined;
+  const samples = entries.flatMap(entry => target.surface && target.surface !== entry.surface ? [] : entry.layers.flatMap(({ match }, index) => {
+    const matches = "anchor" in match ? match.anchor === target.layer : match.selector === target.layer || match.selector === `#${target.layer}`;
+    return matches && entry.focus?.[index] ? [entry.focus[index].depth] : [];
+  }));
+  return samples.length === 1 ? samples[0] : undefined;
+}
+
+export function rackSurfaceDepth(definition: PreviewDefinitionInput, target: RackTarget, timeMs: number) {
+  if ("depth" in target) return target.depth;
+  if (!("anchor" in target)) return undefined;
+  const state = evaluateMotion(definition.motion ?? { durationMs: 0, tracks: [] }, timeMs);
+  const frame = { width: definition.width ?? 1400, height: definition.height ?? 980 };
+  const stage = definition.stage ?? frame;
+  const fit = Math.min(frame.width / stage.width, frame.height / stage.height);
+  const size = { width: stage.width * fit, height: stage.height * fit };
+  const evaluation = evaluateScene({ ...definition.scene,
+    camera: withCameraAdditive({ ...definition.scene.camera, ...state.camera }, state.additive?.camera),
+    focus: withAdditive({ ...definition.scene.focus, ...state.focus }, state.additive?.focus, FocusSchema.parse({})),
+    nodes: definition.scene.nodes.map(node => ({ ...node, transform: withAdditive({ ...node.transform,
+      ...Object.fromEntries(Object.entries(state.surfaces[node.id] ?? {}).filter(([key]) => key === "position" || key in transformFields)),
+    }, Object.fromEntries(Object.entries(state.additive?.surfaces?.[node.id] ?? {}).filter(([key]) => key === "position" || key in transformFields)), transformFields) })),
+  }, Object.fromEntries(definition.scene.nodes.map(node => [node.id, size])), { channels: state.channels });
+  const node = evaluation.nodes.find(node => node.id === target.surface);
+  return node && evaluation.camera ? evaluation.camera.perspective - applyPoint(node.world, [size.width * (target.anchor[0] - 0.5), size.height * (target.anchor[1] - 0.5), 0])[2] : undefined;
+}
+
+/** One physical pull and its additive breathing child share the same local clock. */
+export function buildRackFocus(input: RackFocusInput, resolve?: (target: RackTarget, timeMs: number) => number | undefined): MotionClipInput {
+  const params = RackFocusSchema.parse(input);
+  const { atMs, durationMs, ease = "cinematic", breathing, fStopDip, hold = 0 } = params;
+  const targetDepth = (key: "from" | "to", timeMs: number) => {
+    const target = params[key];
+    return "depth" in target ? target.depth : params.depths?.[key] ?? resolve?.(target, timeMs);
+  };
+  const from = targetDepth("from", atMs), to = targetDepth("to", atMs + durationMs);
+  if (from === undefined || to === undefined || !Number.isFinite(from) || !Number.isFinite(to) || from <= 0 || to <= 0)
+    throw new RangeError("Rack targets must resolve to positive camera-axis depths.");
+  const id = params.id ?? `rack-${String(atMs).replace(".", "-")}`;
+  const keys = (start: number, end: number) => [{ timeMs: 0, value: start, easing: ease }, { timeMs: durationMs, value: end, easing: ease },
+    ...(hold ? [{ timeMs: durationMs + hold, value: end, easing: ease }] : [])];
+  const tracks: NonNullable<MotionClipInput["tracks"]> = [{ target: focus, property: "distance", keyframes: keys(from, to) }];
+  if (fStopDip) tracks.push({ target: focus, property: "fStop", keyframes: [
+    { timeMs: 0, value: fStopDip.from, easing: ease }, { timeMs: durationMs / 2, value: fStopDip.to, easing: ease },
+    { timeMs: durationMs, value: fStopDip.from, easing: ease },
+  ] });
+  const amount = breathing ? breathing.amount * (breathing.direction === "in" ? 1 : -1) * Math.sign(from - to) : 0;
+  return { id, label: "Rack focus", startMs: atMs, durationMs: durationMs + hold, tracks,
+    ...(amount ? { clips: [{ id: `${id}-breathing`, label: "Lens breathing", startMs: 0, mode: "add", tracks: [{ target: camera, property: "zoom", keyframes: keys(0, amount) }] }] } : {}),
+    source: { rack: "focus", version: 1, params: { ...params, depths: { from, to } } } };
+}
+
+export function rackReport(clip: MotionClipInput, lens: z.input<typeof FocusSchema>, authoredZoom = 1) {
+  const params = RackFocusSchema.parse(clip.source && "rack" in clip.source ? clip.source.params : undefined);
+  const from = params.depths!.from, to = params.depths!.to;
+  const motion = { durationMs: clip.startMs + clip.durationMs!, speed: 1, tracks: [], clips: [clip] };
+  const endpoint = (timeMs: number, fixed: number, other: number) => {
+    const state = evaluateMotion(motion, timeMs);
+    const optics = FocusSchema.parse({ ...lens, ...state.focus });
+    const zoom = withCameraAdditive({ zoom: authoredZoom }, state.additive?.camera).zoom;
+    const blur = (depth: number) => sampleFocus({ ...optics, depth, depthX: 0, depthY: 0, scale: 1, perspective: 0 }, 0, 0) * zoom;
+    return { sharpBlur: blur(fixed), otherBlur: blur(other), zoom };
+  };
+  const start = endpoint(params.atMs, from, to), end = endpoint(params.atMs + params.durationMs, to, from);
+  const breathing = Math.abs(end.zoom - start.zoom);
+  return { start, end, breathing, pass: start.sharpBlur < 0.5 && end.sharpBlur < 0.5 && Math.abs(breathing - (from === to ? 0 : params.breathing?.amount ?? 0)) <= 0.001 };
+}
+
 /** Compile one camera move into a scene + motion definition (speed 1: authored time is playback time). */
 export function buildShot(input: ShotInput, { stageFit = false }: { stageFit?: boolean } = {}): ShotDefinition {
   const shot = ShotInputSchema.parse(input);
@@ -112,10 +203,13 @@ export function buildShot(input: ShotInput, { stageFit = false }: { stageFit?: b
   const subject = shot.subject ?? frame.subject;
   const a = level[shot.intensity];
   const durationMs = shot.durationMs ?? defaults[shot.kind].durationMs;
-  const lens = lensFor(shot.lens ?? defaults[shot.kind].lens, frame.height);
+  const mm = shot.lens ?? defaults[shot.kind].lens;
+  const perspective = perspectiveForFocalLength(mm, frame.height);
+  const lens = perspective > 10_000 ? { perspective, focus: { focalLength: lensPreset("200mm-telephoto", { frameHeight: frame.height }).focus.focalLength * mm / 200 } }
+    : lensFor(mm, frame.height);
   const p = lens.perspective;
   const end = durationMs;
-  const fit = (fill: number) => round(distanceFor(fill, p, frame, subject));
+  const fit = (fill: number) => round(framingDistance(p, frame, subject, fill));
   const region = shot.focusRegion ?? { x: subject.width / 3, y: subject.height / 3, width: subject.width / 3, height: subject.height / 3 };
   const target = regionCenter(region, subject);
   let pose: Camera = { x: 0, y: 0, z: fit(0.78), rotateX: 10, rotateY: -16, rotateZ: 0 };
@@ -155,7 +249,7 @@ export function buildShot(input: ShotInput, { stageFit = false }: { stageFit?: b
       const fill = 1.1 + 0.1 * a;
       // A shallower stage fits the same viewport at a closer distance. Keep the rail
       // at least as far back as the original framing so the oblique near edge stays clear.
-      const base = { x: 0, y: 0, z: stageFit ? Math.max(fit(fill), round(distanceFor(fill, p, frame, frame.subject))) : fit(fill) };
+      const base = { x: 0, y: 0, z: stageFit ? Math.max(fit(fill), round(framingDistance(p, frame, frame.subject, fill))) : fit(fill) };
       const at = (offset: number): Camera => ({ x: round(base.x + axis[0] * offset), y: round(base.y + axis[1] * offset), z: round(base.z + axis[2] * offset), ...angle });
       const from = at(-travel), to = at(travel);
       pose = from;
@@ -282,7 +376,7 @@ export type FramingReport = { samples: FramingSample[]; minSubjectVisible: numbe
  * the frame, camera-plane margin (fraction of perspective) and depth-of-field blur at the region. */
 export function framingReport(definition: ShotDefinition, subject: { width: number; height: number }, options: {
   samples?: number; focusRegion?: Region; times?: number[];
-  poseAt?: (timeMs: number) => { world: Matrix; perspective: number; focus: z.output<typeof FocusSchema> };
+  poseAt?: (timeMs: number) => { world: Matrix; perspective: number; zoom?: number; focus: z.output<typeof FocusSchema> };
 } = {}): FramingReport {
   const motion = definition.motion;
   const duration = motion.durationMs / (motion.speed ?? 0.5);
@@ -297,7 +391,7 @@ export function framingReport(definition: ShotDefinition, subject: { width: numb
     const m = pose ? pose.world : cameraMatrix(c as z.output<typeof CameraSchema>);
     const project = ([x, y]: readonly [number, number]) => {
       const [wx, wy, wz] = apply(m, [x, y, 0]);
-      const k = c.perspective / (c.perspective - wz);
+      const k = c.perspective / (c.perspective - wz) * (c.zoom ?? 1);
       return { inside: wz < c.perspective && Math.abs(wx * k) <= definition.width / 2 && Math.abs(wy * k) <= definition.height / 2, margin: (c.perspective - wz) / c.perspective };
     };
     const visible = (points: readonly (readonly [number, number])[]) => points.filter(point => project(point).inside).length / points.length;
@@ -307,7 +401,7 @@ export function framingReport(definition: ShotDefinition, subject: { width: numb
       timeMs,
       subjectVisible: visible(subjectGrid),
       regionVisible: visible(regionGrid),
-      regionBlur: sampleFocus(field, center[0], center[1]),
+      regionBlur: sampleFocus(field, center[0], center[1]) * (c.zoom ?? 1),
       depthMargin: Math.min(...subjectGrid.map(point => project(point).margin)),
     };
   });
@@ -344,7 +438,7 @@ export const OrbitRigSchema = z.strictObject({
   fromDeg: z.number().finite().min(-720).max(720),
   toDeg: z.number().finite().min(-720).max(720),
   height: z.number().finite().min(-20_000).max(20_000).default(0),
-  perspective: z.number().finite().min(100).max(10_000).default(1400),
+  perspective: z.number().finite().min(100).max(PERSPECTIVE_MAX).default(1400),
   startMs: z.number().finite().nonnegative().default(0),
   durationMs: z.number().finite().positive().max(120_000),
   ease: EasingSchema.default("cinematic"),

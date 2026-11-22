@@ -130,6 +130,8 @@ The generated binding imports `Revenue` and wraps it in `Surface id="subject"`. 
 
 ## Craft Notes
 
+Use `--set lens=200` for a telephoto framing pass, including 4:5 and 9:16. Lens presets applied through Edit mode also set the physical focus focal length and aperture.
+
 Template IDs name techniques, not people. Each one packages a camera convention described in `velora-cinematography` (push-in, survey, orbit, crane, rack focus, dolly zoom, whip) or a motion-graphics convention described in `velora-motion-design`, with restrained defaults. They are starting points: the brief and the person's direction override them.
 
 ## Related Skills

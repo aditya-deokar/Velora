@@ -6,6 +6,11 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
 
 ## [Unreleased]
 
+### Added — Cinema optics and rack focus (v2.1 Phase 14)
+
+- Apply physical 24, 50, 85 and 200 mm lens presets with framing or position hold. Animate camera zoom at a fixed viewpoint.
+- Rack focus between depth layers or explicit targets with synchronized lens breathing. Studio and the CLI expose signed focus distance, per-layer blur, and exact edit undo.
+
 ### Added — UI depth and light (v2.1 Phase 13)
 
 - Opt into automatic or rule-based depth tiers with camera-reactive parallax, edges, contact shadows and sheen. The shared style ledger restores host styles when depth ends.

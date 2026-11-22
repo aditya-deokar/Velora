@@ -691,6 +691,7 @@ export type InspectData =
       assets: { count: number; ids: string[] }; sharedComponents: string[] }
   | { kind: "scene"; id: string; title: string; source: string; binding: string;
       width: number; height: number; durationMs: number; nodeCount: number; nodeIds: string[];
+      hasDepth?: true;
       stage?: Stage & ReturnType<typeof sceneStageBudget> & { advisory?: "stage-undersampled" };
       hasSnapshot: boolean; snapshotTimeMs?: number; sharedComponents: string[]; issues: SceneIssue[] }
   | { kind: "composition"; file: string; composition: Composition;
@@ -737,6 +738,7 @@ export async function executeInspectCommand(input: unknown, context: { root: str
         kind: "scene", id: selected.id, title: selected.title, source: selected.source, binding: selected.binding,
         width: metadata.width, height: metadata.height, durationMs: metadata.durationMs, nodeCount: metadata.nodeCount,
         nodeIds: selected.definition.scene.nodes.map((node) => node.id),
+        ...(Object.values(selected.definition.depth ?? {}).some(config => config.mode !== "off") ? { hasDepth: true as const } : {}),
         hasSnapshot: metadata.hasSnapshot, ...(metadata.snapshotTimeMs !== undefined ? { snapshotTimeMs: metadata.snapshotTimeMs } : {}),
         ...(stage && budget ? { stage: { ...stage, ...budget, ...(budget.undersampled ? { advisory: "stage-undersampled" } : {}) } } : {}),
         sharedComponents: await discoverSharedComponents(root), issues: catalog.issues,

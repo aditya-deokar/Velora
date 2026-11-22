@@ -49,7 +49,7 @@ export function CameraMoves({ onClose }: { onClose(): void }) {
         const evaluated = sceneAt(draft, snapshot, at);
         const subjectNode = evaluated.nodes.find(entry => entry.id === selected);
         if (!subjectNode || !evaluated.camera || !evaluated.focus) throw new Error("The selected layer could not be evaluated across the move.");
-        return { world: subjectNode.world, perspective: evaluated.camera.perspective, focus: evaluated.focus };
+        return { world: subjectNode.world, perspective: evaluated.camera.perspective, zoom: evaluated.camera.zoom, focus: evaluated.focus };
       } });
       return { ops, verdict: shotVerdict(report, { lens, intensity }), extendsScene: endMs > (doc.definition.motion?.durationMs ?? 0) };
     } catch (error) { return { error: (error as Error).message }; }

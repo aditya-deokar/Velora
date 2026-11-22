@@ -7,6 +7,10 @@ import { presentPreview } from "./preview";
 import { applyCompositionOps, compositionEditVariants, isCompositionOp, type CompositionEditResult } from "./composition-edit";
 import { StageSchema } from "./stage";
 import { DepthConfigSchema, DepthRuleSchema, ResolvedDepthSchema, hashDepthLayers } from "./depth";
+import { applyLens, LensHoldSchema, LensPresetSchema } from "./lens";
+import { buildRackFocus, rackSurfaceDepth, RackFocusSchema } from "./shots";
+import type { PreviewDefinitionInput } from "./preview";
+import type { SceneIssue } from "./scene";
 
 /** SOURCE OF TRUTH: EditOpSchema, applyEdits.
  * WHAT: the one typed edit vocabulary (keyframes, tracks, scene base, clips, staggers, links, constraints,
@@ -38,7 +42,7 @@ const raw = z.record(z.string(), z.unknown());
 const FIELD_PATHS = ["definition.scene.camera", "definition.scene.focus", "definition.scene.constraints", "definition.look", "definition.stage", "definition.depth", "definition.motion",
   "definition.motion.durationMs", "definition.motion.speed", "definition.motion.loop", "definition.motion.clips", "definition.motion.links", "editor"] as const;
 // Ops that land with later phases (12-16); they validate as shapes and return ERR_EDIT_UNSUPPORTED.
-export const DEFERRED_EDIT_OPS = Object.freeze(["lens.apply", "rack.add", "rig.apply", "rig.update"] as const);
+export const DEFERRED_EDIT_OPS = Object.freeze(["rig.apply", "rig.update"] as const);
 const depthSurface = z.string().min(1).max(128);
 const depthRuleIndex = z.number().int().min(0).max(255);
 export const EditOpSchema = z.discriminatedUnion("op", [
@@ -58,7 +62,7 @@ export const EditOpSchema = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("track.options"), track: TrackAddressSchema, interpolation: nullable(z.enum(["segments", "smooth"])), ease: nullable(EasingSchema),
     noise: nullable(raw), rove: nullable(z.boolean()), orient: nullable(raw), unit: nullable(z.string().max(4)) }),
   // Scene base
-  z.strictObject({ op: z.literal("camera.set"), property: z.enum(["x", "y", "z", "perspective", "rotateX", "rotateY", "rotateZ"]), value: z.union([finite, z.null()]) }),
+  z.strictObject({ op: z.literal("camera.set"), property: z.enum(["x", "y", "z", "perspective", "zoom", "rotateX", "rotateY", "rotateZ"]), value: z.union([finite, z.null()]) }),
   z.strictObject({ op: z.literal("focus.set"), property: z.enum(["distance", "fStop", "focalLength", "maxBlur"]), value: z.union([finite, z.null()]) }),
   z.strictObject({ op: z.literal("node.ensure"), id: z.string().min(1).max(128), parentId: z.string().min(1).max(128).optional() }),
   z.strictObject({ op: z.literal("node.parent"), id: z.string().min(1).max(128), parentId: z.string().min(1).max(128).nullable() }),
@@ -70,6 +74,8 @@ export const EditOpSchema = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("depth.rule.add"), surface: depthSurface, rule: DepthRuleSchema, index: depthRuleIndex.optional() }),
   z.strictObject({ op: z.literal("depth.rule.remove"), surface: depthSurface, index: depthRuleIndex }),
   z.strictObject({ op: z.literal("depth.resolve"), surface: depthSurface, resolved: ResolvedDepthSchema }),
+  z.strictObject({ op: z.literal("lens.apply"), preset: LensPresetSchema, hold: LensHoldSchema.optional() }),
+  RackFocusSchema.extend({ op: z.literal("rack.add") }),
   // Structure
   z.strictObject({ op: z.literal("clip.create"), id: z.string().min(1).max(64), refs: z.array(TrackAddressSchema).max(1000).optional(), tracks: z.array(raw).max(1000).optional(), startMs: time.optional(), label: z.string().max(80).optional() }),
   z.strictObject({ op: z.literal("clip.update"), id: z.string().min(1).max(64), startMs: time.optional(), speed: nullable(finite), inMs: nullable(time), durationMs: nullable(finite.positive()),
@@ -100,7 +106,7 @@ export const EditOpSchema = z.discriminatedUnion("op", [
 export type EditOp = z.output<typeof EditOpSchema>;
 export type EditOpInput = z.input<typeof EditOpSchema>;
 export type EditIssue = { code: "ERR_EDIT_INVALID" | "ERR_EDIT_TARGET" | "ERR_EDIT_UNSUPPORTED" | "ERR_COMPOSITION_INVALID" | "ERR_TIMELINE_INVALID" | "ERR_TIMELINE_OVERLAP" | "ERR_TRANSITION_INVALID"; path: string; message: string; hint?: string };
-export type EditResult = { ok: true; recipe: Record<string, unknown>; inverse: EditOp[]; touched: string[] } | { ok: false; issues: EditIssue[] };
+export type EditResult = { ok: true; recipe: Record<string, unknown>; inverse: EditOp[]; touched: string[]; advisories?: SceneIssue[] } | { ok: false; issues: EditIssue[] };
 
 type Doc = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 class EditFault extends Error {
@@ -156,6 +162,7 @@ type Capture = (op: EditOp) => void;
 class Draft {
   readonly inverse: EditOp[][] = [];
   readonly touched = new Set<string>();
+  readonly advisories: SceneIssue[] = [];
   private current: EditOp[] = [];
   constructor(readonly doc: Doc) {}
   begin() { this.current = []; }
@@ -352,6 +359,48 @@ function applyOne(draft: Draft, op: EditOp) {
       const s = scene(doc);
       s[key] ??= {};
       set(s[key], op.property, op.value);
+      return;
+    }
+    case "lens.apply": {
+      try {
+        const edit = applyLens(definition(doc) as PreviewDefinitionInput, op.preset, { hold: op.hold });
+        for (const compiled of edit.ops) applyOne(draft, compiled);
+        draft.advisories.push(...edit.issues);
+      } catch (error) { throw new EditFault("ERR_EDIT_INVALID", error instanceof Error ? error.message : "Invalid lens change."); }
+      return;
+    }
+    case "rack.add": {
+      const { op: _, ...options } = op;
+      const d = definition(doc);
+      const isFocusDistance = (track: Doc) => track.target.kind === "focus" && track.property === "distance";
+      const prior = (d.motion?.tracks as Doc[] | undefined)?.find(isFocusDistance);
+      const id = options.id ?? "rack-focus";
+      const existing = findClip(d.motion?.clips, id)?.clip;
+      const previousRack = existing?.source?.rack ? RackFocusSchema.safeParse(existing.source.params) : undefined;
+      let priorKeys = prior?.keyframes as Doc[] | undefined;
+      if (!priorKeys && previousRack?.success) {
+        const { atMs, durationMs, hold = 0 } = previousRack.data;
+        priorKeys = (existing!.tracks?.find(isFocusDistance)?.keyframes ?? []).map((key: Doc) => ({ ...key, timeMs: key.timeMs + existing!.startMs }))
+          .filter((key: Doc) => key.timeMs < atMs || key.timeMs > atMs + durationMs + hold);
+      }
+      let clip: ReturnType<typeof buildRackFocus>;
+      try { clip = buildRackFocus({ ...options, id }, (target, time) => rackSurfaceDepth(d as PreviewDefinitionInput, target, time / (d.motion?.speed ?? 0.5))); }
+      catch (error) { throw new EditFault("ERR_EDIT_TARGET", error instanceof Error ? error.message : "The rack targets could not be resolved."); }
+      const end = clip.startMs + clip.durationMs!;
+      const durationMs = Math.max(end, d.motion?.durationMs ?? 0);
+      if (priorKeys?.length) {
+        const distance = clip.tracks![0];
+        const keys = priorKeys.filter(key => key.timeMs < options.atMs || key.timeMs > end);
+        distance.keyframes = [...keys, ...distance.keyframes.map(key => ({ ...key, timeMs: key.timeMs + options.atMs }))]
+          .sort((a, b) => a.timeMs - b.timeMs) as typeof distance.keyframes;
+        for (const track of clip.tracks!.slice(1)) for (const key of track.keyframes) key.timeMs += options.atMs;
+        for (const child of clip.clips ?? []) child.startMs += options.atMs;
+        clip.startMs = 0;
+        clip.durationMs = durationMs;
+      }
+      if (prior) applyOne(draft, { op: "track.remove", track: { target: { kind: "focus" }, property: "distance" } });
+      if (durationMs !== d.motion?.durationMs) applyOne(draft, { op: "motion.set", durationMs });
+      applyOne(draft, { op: "clip.set", clip });
       return;
     }
     case "node.ensure": {
@@ -684,6 +733,8 @@ const describeOps: Record<string, (op: any) => string> = { // eslint-disable-lin
   "look.set": op => op.look === null ? "Remove look" : "Set look",
   "stage.set": op => `Set app stage to ${op.width} × ${op.height} @${op.dpr}×`,
   "depth.set": op => `Set ${op.surface} depth to ${op.config.mode}`,
+  "lens.apply": op => `Apply ${op.preset} lens`,
+  "rack.add": op => `Rack focus at ${op.atMs} ms`,
   "depth.rule.add": op => `Add depth rule to ${op.surface}`,
   "depth.rule.remove": op => `Remove depth rule from ${op.surface}`,
   "depth.resolve": op => `Freeze ${op.resolved.layers.length} depth layers for ${op.surface}`,
@@ -779,7 +830,8 @@ export function applyEdits(recipe: unknown, ops: unknown, options: ApplyOptions 
     return { ok: false, issues: problems.map(problem => ({ code: "ERR_EDIT_INVALID", path: `${prefix}:${problem.path}`, message: problem.message,
       ...(/exceeds scene duration/.test(problem.message) ? { hint: "Extend the scene in the same batch with motion.set {durationMs}." } : {}) })) };
   }
-  return { ok: true, recipe: draft.doc, inverse: draft.inverse.reverse().flatMap(group => [...group].reverse()), touched: [...draft.touched] };
+  return { ok: true, recipe: draft.doc, inverse: draft.inverse.reverse().flatMap(group => [...group].reverse()), touched: [...draft.touched],
+    ...(draft.advisories.length ? { advisories: draft.advisories } : {}) };
 }
 function validateMotion(doc: Doc): { path: string; message: string }[] {
   const motion = doc?.definition?.motion;

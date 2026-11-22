@@ -50,6 +50,7 @@ const CameraMotionSchema = CameraSchema.pick({
   y: true,
   z: true,
   perspective: true,
+  zoom: true,
   rotateX: true,
   rotateY: true,
   rotateZ: true,
@@ -118,7 +119,7 @@ const noiseTargets: Record<string, readonly string[]> = {
 // Hoisted once: per-keyframe value validation must not construct schemas on every parse.
 const propertyValues: Record<string, z.ZodType | undefined> = {
   surface: SurfaceMotionSchema.partial(),
-  camera: CameraMotionSchema.partial(),
+  camera: CameraMotionSchema.partial().extend({ zoom: finite.min(-8).max(8).optional() }),
   focus: FocusMotionSchema.partial(),
   channel: ChannelMotionSchema.partial(),
 };
@@ -237,6 +238,7 @@ const clipId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/, "Use a clip 
 /** Provenance of a generated clip: a behavior (07.4), a camera move from buildShot (07.5) or a project
  * preset (07.6). Re-applying regenerates the clip; hand edits of its tracks drop the provenance. */
 export type ClipSource =
+  | { rack: string; version: number; params?: Record<string, unknown> }
   | { behavior: string; version: number; params?: Record<string, unknown> }
   | { shot: string; version?: number; params?: Record<string, unknown> }
   | { preset: string; version: number; params?: Record<string, unknown> };
@@ -273,6 +275,7 @@ export const MotionClipSchema: z.ZodType<MotionClipOutput, MotionClipInput> = z.
   }).optional(),
   // Provenance of a generated clip (behaviors and presets, Phase 07).
   source: z.union([
+    z.strictObject({ rack: z.string().min(1).max(64), version: z.number().int().positive(), params: z.record(z.string(), z.unknown()).optional() }),
     z.strictObject({ behavior: z.string().min(1).max(64), version: z.number().int().positive(), params: z.record(z.string(), z.unknown()).optional() }),
     z.strictObject({ shot: z.string().min(1).max(64), version: z.number().int().positive().optional(), params: z.record(z.string(), z.unknown()).optional() }),
     z.strictObject({ preset: z.string().min(1).max(64), version: z.number().int().positive(), params: z.record(z.string(), z.unknown()).optional() }),
@@ -504,7 +507,7 @@ const splitPath = (owner: string) => owner.replace(/\[\d+\]$/, "").split(".").ma
  * stagger shape, clip end within the scene, acyclic links. Root-track duplicates keep their v2 message. */
 function structureIssues(motion: MotionDefinition): StructureIssue[] {
   const issues: StructureIssue[] = [];
-  const structured = (motion.clips?.length ?? 0) > 0 || (motion.links?.length ?? 0) > 0 || motion.tracks.some(track => track.property === "position");
+  const structured = (motion.clips?.length ?? 0) > 0 || (motion.links?.length ?? 0) > 0 || motion.tracks.some(track => track.property === "position" || track.property === "zoom");
   if (!structured) return issues;
   const ids = new Set<string>();
   const visit = (clip: MotionClipOutput, path: (string | number)[], depth: number) => {
@@ -540,6 +543,10 @@ function structureIssues(motion: MotionDefinition): StructureIssue[] {
   };
   for (const entry of flatten(motion)) {
     if (entry.add) continue;
+    if (entry.track.target.kind === "camera" && entry.track.property === "zoom") {
+      for (const [index, key] of entry.track.keyframes.entries()) if (!CameraSchema.shape.zoom.safeParse(key.value).success)
+        issues.push({ path: [...splitPath(entry.owner), "keyframes", index, "value"], message: "Camera zoom must be between 0.25 and 8." });
+    }
     for (const slot of trackSlots(entry.track)) claim(slot, entry.owner, slot.property === entry.track.property);
   }
   const links = motion.links ?? [], targets = new Map<string, number>();
@@ -795,6 +802,11 @@ export function withAdditive<T extends Record<string, unknown>>(base: T, add: Re
     next[key] = (typeof current === "number" ? current : 0) + value;
   }
   return next as T;
+}
+const cameraMotionDefaults = { ...CameraSchema.parse({}), zoom: 1 };
+export function withCameraAdditive<T extends Record<string, unknown> & { zoom?: number }>(base: T, add: Record<string, number> | undefined): T {
+  const camera = withAdditive(base, add, cameraMotionDefaults);
+  return add?.zoom !== undefined && camera.zoom !== undefined ? { ...camera, zoom: Math.min(8, Math.max(0.25, camera.zoom)) } : camera;
 }
 /** Largest per-property difference between the first and last authored instant: 0 means a seamless loop.
  * Color tracks measure the largest sRGB channel (or alpha) difference in 0..255 units. */

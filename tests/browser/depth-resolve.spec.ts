@@ -49,3 +49,33 @@ test("depth resolves a live staged route, stores its hash, and supports exact fi
     expect(cleaned).toEqual({ body: originalHost, sheet: false });
   });
 });
+
+test("CLI applies a physical lens and resolves a rack between live iframe layers", async () => {
+  test.setTimeout(180_000);
+  await withStageProject(async ({ root, url }) => {
+    const run = async (...args: string[]) => {
+      const result = await runCli([...args, "--json"], { root });
+      expect(result.code, result.stderr).toBe(0);
+      return JSON.parse(result.stdout).data;
+    };
+    await run("edit", "depth", "--scene", "home-hero", "--surface", "subject", "--mode", "auto", "--write");
+    await run("edit", "lens", "--scene", "home-hero", "--preset", "200mm-telephoto", "--hold", "framing", "--write");
+    const recipe = path.join(root, sceneFile);
+    const before = await readFile(recipe, "utf8");
+    const definition = JSON.parse(before).definition;
+    expect(definition.scene.camera.perspective).toBe(definition.height * 200 / 24);
+    expect(definition.scene.focus.focalLength).toBeCloseTo(200 * 1512 / 302, 10);
+    const focus = await run("inspect", "--scene", "home-hero", "--at", "400", "--url", url);
+    expect(focus.layerFocus).toHaveLength(2);
+    expect(focus.layerFocus.every((item: { signed: number; blur: number }) => Number.isFinite(item.signed) && item.blur >= 0)).toBe(true);
+    const [a, b] = focus.layerFocus.map((item: { match: { selector: string } }) => `layer:${item.match.selector}`);
+    const command = ["edit", "rack", "--scene", "home-hero", "--from", a, "--to", b, "--at", "400", "--duration", "800", "--breathing", "0.018", "--url", url];
+    const dry = await run(...command);
+    expect(dry.written).toBe(false);
+    expect(await readFile(recipe, "utf8")).toBe(before);
+    await run(...command, "--write");
+    const clip = JSON.parse(await readFile(recipe, "utf8")).definition.motion.clips[0];
+    expect(clip.source).toMatchObject({ rack: "focus", params: { from: { layer: a.slice(6) }, to: { layer: b.slice(6) }, breathing: { amount: 0.018 } } });
+    expect(clip.clips[0].tracks[0].property).toBe("zoom");
+  });
+});

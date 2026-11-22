@@ -59,7 +59,7 @@ Render new app UI inside a laptop stage. Use `laptop-14` (1512×982 at 2×), `la
 Motion vocabulary (details in `velora guide --json` capabilities):
 
 - **Smooth camera rails:** a multi-waypoint camera track with `"interpolation": "smooth"` and `"ease": "cinematic"` passes every waypoint without stopping, then accelerates and settles once. Segment tracks stop at each cinematic keyframe.
-- **Lens language:** `lensFor(mm, frameHeight)` maps 24/35/50/85/135 mm to `camera.perspective` (frameHeight × mm / 24) plus the matching `focus.focalLength`. Wide lenses exaggerate depth; long lenses compress it. `perspective` is animatable: hold the subject on the projection plane and widen the lens for a dolly zoom.
+- **Lens language:** `lensPreset` maps 24, 50, 85 and 200 mm to `camera.perspective` and a focus focal length scaled by the authored stage. `camera.zoom` scales the projected frame around its center at a fixed viewpoint. `buildRackFocus` puts breathing on the focus clock.
 - **Easing:** keyframes accept named families (`expo.out`, `back.out`), `{ cubicBezier: [...] }`, `{ spring: {...} }`, `{ steps: n }` and `hold`. Keep overshoot off camera tracks.
 - **Handheld texture:** `"noise": { "amplitude": 6, "frequency": 0.6, "seed": 1 }` on camera position or rotation tracks adds seeded, replayable shake. Use it sparingly, never on loops or text-heavy close-ups.
 - **Leaf visuals:** surface `blur` composes with depth of field; `clipTop/Right/Bottom/Left` (percent insets) and `clipRadius` (iris) are true masks on the visual leaf.

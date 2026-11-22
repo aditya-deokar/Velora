@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
-import { evaluateDepthLayers, hashDepthLayers, type DepthConfig, type DepthEvidence, type ResolvedDepth } from "../../core/depth";
-import type { CameraDefinition, SceneIssue } from "../../core/scene";
+import { evaluateDepthLayers, hashDepthLayers, sampleDepthFocus, type DepthConfig, type DepthEvidence, type DepthFocusSample, type ResolvedDepth } from "../../core/depth";
+import type { CameraDefinition, FocusDefinition, SceneIssue } from "../../core/scene";
 import { multiply, type Matrix } from "../../core/spatial";
 import { layoutReader, type Registry } from "../registry";
 import { useCaptureSettle } from "../capture";
@@ -9,12 +9,13 @@ import { describeDepth, depthMatch, readDepthSnapshot } from "./snapshot";
 import { projectedStyles, px } from "./Projected";
 import { makeDepthProxy } from "./Volumetric";
 import { registerDepthEvidence } from "./evidence";
+import { createLayerFocus } from "./focus";
 
 const useLayout = typeof window === "undefined" ? useEffect : useLayoutEffect;
 export type DepthDisplay = { tint: boolean; explode?: number };
 export type DepthReport = DepthEvidence & { volumetric: boolean; issues: SceneIssue[]; explicitTiers: number[]; source: "surface" | "route" };
 type DepthPose = { world?: Matrix; camera?: CameraDefinition; width?: number; height?: number; elevation: number; display?: DepthDisplay;
-  light?: DepthConfig["light"]; intensity?: DepthConfig["intensity"] };
+  light?: DepthConfig["light"]; intensity?: DepthConfig["intensity"]; focus?: FocusDefinition };
 export type SurfaceDepth = DepthPose & { surface: string; config: DepthConfig; root: HTMLDivElement | null; registry: Registry; leafGrouping?: string };
 export const DepthSurfaceContext = createContext<SurfaceDepth | undefined>(undefined);
 export const useSurfaceDepthActive = () => {
@@ -74,6 +75,10 @@ function mountDepth(depth: SurfaceDepth, target: HTMLElement, proxyRoot?: HTMLDi
   let explicitTiers: number[] = [];
   let volumes = false;
   let projections = false;
+  let focusSamples: DepthFocusSample[] | undefined;
+  let focusEvidence = () => focusSamples;
+  let approximate = false;
+  let snapshotSize = { width: 0, height: 0 };
   let invalid = true;
   let disposed = false;
   let scheduled: number | undefined;
@@ -82,16 +87,19 @@ function mountDepth(depth: SurfaceDepth, target: HTMLElement, proxyRoot?: HTMLDi
   let usable = new Map<number, { element: DepthElement; volume: boolean; radius: string; color: string;
     origin: [number, number]; paintedZ?: number; proxy?: ReturnType<typeof makeDepthProxy> }>();
   let pose: DepthPose = depth;
+  const optics = createLayerFocus(target, ledger, proxyRoot);
   const report = () => {
-    const issues = [...diagnostics, ...contested.values()];
-    registry.reportDepth(token, layers.length || issues.length ? { surface, ...resolved, volumetric: volumes, source: route ? "route" : "surface", issues, explicitTiers } : undefined);
+    const issues = [...diagnostics, ...contested.values(), ...(approximate ? [issue("dof-approximate", "Terminal layers approximate focus where a depth veil would flatten or blur the wrong region.")] : [])];
+    registry.reportDepth(token, layers.length || issues.length ? { surface, ...resolved, ...(focusSamples ? { focus: focusSamples } : {}), volumetric: volumes, source: route ? "route" : "surface", issues, explicitTiers } : undefined);
   };
   function rebuild() {
     invalid = false;
+    optics.reset();
     ledger.revert();
     proxyRoot?.replaceChildren();
     geometry = placementFor(surfaceRoot, anchor);
     const data = readDepthSnapshot(root!, config, route);
+    snapshotSize = { width: data.snapshot.width, height: data.snapshot.height };
     const result = describeDepth(data, config);
     layers = result.layers;
     resolved = result.resolved;
@@ -127,17 +135,18 @@ function mountDepth(depth: SurfaceDepth, target: HTMLElement, proxyRoot?: HTMLDi
     resize?.observe(root!);
     if (surfaceRoot !== root && surfaceRoot.ownerDocument === doc) resize?.observe(surfaceRoot);
     for (const { element } of usable.values()) resize?.observe(element);
-    report();
   }
   const paint = () => {
     if (disposed) return;
-    if (invalid) rebuild();
-    if (!pose.world || !pose.camera || !layers.length) return;
+    const rebuilt = invalid;
+    if (rebuilt) rebuild();
+    if (!pose.world || !pose.camera || !layers.length) { focusSamples = undefined; approximate = false; report(); return; }
     const { x, y, sx, sy, css } = geometry;
     const matrix = multiply(pose.world, [sx, 0, 0, x - (pose.width ?? 0) / 2, 0, sy, 0, y - (pose.height ?? 0) / 2, 0, 0, 1, 0, 0, 0, 0, 1]);
     const elevation = pose.elevation * (pose.display?.explode ?? 1);
     const tint = pose.display?.tint === true;
-    for (const layer of evaluateDepthLayers(matrix, layers, pose.camera, pose.light, pose.intensity, elevation, projections)) {
+    const evaluated = evaluateDepthLayers(matrix, layers, pose.camera, pose.light, pose.intensity, elevation, projections);
+    for (const layer of evaluated) {
       const target = usable.get(layer.order)!;
       if (target.volume) {
         if (target.paintedZ !== layer.localZ) {
@@ -149,6 +158,17 @@ function mountDepth(depth: SurfaceDepth, target: HTMLElement, proxyRoot?: HTMLDi
         ledger.apply(target.element, projectedStyles(layer, target.element, target.origin, tint));
       }
     }
+    const currentFocus = pose.focus, currentCamera = pose.camera;
+    const hadFocus = focusSamples !== undefined;
+    const sampled = currentFocus && (currentFocus.maxBlur > 0 || hadFocus)
+      ? optics.paint(evaluated.map(layer => ({ layer, ...usable.get(layer.order)! })), matrix, currentCamera, currentFocus, snapshotSize.width, snapshotSize.height, css) : undefined;
+    focusSamples = sampled?.samples;
+    approximate = sampled?.approximate ?? false;
+    focusEvidence = () => focusSamples ?? (currentFocus && evaluated.map(layer => {
+      const { depth, signed, blur } = sampleDepthFocus(matrix, layer.world, currentCamera, currentFocus);
+      return { depth, signed, blur };
+    }));
+    if (rebuilt || hadFocus || sampled) report();
   };
   const invalidate = () => {
     invalid = true;
@@ -156,7 +176,7 @@ function mountDepth(depth: SurfaceDepth, target: HTMLElement, proxyRoot?: HTMLDi
   };
   const affectsLayout = (records: MutationRecord[]) => records.some(record => {
     const element = record.target.nodeType === 1 ? record.target as Element : record.target.parentElement;
-    if (!element || element.closest("[data-velora-depth-proxies]")) return false;
+    if (!element || element.closest("[data-velora-depth-proxies],[data-velora-focus-filters]")) return false;
     const owner = element.closest("[data-velora-id]");
     if (owner && owner !== surfaceRoot) return false;
     if (record.type === "attributes" && record.attributeName === "style" && (element === surfaceRoot || ledger.ownsCurrentStyle(element))) return false;
@@ -180,14 +200,18 @@ function mountDepth(depth: SurfaceDepth, target: HTMLElement, proxyRoot?: HTMLDi
   doc.addEventListener("scroll", invalidate, true);
   doc.addEventListener("toggle", invalidate, true);
   view.addEventListener("resize", invalidate);
-  const flush = () => {
+  const flush = async () => {
     if (affectsLayout(mutation.takeRecords())) invalid = true;
     if (scheduled !== undefined) view.cancelAnimationFrame(scheduled);
     scheduled = undefined;
     paint();
     ledger.settle();
+    await optics.settle();
   };
-  const unpublish = registerDepthEvidence(target, () => ({ surface, ...resolved }), () => {
+  const unpublish = registerDepthEvidence(target, () => {
+    const focus = focusEvidence();
+    return { surface, ...resolved, ...(focus ? { focus } : {}) };
+  }, () => {
     dispose();
     finishCapture?.();
   });
@@ -201,6 +225,7 @@ function mountDepth(depth: SurfaceDepth, target: HTMLElement, proxyRoot?: HTMLDi
     view!.removeEventListener("resize", invalidate);
     view!.removeEventListener("pagehide", dispose);
     if (scheduled !== undefined) view!.cancelAnimationFrame(scheduled);
+    optics.reset();
     ledger.revert();
     proxyRoot?.replaceChildren();
     unpublish();

@@ -4,12 +4,12 @@
  * WHERE: both volumetric and iframe renderers use this ledger for every host style write.
  */
 export type DepthElement = Element & { style: CSSStyleDeclaration };
-type Property = "transform" | "transform-style" | "backface-visibility" | "box-shadow" | "background-image" | "background-size" | "background-position" | "background-repeat";
+type Property = "transform" | "transform-style" | "backface-visibility" | "filter" | "box-shadow" | "background-image" | "background-size" | "background-position" | "background-repeat";
 type StyleValue = string | { prepend: string; separator?: ", " | " " };
 export type DepthStyles = Partial<Record<Property, StyleValue>>;
 type Value = { value: string; priority: string };
 type PropertyState = { before: Value; base: string; desired: StyleValue; applied?: Value; requested?: Value; conflicts: number };
-type Entry = { original: string | null; signature: string; owned: Map<Property, PropertyState>; serialized: string | null; layoutStyle?: string };
+type Entry = { original: string | null; signature: string; owned: Map<Property, PropertyState>; serialized: string | null; layoutStyle?: string; changedLayout?: boolean };
 const active = new Set<() => void>();
 const read = (element: DepthElement, property: Property): Value => ({ value: element.style.getPropertyValue(property), priority: element.style.getPropertyPriority(property) });
 const same = (a: Value, b?: Value) => !!b && a.value === b.value && a.priority === b.priority;
@@ -74,7 +74,7 @@ export function createStyleLedger(doc: Document, contested?: (element: DepthElem
   const restore = (element: DepthElement) => {
     const entry = memory.get(element);
     if (!entry) return;
-    const unchanged = entry.owned.size > 0 && signature(element.style, entry.owned) === entry.layoutStyle &&
+    const unchanged = entry.owned.size > 0 && !entry.changedLayout && signature(element.style, entry.owned) === entry.layoutStyle &&
       [...entry.owned].every(([property, state]) => !state.conflicts && same(read(element, property), state.applied));
     for (const [property, state] of entry.owned) {
       if (!same(read(element, property), state.applied)) continue;
@@ -106,6 +106,21 @@ export function createStyleLedger(doc: Document, contested?: (element: DepthElem
     active.delete(revert);
   };
   return {
+    clear(element: DepthElement, property: Property) {
+      const entry = memory.get(element);
+      const state = entry?.owned.get(property);
+      if (!entry || !state) return;
+      if (entry.owned.size === 1) { restore(element); return; }
+      const ours = same(read(element, property), state.applied);
+      entry.changedLayout ||= !ours || state.conflicts > 0 || signature(element.style, entry.owned) !== entry.layoutStyle;
+      if (ours) {
+        if (state.before.value) element.style.setProperty(property, state.before.value, state.before.priority);
+        else element.style.removeProperty(property);
+      }
+      entry.owned.delete(property);
+      entry.layoutStyle = signature(element.style, entry.owned);
+      entry.serialized = element.getAttribute("style");
+    },
     apply(element: DepthElement, props: DepthStyles) {
       let entry = memory.get(element);
       if (!entry || !entry.owned.size) {

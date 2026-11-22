@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { hashSeed } from "./random";
-import { applyPoint, intersectPlane, invertAffine, projectWorld, screenRay, type Matrix } from "./spatial";
-import type { CameraDefinition } from "./scene";
+import { applyPoint, focusForSurface, intersectPlane, invertAffine, projectWorld, screenRay, signedFocus, type Matrix } from "./spatial";
+import type { CameraDefinition, FocusDefinition } from "./scene";
 
 /** SOURCE OF TRUTH: DEPTH_TIERS, classifyDepth, evaluateDepthLayers.
  * WHAT: classify layout snapshots and derive elevation, projection and light from the scene camera.
@@ -30,7 +30,9 @@ export const DepthRuleSchema = z.union([
 ]);
 export const ResolvedDepthLayerSchema = z.strictObject({ match: z.union([anchorMatch, selectorMatch]), tier: DepthTierSchema, z: zPixels });
 export const ResolvedDepthSchema = z.strictObject({ hash: z.string().regex(/^[0-9a-f]{8}$/), layers: z.array(ResolvedDepthLayerSchema).max(128) });
-export const DepthEvidenceSchema = ResolvedDepthSchema.extend({ surface: z.string().min(1) });
+export const DepthFocusSampleSchema = z.strictObject({ depth: z.number(), signed: z.number(), blur: z.number().nonnegative() });
+export type DepthFocusSample = z.output<typeof DepthFocusSampleSchema>;
+export const DepthEvidenceSchema = ResolvedDepthSchema.extend({ surface: z.string().min(1), focus: z.array(DepthFocusSampleSchema).max(128).optional() });
 export const DepthLineageSchema = DepthEvidenceSchema.pick({ surface: true, hash: true });
 export const DepthConfigSchema = z.strictObject({
   mode: DepthModeSchema,
@@ -159,8 +161,17 @@ export type EvaluatedDepthLayer = DepthLayer & {
   shadow: { x: number; y: number; blur: number; opacity: number; z: number };
   edge: { thickness: number; shades: readonly number[] };
   sheen: { u: number; v: number; opacity: number };
-  projected: { x: number; y: number; scale: number };
+  projected: { x: number; y: number; scale: number; centerX: number; centerY: number; absoluteScale: number };
 };
+
+export function sampleDepthFocus(matrix: Matrix, center: readonly number[], camera: CameraDefinition, focus: FocusDefinition) {
+  const world: Matrix = [matrix[0], matrix[1], matrix[2], center[0], matrix[4], matrix[5], matrix[6], center[1],
+    matrix[8], matrix[9], matrix[10], center[2], 0, 0, 0, 1];
+  const field = focusForSurface(world, focus, camera.perspective);
+  const sample = signedFocus(field);
+  const screenScale = camera.perspective / Math.max(1, sample.depth) * (camera.zoom ?? 1);
+  return { ...sample, blur: sample.blur * screenScale, sigma: sample.blur / Math.max(1e-6, field.scale), screenScale };
+}
 
 /** Surface matrix maps the snapshot's top-left layout coordinates into camera space. */
 export function evaluateDepthLayers(surfaceWorld: Matrix, layers: readonly DepthLayer[], camera: CameraDefinition,
@@ -195,7 +206,7 @@ export function evaluateDepthLayers(surfaceWorld: Matrix, layers: readonly Depth
       shadow: { x: height * lx / lz, y: height * ly / lz, blur: 0.6 * height, opacity: height ? Math.min(0.36, setup.intensity * 0.34 / (1 + height / 30)) : 0, z: z - height },
       edge: { thickness: Math.min(height, layer.extrude * factor), shades: [-ly, lx, ly, -lx].map(dot => Math.max(0.16, Math.min(0.88, 0.38 + dot * setup.intensity * 0.35))) },
       sheen: { u: 50 + 46 * hx, v: 50 + 46 * hy, opacity: height > 0 ? Math.min(0.18, setup.sheen * Math.max(0, hz) ** 12) : 0 },
-      projected: { x: dx, y: dy, scale: projected.scale / (parent?.scale ?? 1) },
+      projected: { x: dx, y: dy, scale: projected.scale / (parent?.scale ?? 1), centerX: projected.u, centerY: projected.v, absoluteScale: projected.scale },
     };
   });
 }

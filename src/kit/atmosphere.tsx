@@ -1,6 +1,7 @@
-import { useMemo, type CSSProperties } from "react";
-import { createRng } from "../core";
-import { useAnimatableState, useSceneTime } from "../react";
+import { useId, useMemo, type CSSProperties } from "react";
+import { coverScaleAt, createRng } from "../core";
+import { Surface, useAnimatableState, useSceneTime } from "../react";
+import { useSceneContext } from "../react/context";
 import { animatableIdFor } from "./brand";
 const SWEEP_SPEC = { progress: { type: "number", default: -1, label: "Sweep progress" } } as const;
 import { tint } from "./color";
@@ -15,10 +16,12 @@ import { useBrand } from "./brand";
  * everything here is a pure function of scene time, channels, seeds and brand tokens.
  */
 export type BackdropVariant = "gradient" | "mesh" | "aurora" | "grid-floor" | "spotlight" | "solid";
-export function Backdrop({ variant = "gradient", width, height, colors, style }: { variant?: BackdropVariant; width: number; height: number; colors?: string[]; style?: CSSProperties }) {
+export function Backdrop({ variant = "gradient", width, height, colors, style, z }: { variant?: BackdropVariant; width: number; height: number; colors?: string[]; style?: CSSProperties; z?: number }) {
   const brand = useBrand();
   const [base, a, b] = colors ?? [brand.colors.background, brand.colors.accent, brand.colors.primary];
   const time = useSceneTime();
+  const id = useId();
+  const { context } = useSceneContext();
   const drift = (time / 1000) * 2; // degrees per second: aurora breathes slowly
   const layer: CSSProperties = { position: "absolute", inset: 0 };
   const content = variant === "solid" ? null
@@ -27,7 +30,12 @@ export function Backdrop({ variant = "gradient", width, height, colors, style }:
     : variant === "aurora" ? <div style={{ ...layer, background: `conic-gradient(from ${drift}deg at 50% 60%, ${tint(a, 0)}, ${tint(a, 33)}, ${tint(b, 20)}, ${tint(a, 0)} 60%)`, filter: `blur(${Math.round(Math.min(width, height) * 0.06)}px)` }}/>
     : variant === "spotlight" ? <div style={{ ...layer, background: `radial-gradient(38% 46% at 50% 42%, ${tint(b, 19)}, transparent 70%)` }}/>
     : <GridFloor width={width} height={height} line={a}/>;
-  return <div data-velora-backdrop={variant} style={{ position: "relative", width, height, overflow: "hidden", background: base, ...style }}>{content}</div>;
+  const backdrop = <div data-velora-backdrop={variant} style={{ position: "relative", width, height, overflow: "hidden", background: base, ...style }}>{content}</div>;
+  if (z === undefined || !context) return backdrop;
+  const frame = context.frameSize(), camera = context.displayCamera;
+  const cover = camera && frame?.width && frame.height ? coverScaleAt(z, camera, frame, { width, height }) : 1;
+  return <Surface id={`backdrop-${id}`} transform={{ z, scale: Number.isFinite(cover) ? Math.min(100, cover) : 100 }}
+    style={{ position: "absolute", left: "50%", top: "50%", marginLeft: -width / 2, marginTop: -height / 2, width, height }}>{backdrop}</Surface>;
 }
 function GridFloor({ width, height, line }: { width: number; height: number; line: string }) {
   const cell = Math.max(24, Math.round(Math.min(width, height) / 18));

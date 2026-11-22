@@ -337,6 +337,19 @@ Run `npx velora audio beats --composition launch.composition.json --write-marker
 
 ---
 
+### Cinema lenses and rack focus
+
+Studio offers four lens presets from 24 mm drone to 200 mm telephoto. Leave **Hold framing** selected to keep the subject's size while changing the camera distance. Clear it to keep the camera transform and compensate with image zoom. `camera.zoom` can also be animated directly.
+
+In the Focus inspector, choose the two layers and use **Add rack**. A work area defines the pull's timing when set. The inspector shows signed distance from focus and blur in pixels. Named depth layers can also be measured from a running preview with `velora inspect --scene hero --at 1200 --json`.
+
+```sh
+velora edit lens --scene hero --preset 200mm-telephoto --hold framing --write
+velora edit rack --scene hero --from layer:modal --to layer:chart --at 500 --duration 1200 --breathing 0.018 --write
+```
+
+Run the commands without `--write` to review the diff first. `--url` selects the preview origin for live layer targets. A rack can also use `subject@0.5,0.5` or an explicit `depth:11000` target.
+
 ## 5. Helpful CLI Diagnostic Commands
 
 Velora comes with a complete suite of verification and diagnostics:

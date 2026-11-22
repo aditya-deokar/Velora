@@ -1,5 +1,5 @@
 import {
-  CameraSchema, FocusSchema, SURFACE_VISUAL_PROPERTIES, TransformSchema, cameraMatrix, evaluateMotion, evaluateScene, withAdditive,
+  CameraSchema, FocusSchema, SURFACE_VISUAL_PROPERTIES, TransformSchema, cameraMatrix, evaluateMotion, evaluateScene, withAdditive, withCameraAdditive,
   type CameraDefinition, type Evaluation, type Matrix, type Measurements, type MotionState, type Transform,
 } from "../../core";
 import type { SceneSnapshot } from "../../react";
@@ -10,7 +10,7 @@ import { valueAt } from "../properties";
  * renderer). Every projection goes through the spatial owner (projectWorld, screenRay, intersectPlane). */
 export type Frame = { width: number; height: number };
 const visual: ReadonlySet<string> = new Set(SURFACE_VISUAL_PROPERTIES);
-const CAMERA_BASE = CameraSchema.parse({}), FOCUS_BASE = FocusSchema.parse({}), TRANSFORM_BASE = TransformSchema.parse({});
+const FOCUS_BASE = FocusSchema.parse({}), TRANSFORM_BASE = TransformSchema.parse({});
 /** The camera the frame is displayed through: the director viewpoint when set, else the resolved camera. */
 export function displayCamera(snapshot: SceneSnapshot | undefined, doc: Doc): CameraDefinition {
   return snapshot?.view ?? snapshot?.camera ?? CameraSchema.parse(doc?.definition?.scene?.camera ?? {});
@@ -54,7 +54,7 @@ export function sceneAt(doc: Doc, snapshot: SceneSnapshot, presentationMs: numbe
   const input = camera
     ? { camera, focus: { ...FOCUS_BASE, maxBlur: 0 }, nodes }
     : {
-      camera: withAdditive({ ...definition.scene?.camera, ...state.camera }, additive?.camera, CAMERA_BASE),
+      camera: withCameraAdditive({ ...definition.scene?.camera, ...state.camera }, additive?.camera),
       focus: withAdditive({ ...definition.scene?.focus, ...state.focus }, additive?.focus, FOCUS_BASE),
       ...(definition.scene?.constraints ? { constraints: definition.scene.constraints } : {}),
       nodes,

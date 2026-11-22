@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CameraSchema, applyEdits, cameraMatrix, evaluateScene, matrixFor, multiply, projectWorld, sampleFocus, surfaceQuad, TransformSchema } from "../../src/core";
+import { CameraSchema, applyEdits, cameraMatrix, evaluateMotion, evaluateScene, matrixFor, multiply, projectWorld, sampleFocus, surfaceQuad, TransformSchema } from "../../src/core";
 import { guideLines, moveTo, setOps } from "../../src/editor/viewport/MovePlane";
 import { ringDelta, rotateTo } from "../../src/editor/viewport/RotateRings";
 import { scaleUniform } from "../../src/editor/viewport/ScaleHandles";
@@ -144,14 +144,13 @@ describe("director view and focus", () => {
     const doc = { ...docWith(tracks, { nodes: [{ id: "near" }, { id: "far" }], focus: { maxBlur: 12, fStop: 1.4 } }) };
     const snapshot = snapshotOf([{ id: "near", transform: { z: 200 } }, { id: "far", transform: { z: -900 } }]);
     const result = rackOps(doc, snapshot, "near", "far", 0, 2000, 60)!;
-    expect(result.ops[0]).toMatchObject({ op: "track.add", track: { target: { kind: "focus" }, property: "distance" } });
+    expect(result.ops[0]).toMatchObject({ op: "rack.add" });
     const applied = applyEdits(doc, result.ops);
     expect(applied.ok).toBe(true);
     const motion = (applied as unknown as { recipe: typeof doc }).recipe.definition.motion;
     const scene = doc.definition.scene;
     for (const [atMs, id, z] of [[0, "near", 200], [2000, "far", -900]] as const) {
-      const keys = ((motion.tracks as { target: { kind: string } }[]).find(track => track.target.kind === "focus") as unknown as { keyframes: { timeMs: number; value: number }[] }).keyframes;
-      const distance = keys.find(key => key.timeMs === atMs)!.value;
+      const distance = evaluateMotion(motion, atMs / (motion.speed ?? 0.5)).focus.distance;
       const evaluation = evaluateScene({ camera: scene.camera, focus: { ...scene.focus, distance }, nodes: [{ id, transform: { z } }] }, { [id]: { width: 200, height: 120 } });
       expect(sampleFocus(evaluation.nodes[0].focus, 0, 0)).toBeLessThan(0.5);
     }

@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { applyEdits, describeOp, lineDiff, parseTrackShorthand, type EditOp, type EditIssue, type TrackAddress } from "../core/edit";
 import { stageFromSpec } from "../core/stage";
-import { DEFAULT_DEPTH_LIGHT, DepthConfigSchema, DepthIntensitySchema, DepthModeSchema } from "../core/depth";
+import { DEFAULT_DEPTH_LIGHT, DepthConfigSchema, DepthIntensitySchema, DepthModeSchema, type DepthEvidence } from "../core/depth";
+import { focalLengthForPerspective, LENS_PRESETS, LensHoldSchema, LensPresetSchema } from "../core/lens";
+import { rackLayerDepth, rackSurfaceDepth, rackTargetFromText } from "../core/shots";
 import { formatJsonDocument, parseJsonDocument } from "../core/json";
 import { SceneRecipeIdSchema, SCENE_RECIPE_DIRECTORY } from "../core/recipes";
-import { MotionSchema, clipTiming, evaluateMotion } from "../core/motion";
+import { MotionSchema, clipTiming, evaluateMotion, withCameraAdditive } from "../core/motion";
 import { CameraSchema, FocusSchema, TransformSchema } from "../core/scene";
 import { parseClipboard, pasteOps } from "../core/clipboard";
 import { normalizeIssue, nextForIssues, type CliIssue } from "../core/cli-schema";
@@ -25,7 +27,7 @@ import { compositionBridgeHandlers, readCompositionEdit } from "./composition-ed
  * WHERE: cli/index parses flags; core/edit and core/json own the reducer and writer; services own file I/O
  * (scoped paths, atomic writes); services/bridge owns the loopback transport and watcher.
  */
-export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "stage" | "depth" | "bridge" | "preset" | "source";
+export type EditOperation = "ls" | "apply" | "key" | "ease" | "paste" | "stage" | "depth" | "lens" | "rack" | "bridge" | "preset" | "source";
 export type EditCommandResult =
   | { success: true; command: "edit"; data: Record<string, unknown>; warnings?: CliIssue[]; next?: string[]; server?: BridgeServer }
   | { success: false; command: "edit"; issues: CliIssue[]; next: string[] };
@@ -53,6 +55,9 @@ const EditInputSchema = z.strictObject({
   surface: z.string().min(1).max(128).optional(),
   mode: DepthModeSchema.optional(),
   intensity: DepthIntensitySchema.optional(),
+  hold: LensHoldSchema.optional(),
+  duration: z.number().positive().max(120_000).optional(),
+  breathing: z.number().min(0).max(0.03).optional(),
   expectSha: z.string().regex(/^[0-9a-f]{64}$/, "Use the 64-character hex sha256 printed by a previous command.").optional(),
   write: z.boolean().optional(),
   track: z.string().optional(),
@@ -104,7 +109,8 @@ async function editScene(root: string, id: string, ops: unknown, options: { writ
   if (!result.ok) return editIssues(result.issues);
   const next = formatJsonDocument(read.text, result.recipe);
   const labels = (ops as EditOp[]).map(op => describeOp(op));
-  const data = { scene: id, path: read.target, sha: read.sha, nextSha: services.textSha256(next), written: false, labels, diff: lineDiff(read.text, next), touched: result.touched, inverse: result.inverse };
+  const data = { scene: id, path: read.target, sha: read.sha, nextSha: services.textSha256(next), written: false, labels, diff: lineDiff(read.text, next), touched: result.touched, inverse: result.inverse,
+    ...(result.advisories ? { advisories: result.advisories } : {}) };
   if (!options.write || next === read.text) return { success: true, command: "edit", data: { ...data, written: false },
     next: options.write ? [] : [`velora edit apply --scene ${id} --ops <file> --expect-sha ${read.sha} --write --json`] };
   try { await services.atomicWrite(root, read.target, next, read.text); }
@@ -157,9 +163,10 @@ function restBase(recipe: Doc, atMs: number) {
   const parsed = MotionSchema.safeParse(motion);
   const state = parsed.success ? evaluateMotion(parsed.data, atMs / parsed.data.speed) : undefined;
   const camera = CameraSchema.parse(scene.camera ?? {}), focus = FocusSchema.parse(scene.focus ?? {});
+  const cameraAt = withCameraAdditive({ ...camera, ...state?.camera }, state?.additive?.camera);
   return ({ target, property }: { target: { kind: string; id?: string }; property: string }): number | number[] | undefined => {
     const read = (key: string) => {
-      if (target.kind === "camera") return ((state?.camera as Record<string, number> | undefined)?.[key] ?? (camera as Record<string, number>)[key]) + (state?.additive?.camera?.[key] ?? 0);
+      if (target.kind === "camera") return (cameraAt as Record<string, number>)[key] ?? (key === "zoom" ? 1 : undefined);
       if (target.kind === "focus") return ((state?.focus as Record<string, number> | undefined)?.[key] ?? (focus as Record<string, number>)[key]) + (state?.additive?.focus?.[key] ?? 0);
       if (target.kind === "surface" && target.id) {
         const base = TransformSchema.parse(scene.nodes.find((node: Doc) => node.id === target.id)?.transform ?? {}) as Record<string, number>;
@@ -275,7 +282,8 @@ export async function startSceneBridge(root: string, options: { origin: string; 
   return { token, server: { ...server, stop: async () => { watcher.close(); await stop(); } } };
 }
 
-export async function executeEditCommand(operation: EditOperation, input: EditInput, context: { root: string; version?: string; log?: (entry: Record<string, unknown>) => void }): Promise<EditCommandResult> {
+export async function executeEditCommand(operation: EditOperation, input: EditInput, context: { root: string; version?: string; log?: (entry: Record<string, unknown>) => void;
+  readOptics?: (root: string, scene: string, url: string, times: readonly number[]) => Promise<DepthEvidence[][]> }): Promise<EditCommandResult> {
   const parsed = EditInputSchema.safeParse(input);
   if (!parsed.success) return failure(parsed.error.issues.map(issue => ({ code: "ERR_EDIT_INVALID", path: issue.path.join("."), message: issue.message })));
   const options = parsed.data;
@@ -394,6 +402,36 @@ export async function executeEditCommand(operation: EditOperation, input: EditIn
       const { resolved, ...prior } = existing.success ? existing.data : { mode: options.mode, light: DEFAULT_DEPTH_LIGHT };
       const config = { ...prior, mode: options.mode, ...(options.intensity ? { intensity: options.intensity } : {}) };
       return await editScene(root, options.scene, [{ op: "depth.set", surface: options.surface, config }], { ...write, expectSha: options.expectSha ?? file.sha });
+    }
+    if (operation === "lens") {
+      const preset = LensPresetSchema.safeParse(options.preset);
+      if (!preset.success) return failure([{ code: "ERR_EDIT_INVALID", path: "preset", message: `Choose a lens preset: ${LensPresetSchema.options.join(", ")}.` }]);
+      return await editScene(root, options.scene, [{ op: "lens.apply", preset: preset.data, hold: options.hold }], write);
+    }
+    if (operation === "rack") {
+      const from = rackTargetFromText(options.from ?? ""), to = rackTargetFromText(options.to ?? "");
+      if (!from || !to || options.at === undefined || options.duration === undefined)
+        return failure([{ code: "ERR_EDIT_INVALID", path: "rack", message: "Provide --from and --to as layer:<id>, <surface>@u,v or depth:<px>, plus --at and --duration in ms." }]);
+      const file = await readScene(root, options.scene);
+      if ("success" in file) return file;
+      const { definition } = parseJsonDocument(file.text) as Doc;
+      const speed = definition?.motion?.speed ?? 0.5;
+      const times = [options.at / speed, (options.at + options.duration) / speed];
+      let depths: { from: number; to: number } | undefined;
+      if ("layer" in from || "layer" in to) {
+        if (!context.readOptics || !options.url) return failure([{ code: "ERR_EDIT_TARGET", path: "rack", message: "Live layer targets need a running preview. Pass its origin as --url." }]);
+        try {
+          const frames = await context.readOptics(root, options.scene, options.url, times);
+          const a = "layer" in from ? rackLayerDepth(from, frames[0]) : rackSurfaceDepth(definition, from, times[0]);
+          const b = "layer" in to ? rackLayerDepth(to, frames[1]) : rackSurfaceDepth(definition, to, times[1]);
+          if (a === undefined || b === undefined) return failure([{ code: "ERR_EDIT_TARGET", path: "rack", message: "A layer target was missing or ambiguous. Give it a unique depth anchor and retry." }]);
+          depths = { from: a, to: b };
+        } catch (error) { return failure([{ code: "ERR_EDIT_TARGET", path: "rack", message: error instanceof Error ? error.message : "Unable to measure the live layers." }]); }
+      }
+      const mm = focalLengthForPerspective(definition.scene.camera?.perspective ?? 1400, definition.height ?? 980);
+      const amount = options.breathing ?? Object.values(LENS_PRESETS).find(lens => Math.abs(lens.mm - mm) < 0.001)?.breathing;
+      return await editScene(root, options.scene, [{ op: "rack.add", from, to, atMs: options.at, durationMs: options.duration,
+        ...(amount !== undefined ? { breathing: { amount, direction: "in" } } : {}), ...(depths ? { depths } : {}) }], { ...write, expectSha: options.expectSha ?? file.sha });
     }
     if (operation === "paste") {
       if (!options.from || options.at === undefined) return failure([{ code: "ERR_MISSING_VALUE", path: options.from ? "at" : "from", message: "edit paste needs --from <clipboard file> and --at <ms>." }]);

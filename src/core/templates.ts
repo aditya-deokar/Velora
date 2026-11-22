@@ -63,7 +63,7 @@ export const BlueprintSchema = z.strictObject({
 export type Blueprint = z.output<typeof BlueprintSchema>;
 
 const intensity: TemplateParam = { name: "intensity", type: "enum", options: [...IntensitySchema.options], default: "subtle", description: "How far the move travels: subtle (restraint by default), standard or dramatic." };
-const lens = (fallback: number): TemplateParam => ({ name: "lens", type: "number", min: 24, max: 135, default: fallback, unit: "mm", description: "Full-frame lens: wide (24-35 mm) exaggerates depth, long (85-135 mm) compresses it." });
+const lens = (fallback: number): TemplateParam => ({ name: "lens", type: "number", min: 24, max: 200, default: fallback, unit: "mm", description: "Wide lenses emphasize perspective. Long lenses up to 200 mm compress depth." });
 const duration = (fallback: number, min = 2000, max = 15000): TemplateParam => ({ name: "durationMs", type: "number", min, max, default: fallback, unit: "ms", description: "Shot length in milliseconds." });
 const region: TemplateParam = { name: "focusRegion", type: "region", description: "Subject pixels x,y,width,height (top-left origin) the shot frames and keeps sharp; defaults to the center third." };
 const allAspects: Aspect[] = ["16:9", "21:9", "1:1", "4:5", "9:16"];
@@ -316,9 +316,10 @@ export function resolveTemplateParams(manifest: TemplateManifest, overrides: Rea
   const params: Record<string, ParamValue> = {};
   const issues: TemplateIssue[] = [];
   for (const name of Object.keys(overrides))
-    if (!manifest.params.some(param => param.name === name))
+    if (name !== "lens" && !manifest.params.some(param => param.name === name))
       issues.push({ code: "ERR_TEMPLATE_PARAM", path: `params.${name}`, message: `Template ${manifest.id} has no param "${name}". Available: ${manifest.params.map(param => param.name).join(", ")}.` });
-  for (const param of manifest.params) {
+  const parameters = overrides.lens !== undefined && !manifest.params.some(param => param.name === "lens") ? [...manifest.params, lens(50)] : manifest.params;
+  for (const param of parameters) {
     const raw = overrides[param.name];
     if (param.type === "region") {
       if (raw === undefined) continue;

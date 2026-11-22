@@ -5,7 +5,7 @@ import { SceneRecipeSchema, SCENE_RECIPE_DIRECTORY } from "./recipes";
 import { CameraSchema, FocusSchema, SceneSchema, TransformSchema, SCENE_BACKGROUND } from "./scene";
 import { MotionSchema, MotionTrackSchema, MotionKeyframeSchema, SURFACE_VISUAL_PROPERTIES, loopSeam, motionDuration, motionTracks, pathSpeeds } from "./motion";
 import { EASING_NAMES, easingOvershoots } from "./easing";
-import { perspectiveForFocalLength } from "./lens";
+import { LENS_PRESETS, lensPreset, perspectiveForFocalLength, type LensPresetId } from "./lens";
 import { CascadeSchema } from "./choreography";
 import { SUPPORTED_EXPORT_FPS, CaptureManifestSchema, QUALITY_PRESETS, CODEC_CONTAINERS, ALPHA_CODECS, resolveFinishing } from "./export";
 import { DEFAULT_STAGE, StageSchema, STAGE_PRESETS, STAGE_DPRS, sceneStageBudget } from "./stage";
@@ -106,7 +106,7 @@ const concepts: z.infer<typeof ConceptSchema>[] = [
  verify:"Name the size, angle and move of every shot in the brief's shot list, then check the contact sheet (velora frames --contact-sheet) shows that variety."},
  {id:"lens",title:"Lens language",
  meaning:"Focal length sets how space feels. Wide lenses (24-35 mm) exaggerate depth and make near edges loom; normal (50 mm) reads natural; long lenses (85-135 mm) compress layers together and isolate a subject with shallow focus.",
- mechanism:"perspectiveForFocalLength(mm, frameHeight) converts millimetres to CSS perspective and lensFor returns the matching focus focalLength. capabilities.lenses lists the values for common lenses. Animating perspective against camera z keeps the subject's size while the background stretches or compresses: a dolly zoom (the dolly-zoom template).",
+ mechanism:"lensPreset uses full-frame millimetres for perspective and stage pixels per millimetre for the focus focalLength. Use edit lens with framing hold for compression or position hold to compensate with camera.zoom. Zoom scales the image around its center at a fixed viewpoint. edit rack synchronizes additive zoom breathing with the focus pull.",
  choices:"Use a wide lens for monumental surveys and dramatic near edges, a normal lens for product truth, a long lens for macro details, rack focus and layered parallax that should feel calm. Keep one lens per shot unless the lens change is the effect.",
  pitfalls:"Very wide perspective with large z travel crosses the projection plane. Long lenses flatten depth so parallax nearly disappears; add depth separation if layers should still relate.",
  verify:"Compare a still at 35 mm and at 85 mm for the same framing and confirm the chosen feel serves the brief."},
@@ -238,6 +238,7 @@ export default function PageSurvey() {
       recipeEditor:"Optional recipe editor block {labels?,colors?,locked?,markers?:[{atMs,label}]} is editor-owned metadata; the renderer ignores it.",
       templates:{list:"velora templates ls --json",show:"velora templates show --id <id> --json",scaffold:"velora new scene --template <id> --id <slug> [--route /path | --component path#Export] [--set key=value] [--aspect 16:9|21:9|1:1|4:5|9:16]",reel:"velora new video --blueprint <id> --id <slug> [--route /path | --component path#Export]",kit:"@adityadeokar/velora/kit exports RouteFrame, ScrollFrame and SlotPlaceholder for bindings."},
       lenses:[24,35,50,85,135].map(mm=>({mm,perspectiveAt1080:perspectiveForFocalLength(mm,1080),perspectiveAt980:perspectiveForFocalLength(mm,980)})),
+      lensPresets:Object.entries(LENS_PRESETS).map(([id,preset])=>({id,...preset,...lensPreset(id as LensPresetId,{frameHeight:1080})})),
       exportFps:SUPPORTED_EXPORT_FPS,
       finishing:{quality:QUALITY_PRESETS,codecs:CODEC_CONTAINERS,alpha:ALPHA_CODECS,motionBlur:"--motion-blur DEG (180 cinematic, 90 crisp UI text, 270-360 dreamy) [--motion-samples 2-64]; averaged in linear light; static frames stay byte-identical",colorimetry:"BT.709 limited range, tagged",posters:"--poster MS writes <out>.poster.png",preview:"velora shot --quality master --motion-blur 180 previews finishing on one frame"},
       prompts:{list:"velora prompts ls --json",show:"velora prompts show --id <id> --json",ids:PROMPT_LIBRARY.map(prompt=>prompt.id)},

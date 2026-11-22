@@ -38,11 +38,13 @@ export const NodeSchema = z.strictObject({
   parentId: id.optional(),
   transform: TransformSchema.prefault({}),
 });
+export const PERSPECTIVE_MAX = 40_000;
 export const CameraSchema = z.strictObject({
   x: finite.default(0),
   y: finite.default(0),
   z: finite.default(0),
-  perspective: finite.min(100).max(10000).default(1400),
+  perspective: finite.min(100).max(PERSPECTIVE_MAX).default(1400),
+  zoom: finite.min(0.25).max(8).optional(),
   rotateX: finite.default(0),
   rotateY: finite.default(0),
   rotateZ: finite.default(0),
@@ -52,7 +54,7 @@ export const CameraSchema = z.strictObject({
 export const FocusSchema = z.strictObject({
   distance: finite.positive().default(1400),
   fStop: finite.min(0.7).max(128).default(8),
-  focalLength: finite.min(1).max(300).default(50),
+  focalLength: finite.min(1).max(4000).default(50),
   maxBlur: finite.min(0).max(32).default(6),
 });
 /** Constraint targets: a registered surface (anchor u, v in 0..1 of its box; default center) or a

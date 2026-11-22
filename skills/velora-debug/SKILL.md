@@ -95,4 +95,4 @@ Common mappings: bridge missing means open a capture-enabled scene; binding mism
 
 - `depth-flattened` identifies the grouping property and ancestor. Move clipping, opacity or filters to a content leaf, or mark that region `data-velora-tier="flat"`. Flattened chains can use projected depth.
 - `depth-contested` identifies a host style that keeps replacing a property the depth ledger composes. Move that host change to a separate inner element when the visual intent permits it.
-- `depth-focus-deferred` identifies volumetric layers that need a filter-free leaf to preserve 3D. Use projected depth if the shot depends on whole-surface blur.
+- `dof-approximate` identifies shots where the renderer uses terminal-layer blur to preserve spatial descendants. Scrub the pull with Focus selected to see the per-layer blur and signed distance.

@@ -64,7 +64,7 @@ For the starting point itself, load `velora-templates` first.
    - low or steep oblique adds monumentality;
    - Dutch (`rotateZ` 3–8) adds unease or energy, sparingly;
    - symmetric, face-on framing reads as calm and precise.
-4. **Lens.** `lensFor(mm, frameHeight)` sets `perspective` and the matching focus focal length.
+4. **Lens.** `lensPreset(id, { frameHeight, stage })` derives the perspective and physical focus focal length from the lens and stage. Use framing hold when changing lenses for compression. Use position hold to keep the camera transform and compensate with `camera.zoom`.
    - 24–35 mm exaggerates depth and suits surveys.
    - 50 mm is natural.
    - 85–135 mm compresses depth, flatters, and gives shallow focus for racks and macro.
@@ -188,5 +188,9 @@ Select one layer and open **Camera moves** to apply a shot as an editable clip. 
 - Not for editing several shots into a film; timing between shots belongs to `velora-editing` and `velora-composition`.
 - Not for claims about artistic quality from checks. Automated checks are technical; taste needs human review.
 ## Camera-reactive UI depth
+
+Use `velora edit lens --scene hero --preset 200mm-telephoto --hold framing` to preview a telephoto change. `velora edit rack --scene hero --from layer:modal --to layer:chart --at 500 --duration 1200 --breathing 0.018` pulls focus through the local preview. A rack can also use explicit `depth:<px>` or surface coordinates such as `subject@0.5,0.5`. `--write` saves the edit.
+
+Chromium uses depth-sorted blur veils behind the focal plane and reversible filters for front layers. RouteFrame applies an SVG blur map to the iframe. A `dof-approximate` advisory reports when the renderer uses terminal-layer filters to preserve lifted children. Studio and `velora inspect --scene hero --at 1200 --json` expose signed focus distance and blur.
 
 Start at subtle intensity and orbit the app enough to see the difference between a card and its controls. Use **Depth view** to inspect tiers. Keep sheen restrained, and angle the light so the contact shadows make the layers legible. Examine the beginning and end of the move before freezing depth. Whole-leaf focus blur is deferred on volumetric surfaces, and projected RouteFrames retain the surface focus blur.

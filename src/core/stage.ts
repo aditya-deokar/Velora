@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { evaluateScene, projectWorld } from "./spatial";
-import { evaluateMotion, motionDuration, withAdditive, type MotionInput } from "./motion";
+import { evaluateMotion, motionDuration, withAdditive, withCameraAdditive, type MotionInput } from "./motion";
 import { TransformSchema, type CameraDefinition, type SceneDefinition } from "./scene";
 
 /** SOURCE OF TRUTH: StageSchema, STAGE_PRESETS, resolutionBudget.
@@ -86,7 +86,7 @@ export function resolutionBudget(input: {
   for (const { timeMs, camera, target, scale = 1 } of input.samples) {
     const center = projectWorld(camera, input.frame, target, "view");
     if (!center) continue;
-    const demand = scale * camera.perspective / center.depth * (input.coverScale ?? 1);
+    const demand = scale * camera.perspective / center.depth * (camera.zoom ?? 1) * (input.coverScale ?? 1);
     if (demand > peak.pixelsPerCssPixel) peak = { timeMs, pixelsPerCssPixel: demand };
   }
   return { ...peak, effectiveDpr: input.effectiveDpr, undersampled: peak.pixelsPerCssPixel > input.effectiveDpr * 1.1 };
@@ -109,7 +109,7 @@ export function sceneStageBudget(input: {
     const values = evaluateMotion(motion, timeMs);
     const evaluation = evaluateScene({
       ...scene,
-      camera: withAdditive({ ...scene.camera, ...values.camera }, values.additive?.camera),
+      camera: withCameraAdditive({ ...scene.camera, ...values.camera }, values.additive?.camera),
       focus: withAdditive({ ...scene.focus, ...values.focus }, values.additive?.focus),
       nodes: scene.nodes.map(node => ({
         ...node, transform: withAdditive({

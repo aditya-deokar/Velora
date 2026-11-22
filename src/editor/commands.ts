@@ -189,7 +189,7 @@ export const EDITOR_COMMANDS: readonly EditorCommand[] = Object.freeze([
     const issues = c.store.commit(ops, "Convert to path");
     if (issues.length) c.notify(issues[0].message);
   } },
-  { id: "focus.rack", effects: ["key.set", "track.add"], label: "Rack focus between two layers", group: "Viewport", shortcuts: [], enabled: s => surfaceLayers(s).length === 2, run: c => {
+  { id: "focus.rack", effects: ["rack.add"], label: "Rack focus between two layers", group: "Viewport", shortcuts: [], enabled: s => surfaceLayers(s).length === 2, run: c => {
     const [from, to] = surfaceLayers(c.state);
     const doc = c.store.committed();
     if (!c.snapshot) return;

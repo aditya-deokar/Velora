@@ -51,10 +51,12 @@ const owners = new Map([
   ['AppStage','src/react/stage.tsx'], ['useAppStage','src/react/stage.tsx'],
   ...['DEPTH_TIERS','classifyDepth','evaluateDepthLayers'].map(name=>[name,'src/core/depth.ts']),
   ['createStyleLedger','src/react/depth/ledger.ts'],
+  ['LENS_PRESETS','src/core/lens.ts'], ['lensPreset','src/core/lens.ts'], ['applyLens','src/core/lens.ts'],
+  ['buildRackFocus','src/core/shots.ts'], ['coverScaleAt','src/core/spatial.ts'],
 ]);
 // Inert identity records are frozen object literals rather than schemas or functions.
 // Frozen catalogs (an array literal, possibly under `satisfies`/`as`) count the same way.
-const frozenMetadata = new Set(['VELORA_BRAND', 'VELORA_PACKAGE', 'EDITOR_COMMANDS', 'BEHAVIOR_CATALOG', 'STAGE_PRESETS', 'DEPTH_TIERS']);
+const frozenMetadata = new Set(['VELORA_BRAND', 'VELORA_PACKAGE', 'EDITOR_COMMANDS', 'BEHAVIOR_CATALOG', 'STAGE_PRESETS', 'DEPTH_TIERS', 'LENS_PRESETS']);
 const layers = {
   core: { local: ['core'], external: ['zod'] },
   runtime: { local: ['core', 'runtime'], external: ['zod'] },

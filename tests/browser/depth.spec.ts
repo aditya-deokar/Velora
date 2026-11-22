@@ -16,9 +16,9 @@ test("volumetric model creates parallax, proxies and deterministic capture witho
   await page.evaluate(() => (window as unknown as FixtureWindow).depthFixture.active(true));
   await expect(card).toHaveAttribute("style", /translateZ\(24px\)/);
   expect(await card.evaluate(node => (node as HTMLElement).style.getPropertyPriority("transform"))).toBe("important");
-  await expect(page.locator("[data-velora-depth-proxies] > div")).toHaveCount(4);
+  await expect(page.locator("[data-velora-depth-proxies] > div:has(> div)")).toHaveCount(4);
   await expect(page.locator('[data-velora-depth-issue="depth-flattened"]')).toContainText("overflow");
-  await expect(page.locator('[data-velora-depth-issue="depth-focus-deferred"]')).toBeVisible();
+  await expect(page.locator('[data-velora-depth-focus]')).toHaveCount(5);
   expect(await page.locator("#blocker").evaluate(node => getComputedStyle(node).overflow)).toBe("hidden");
   for (const time of [0, 1000]) {
     await seek(page, time);

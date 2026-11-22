@@ -16,9 +16,9 @@ below, and must be run before that phase starts.
 | S3 Deterministic R3F | Passed 2026-11-21 | R3F 9.8.2 accepts absolute seconds on its manual root. A Suspense-loaded glTF reproduced the same Chromium pixels after a backward seek. | 09 |
 | S4 Click-to-source | Not run | No verdict. | 08 |
 | S5 Lazy editor chunk | **Partly run** | Chunk emission **passes**; installed-host exclusion is **not yet verified**. | 04 |
-| S6 Volumetric depth in live DOM | Phase 13 depth gate passed, 2026-11-21 | Chromium sorted lifted cards above proxy planes at ±30°. Same-time screenshots matched. Forty-eight layers scrubbed at 59.9 fps median. | 13, 14 |
+| S6 Volumetric depth in live DOM | Chromium depth and focus gates passed, 2026-11-21 | Lifted cards sorted above proxies at ±30°. Stacked 4 px and 3 px veils on transparent overlapping surfaces reproduced reference Gaussian blur within 0.13 px sigma at 0° and ±30°. The front sample was unchanged. Forty-eight layers scrubbed at 59.9 fps median in Phase 13. | 13, 14 |
 | S7 Stage DPR and sharpness | Passed in Chromium, 2026-11-21 | CSS viewport stayed fixed at 1512×982. DPR 2 doubled the chart backing width and took about 4× the screenshot time at 1080p. | 12 |
-| S8 Projected parallax in iframes | Phase 13 projection gate passed, 2026-11-21 | Same-origin centers met the 50 mm and 200 mm positional tolerances. Teardown restored inline style attributes byte for byte. The packaged CLI froze and captured depth through the any-site proxy with matching layer hashes. | 13 |
+| S8 Projected parallax in iframes | Projection and focus bands passed, 2026-11-21 | Same-origin centers met the 50 mm and 200 mm positional tolerances. Teardown restored inline style attributes byte for byte. The packaged CLI froze and captured depth through the any-site proxy with matching layer hashes. Phase 14 checked the actual `feImage` mask against the target bands at both ends of a rack. | 13, 14 |
 
 ## S3 Deterministic R3F
 

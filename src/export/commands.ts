@@ -45,6 +45,19 @@ const timelineStageFields = (stages: readonly (StageLineage & { sceneId: string 
   return { fields: same ? { stage } : { stages }, checks: stages.map(value => stageCheck(value, value.sceneId)) };
 };
 const depthLineage = (entries: DepthEvidence[] | undefined) => entries?.map(({ surface, hash }) => ({ surface, hash })) ?? [];
+
+export async function readSceneOptics(root: string, sceneId: string, url: string, times: readonly number[]) {
+  const opened = await executeRecipeCommand("open-scene", { sceneId, url, launch: false }, { root });
+  if (!opened.success) throw new Error(opened.issues.map(issue => issue.message).join(" "));
+  const { width, height, stage } = opened.data.selected!.definition;
+  const session = await services.openCapture({ url: opened.data.url!, width, height, scale: resolveFinishing({}, { width, height }, stage).supersample });
+  try {
+    const first = CaptureManifestSchema.parse(await session.manifest());
+    const frames: DepthEvidence[][] = [];
+    for (const time of times) frames.push(CaptureManifestSchema.parse(await session.manifest(Math.min(time, first.durationMs))).depth ?? []);
+    return frames;
+  } finally { await session.close(); }
+}
 async function capturedDepth(session: Awaited<ReturnType<typeof services.openCapture>>, timeMs?: number) {
   const capture = CaptureManifestSchema.safeParse(await session.manifest(timeMs).catch(() => undefined));
   return capture.success ? depthLineage(capture.data.depth) : [];

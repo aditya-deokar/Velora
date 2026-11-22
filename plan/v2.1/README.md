@@ -150,7 +150,8 @@ Phase 01 (both are stop conditions in Phase 00.1).
 | D9 | Accepted for Phase 12 | Recipes opt in with concrete stage dimensions. |
 | D10 | Accepted after S7 | Chromium preserved layout at 2×. The 1080p screenshot mean rose from 92 ms to 366 ms on the reference machine. |
 | D11 | Accepted for Phase 13 | Host styles go through the reversible ledger. Chromium confirmed proxy sorting and iframe cleanup. |
-| D12–D14 | Accepted (recommendation), confirm before 14–16 | |
+| D12 | Accepted for Phase 14 | Lens presets use full-frame perspective and stage pixels per millimetre. Legacy `lensFor` keeps its original range and focal-length output. |
+| D13–D14 | Accepted (recommendation), confirm before 15–16 | |
 
 ## 4. Open-source verdict (summary)
 
@@ -307,7 +308,7 @@ on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 
 | Phase | Status | Headline evidence |
 |---|---|---|
-| 00 | done except spikes | Goldens (motion, spatial, optics/shot, format corpus, capture) and `scripts/golden.mjs`; baselines; v2.1 checker layers. S3 and S7 passed, S5 partly run, S1–S2 and S4 pending. The Phase 13 depth portions of S6 and S8 passed. Phase 14 optical checks are pending (`artifacts/phase-00-spikes.md`, `artifacts/phase-00-exit.md`). |
+| 00 | done except spikes | Goldens (motion, spatial, optics/shot, format corpus, capture) and `scripts/golden.mjs`, baselines, and v2.1 checker layers. S3 and S6–S8 passed. S5 partly run. S1–S2 and S4 pending ([spike evidence](artifacts/phase-00-spikes.md)). |
 | 01 | done | Motion model v3 with goldens unchanged; compiled evaluator about 1,700x faster than the Phase 00 baseline at 300 tracks (`artifacts/phase-01-exit.md`). |
 | 02 | done | Clips, staggers, position paths, links, lookAt/focusFollow and the orbit rig; goldens unchanged (`artifacts/phase-02-exit.md`). |
 | 03 | done | `EditOpSchema`/`applyEdits` with exact inverses, the formatting-preserving writer, `velora edit`, and the secure loopback bridge and watcher (`artifacts/phase-03-exit.md`). S2 not run. |
@@ -321,4 +322,5 @@ on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 | 11 | implementation landed, release gates open | Agent handoff and parity, guide format 4, accessibility and release checks. Hardware timing and the cinematic prerequisites still gate 1.1.0 ([status report](artifacts/phase-11-exit.md)). |
 | 12 | implemented | Laptop viewport parity, HiDPI capture, DPR cap, native stage editing, and template certification ([exit report](artifacts/phase-12-exit.md)). |
 | 13 | implemented | Volumetric and projected depth, reversible host styles, camera-reactive light, Studio authoring and frozen capture lineage ([exit report](artifacts/phase-13-exit.md)). |
-| 14–16 | not started | — |
+| 14 | implemented | Physical lens presets, zoom and framing hold, per-layer depth of field, rack focus, and Studio and CLI authoring ([exit report](artifacts/phase-14-exit.md)). |
+| 15–16 | not started | — |

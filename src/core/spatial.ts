@@ -13,7 +13,7 @@ import {
   type NodeDefinition,
 } from "./scene";
 
-/** SOURCE OF TRUTH: evaluateScene, transformToCss, cameraToCss, focusForSurface, sampleFocus, focusMask, uniformFocusBlur, resolveConstraints, projectWorld, screenRay, intersectPlane, surfaceQuad.
+/** SOURCE OF TRUTH: evaluateScene, transformToCss, cameraToCss, focusForSurface, sampleFocus, focusMask, uniformFocusBlur, resolveConstraints, projectWorld, screenRay, intersectPlane, surfaceQuad, coverScaleAt.
  * WHAT: camera-space transforms, scene constraints (lookAt, focusFollow) resolved from layout,
  * progressive spatial focus, and the one forward/inverse projection (frame pixels <-> 3D) for every consumer.
  * WHY: one mathematical definition keeps DOM preview and future output adapters consistent.
@@ -201,13 +201,13 @@ export type ProjectedPoint = { x: number; y: number; depth: number };
  * `EvaluatedNode.world` matrices (eye at (0, 0, perspective), looking down -z). */
 export type ProjectionSpace = "stage" | "view";
 export type Ray = { origin: Vec3; direction: Vec3 };
-type Lens = Pick<CameraDefinition, "x" | "y" | "z" | "rotateX" | "rotateY" | "rotateZ" | "perspective">;
+type Lens = Pick<CameraDefinition, "x" | "y" | "z" | "rotateX" | "rotateY" | "rotateZ" | "perspective" | "zoom">;
 /** The one forward projection: a 3D point to frame pixels plus camera-axis depth (perspective - z,
  * positive in front of the eye). Null when the point is at or behind the eye plane. */
 export function projectWorld(camera: Lens, frame: Frame, point: readonly number[], space: ProjectionSpace = "stage"): ProjectedPoint | null {
   const [x, y, z] = space === "stage" ? applyPoint(cameraMatrix(camera), point) : [point[0], point[1], point[2]];
   if (z >= camera.perspective) return null;
-  const k = camera.perspective / (camera.perspective - z);
+  const k = camera.perspective / (camera.perspective - z) * (camera.zoom ?? 1);
   return { x: frame.width / 2 + x * k, y: frame.height / 2 + y * k, depth: camera.perspective - z };
 }
 /** Inverse of an affine 4x4 (rows; last row 0 0 0 1). Null when singular. */
@@ -232,7 +232,8 @@ export function invertAffine(m: Matrix): Matrix | null {
  * view plane, so intersectPlane's `t` compares depths along one ray. */
 export function screenRay(camera: Lens, frame: Frame, screen: { x: number; y: number }, space: ProjectionSpace = "view"): Ray {
   const origin: Vec3 = [0, 0, camera.perspective];
-  const direction: Vec3 = [screen.x - frame.width / 2, screen.y - frame.height / 2, -camera.perspective];
+  const zoom = camera.zoom ?? 1;
+  const direction: Vec3 = [(screen.x - frame.width / 2) / zoom, (screen.y - frame.height / 2) / zoom, -camera.perspective];
   if (space === "view") return { origin, direction };
   const inverse = invertAffine(cameraMatrix(camera))!; // rigid: always invertible
   const o = applyPoint(inverse, origin);
@@ -382,7 +383,7 @@ export function evaluateScene(
       world,
       worldPosition: { x: world[3], y: world[7], z },
       focus: focusForSurface(world, scene.focus, scene.camera.perspective),
-      blur: sampleFocus(focusForSurface(world, scene.focus, scene.camera.perspective), 0, 0),
+      blur: sampleFocus(focusForSurface(world, scene.focus, scene.camera.perspective), 0, 0) * (scene.camera.zoom ?? 1),
       width: m?.width ?? 0,
       height: m?.height ?? 0,
     };
@@ -428,6 +429,37 @@ export function uniformFocusBlur(f:FocusField,width:number,height:number):number
   return undefined;
 }
 export const FOCUS_BANDS=6;
+export function focusBand(sigma: number, maximum: number): number {
+  return maximum > 0 ? Math.max(0, Math.min(FOCUS_BANDS, Math.round(sigma / maximum * FOCUS_BANDS))) : 0;
+}
+export function signedFocus(field: FocusField, x = 0, y = 0) {
+  return { depth: field.depth + field.depthX * x + field.depthY * y,
+    signed: field.depth + field.depthX * x + field.depthY * y - field.distance, blur: sampleFocus(field, x, y) };
+}
+/** Nearest band first. Each veil contributes only the missing Gaussian variance. */
+export function focusVeils<T extends { sigma: number }>(bands: readonly T[]) {
+  let variance = 0;
+  return bands.map(band => {
+    const target = band.sigma ** 2;
+    const sigma = Math.sqrt(Math.max(0, target - variance));
+    variance = Math.max(variance, target);
+    return { ...band, sigma };
+  });
+}
+
+/** Inverse-project all frame corners onto the far plane to find its required coverage. */
+export function coverScaleAt(z: number, camera: Lens | readonly Lens[], frame: Frame, plane: Frame = frame): number {
+  const world = matrixFor(TransformSchema.parse({ z }));
+  let scale = 1;
+  for (const pose of Array.isArray(camera) ? camera : [camera] as readonly Lens[]) {
+    for (const x of [0, frame.width]) for (const y of [0, frame.height]) {
+      const hit = intersectPlane(screenRay(pose, frame, { x, y }, "stage"), world);
+      if (!hit) return Infinity;
+      scale = Math.max(scale, 2 * Math.abs(hit.u) / plane.width, 2 * Math.abs(hit.v) / plane.height);
+    }
+  }
+  return scale;
+}
 // Blend adjacent blur samples with normalized weights. A linear depth texture
 // represents a tilted plane exactly; only the blur-kernel basis is approximate.
 export function focusMask(f:FocusField,width:number,height:number,band:number) {

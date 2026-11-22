@@ -1,4 +1,4 @@
-import { cameraMatrix, invertAffine, lensFor, focalLengthForPerspective, type CameraDefinition, type Matrix } from "../../core";
+import { cameraMatrix, invertAffine, perspectiveForFocalLength, focalLengthForPerspective, type CameraDefinition, type Matrix } from "../../core";
 
 /** Camera tool math (Phase 06.5): orbit, truck/pedestal, dolly, pan/tilt, roll, lens and dolly-zoom as
  * pure functions of a camera definition. The spatial owner's convention is view = R·p − c (cameraMatrix),
@@ -31,15 +31,14 @@ export function panTilt(c: Camera, yawDeg: number, pitchDeg: number, rollDeg = 0
 }
 /** Truck/pedestal: content under the cursor follows it at `depth` (camera-axis distance). */
 export function truck(c: Camera, dx: number, dy: number, depth: number): Camera {
-  const k = depth / c.perspective;
+  const k = depth / c.perspective / (c.zoom ?? 1);
   return tidy({ ...c, x: c.x - dx * k, y: c.y - dy * k });
 }
 /** Dolly along the view axis: positive moves the camera toward the scene. */
 export function dolly(c: Camera, amount: number): Camera { return tidy({ ...c, z: c.z - amount }); }
 /** Lens change (focal length in mm) at a fixed camera position. */
 export function lens(c: Camera, mm: number, frameHeight: number): { camera: Camera; focalLength: number } {
-  const next = lensFor(mm, frameHeight);
-  return { camera: tidy({ ...c, perspective: next.perspective }), focalLength: next.focus.focalLength };
+  return { camera: tidy({ ...c, perspective: perspectiveForFocalLength(mm, frameHeight) }), focalLength: mm };
 }
 export const focalLengthOf = (c: Camera, frameHeight: number) => focalLengthForPerspective(c.perspective, frameHeight);
 /** Dolly-zoom: change the lens and move along the view axis so the subject (a stage point) keeps its

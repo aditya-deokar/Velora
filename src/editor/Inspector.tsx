@@ -1,6 +1,6 @@
 import type { SceneSnapshot } from "../react";
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { EASING_NAMES, focalLengthForPerspective, perspectiveForFocalLength, type EditOp, type TrackAddress } from "../core";
+import { applyLens, EASING_NAMES, LENS_PRESETS, LensPresetSchema, focalLengthForPerspective, perspectiveForFocalLength, type EditOp, type TrackAddress } from "../core";
 import { DEFAULT_DEPTH_LIGHT, DepthConfigSchema, DepthIntensitySchema, DepthModeSchema, type DepthConfig } from "../core/depth";
 import { useEditor, useEditorState } from "./context";
 import { intentToOps, isAnimated, type PropertyIntent } from "./intents";
@@ -8,6 +8,7 @@ import { findTrack, listClips, listTracks, trackKey } from "./model";
 import { ClipInspector } from "./ClipInspector";
 import { CAMERA_PROPS, FOCUS_PROPS, TRANSFORM_PROPS, VISUAL_PROPS, keyAtPlayhead, stateAt, toAuthored, toPresentation, valueAt, type PropertySpec } from "./properties";
 import type { Doc } from "./store";
+import { rackOps } from "./viewport/FocusTool";
 
 /** Inspector (EDITOR-UX §2, §4, §6): grouped properties of the selection. Every change goes through
  * intentToOps; drags preview transient ops at pointer rate and commit once on release. */
@@ -128,6 +129,7 @@ const Group = ({ title, children, open = true }: { title: string; children: Reac
 function LensRow() {
   const { store, host, controller } = useEditor();
   const state = useEditorState(store);
+  const [holdFraming, setHoldFraming] = useState(true);
   const doc = state.draft as Doc;
   const perspective = Number(valueAt(doc, { target: { kind: "camera" }, property: "perspective" }, stateAt(doc, host.session.timeMs), undefined) ?? 1400);
   const height = host.frame.height || 980;
@@ -142,11 +144,49 @@ function LensRow() {
   };
   return <div className="ve-prop"><span/><label>Lens</label><span/>
     <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
-      <input className="ve-input" aria-label="Lens millimetres" value={Math.round(mm * 10) / 10} onChange={() => undefined} onKeyDown={event => { if (event.key === "Enter") apply(Number(event.currentTarget.value)); }}/>
-      <select className="ve-input" aria-label="Lens preset" value="" onChange={event => event.target.value && apply(Number(event.target.value))}>
-        <option value="">mm</option>{[24, 35, 50, 85, 135].map(value => <option key={value} value={value}>{value}</option>)}
-      </select>
-    </span></div>;
+      <input key={Math.round(mm * 10)} className="ve-input" aria-label="Lens millimetres" defaultValue={Math.round(mm * 10) / 10} onKeyDown={event => { if (event.key === "Enter") apply(Number(event.currentTarget.value)); }}/>
+    </span>
+    <span/><label><input type="checkbox" checked={holdFraming} onChange={event => setHoldFraming(event.target.checked)}/> Hold framing</label><span/>
+    <span style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>{LensPresetSchema.options.map(preset => <button type="button" className="ve-btn" key={preset}
+      aria-label={preset} onClick={() => {
+        const hold = holdFraming ? "framing" : "position";
+        try {
+          const review = applyLens(doc.definition, preset, { hold });
+          const issues = store.commit([{ op: "lens.apply", preset, hold }], `Apply ${preset}`);
+          const first = issues[0] ?? review.issues[0];
+          if (first) controller.notify(first.message);
+        } catch (error) { controller.notify((error as Error).message); }
+      }}>{LENS_PRESETS[preset].mm}{preset === "24mm-drone" ? " drone" : ""}</button>)}</span>
+  </div>;
+}
+
+function RackControls() {
+  const { store, host, snapshot, controller } = useEditor();
+  const { ui } = useEditorState(store);
+  const [from, setFrom] = useState(""), [to, setTo] = useState("");
+  const layers = (snapshot?.depth ?? []).flatMap((surface, source) => surface.layers.flatMap(({ match }, index) => {
+    const focus = surface.focus?.[index];
+    const label = "anchor" in match ? match.anchor : match.selector;
+    return focus ? [{ id: `depth:${source}:${index}`, label, focus }] : [];
+  }));
+  if (!snapshot) return null;
+  const options = [...snapshot.bindings.map(node => ({ id: node.id, label: node.id })), ...layers];
+  const field = (label: string, value: string, update: (value: string) => void) => <select aria-label={label} className="ve-input" value={value} onChange={event => update(event.target.value)}>
+    <option value="">{label}</option>{options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+  </select>;
+  return <div style={{ padding: "4px 10px" }}>
+    <div style={{ display: "flex", gap: 4 }}>{field("Rack from", from, setFrom)}{field("Rack to", to, setTo)}
+      <button type="button" className="ve-btn" disabled={!from || !to || from === to} onClick={() => {
+        const doc = store.committed(), time = host.session.timeMs;
+        const start = toAuthored(doc, ui.workArea?.startMs ?? time), end = toAuthored(doc, ui.workArea?.endMs ?? Math.min(host.session.durationMs, time + 1500));
+        const rack = rackOps(doc, snapshot, from, to, start, end, host.fps);
+        if (!rack) { controller.notify("Choose two visible layers and a work area with room for the rack."); return; }
+        const issues = store.commit(rack.ops, "Rack focus");
+        if (issues.length) controller.notify(issues[0].message);
+      }}>Add rack</button>
+    </div>
+    {layers.map(({ id, label, focus }) => <div key={id} title={label}>{label} · {focus.signed.toFixed(1)} px {focus.signed < 0 ? "front" : "back"} · {focus.blur.toFixed(2)} px blur</div>)}
+  </div>;
 }
 function EasingAtPlayhead() {
   const { store, host, controller } = useEditor();
@@ -287,7 +327,7 @@ export function Inspector() {
     <Group title="Easing at playhead"><EasingAtPlayhead/></Group>
   </>;
   else if (subject === "focus") body = <>
-    <Group title="Focus">{FOCUS_PROPS.map(spec => <PropertyRow key={spec.name} track={{ target: { kind: "focus" }, property: spec.name }} spec={spec}/>)}</Group>
+    <Group title="Focus">{FOCUS_PROPS.map(spec => <PropertyRow key={spec.name} track={{ target: { kind: "focus" }, property: spec.name }} spec={spec}/>) }<RackControls/></Group>
     <Group title="Constraints"><Constraints/></Group>
     <Group title="Easing at playhead"><EasingAtPlayhead/></Group>
   </>;

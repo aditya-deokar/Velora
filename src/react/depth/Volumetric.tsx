@@ -4,6 +4,12 @@ import { px, TIER_COLORS } from "./Projected";
 const surface = "position:absolute;left:0;top:0;pointer-events:none;transform-origin:top left;backface-visibility:hidden;";
 const translate = (x: number, y: number, z: number) => `translate3d(${px(x)},${px(y)},${px(z)})`;
 
+export function makeOpticsProxy(parent: HTMLElement) {
+  const element = parent.ownerDocument.createElement("div");
+  parent.append(element);
+  return { element, paint(css: string) { element.style.cssText = css; } };
+}
+
 /** All these elements are owned by Velora and are siblings of the host content tree. */
 export function makeDepthProxy(container: HTMLDivElement) {
   const group = container.ownerDocument.createElement("div");

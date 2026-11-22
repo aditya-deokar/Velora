@@ -7,3 +7,9 @@ export const dashboard = `<main id="dashboard" style="width:640px; height:420px;
   <section id="modal" role="dialog" aria-label="Share" style="position:absolute;left:410px;top:170px;width:170px;height:94px;border-radius:14px;background:#e6edff;color:#10233e;padding:10px;box-sizing:border-box">Share report</section>
   <div id="blocker" style="overflow:hidden;position:absolute;left:215px;top:290px;width:180px;height:64px"><button id="clipped" style="margin:8px;border-radius:6px">Clipped control</button></div>
 </main>`;
+
+const testChart = "background:repeating-linear-gradient(90deg,#101010 0 5px,#f0f0f0 5px 10px)";
+export const opticsBoard = `<main style="width:640px;height:420px;position:relative;background:#555">
+  <div id="optics-chart" data-velora-anchor="chart" data-velora-tier="card" style="width:182px;height:110px;position:absolute;left:114px;top:145px;${testChart}"></div>
+  <div id="optics-modal" data-velora-anchor="modal" data-velora-tier="floating" style="width:162px;height:102px;position:absolute;left:363px;top:152px;${testChart}"></div>
+</main>`;

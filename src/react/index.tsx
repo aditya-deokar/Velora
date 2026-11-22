@@ -20,7 +20,7 @@ import {
   uniformFocusBlur,
   motionTime,
   withAdditive,
-  CameraSchema,
+  withCameraAdditive,
   FocusSchema,
   TransformSchema,
   type CameraInput,
@@ -73,7 +73,7 @@ function checkMotionMutation(motion: MotionInput | undefined) {
 const visualKeys: ReadonlySet<string> = new Set(SURFACE_VISUAL_PROPERTIES);
 const depthDefault: DepthConfig = Object.freeze({ mode: "auto" });
 // Static bases for add-clip offsets on properties without a replace owner.
-const CAMERA_BASE = CameraSchema.parse({}), FOCUS_BASE = FocusSchema.parse({}), TRANSFORM_BASE = TransformSchema.parse({});
+const FOCUS_BASE = FocusSchema.parse({}), TRANSFORM_BASE = TransformSchema.parse({});
 const VISUAL_BASE: Record<string, number> = { opacity: 1, blur: 0, brightness: 1, contrast: 1, saturate: 1, hueRotate: 0, grayscale: 0, clipTop: 0, clipRight: 0, clipBottom: 0, clipLeft: 0 };
 const pick = (values: Record<string, number> | undefined, visual: boolean) =>
   values ? Object.fromEntries(Object.entries(values).filter(([key]) => key !== "elevation" && visualKeys.has(key) === visual)) : undefined;
@@ -150,7 +150,7 @@ export function Scene({
     const state = motion ? RESOURCES["evaluate-motion"](motion, timeMs) : emptyMotion;
     const additive = state.additive;
     const input = {
-      camera: withAdditive({ ...camera, ...state.camera }, additive?.camera, CAMERA_BASE),
+      camera: withCameraAdditive({ ...camera, ...state.camera }, additive?.camera),
       focus: withAdditive({ ...focus, ...state.focus }, additive?.focus, FOCUS_BASE),
       ...(constraints ? { constraints } : {}),
       nodes: bindings.map((binding) => ({
@@ -216,6 +216,8 @@ export function Scene({
         return value === undefined && additive === undefined ? [] : [[id, Math.max(0, Math.min(4, (value ?? 1) + (additive ?? 0)))] as const];
       })),
       displayCamera: (result.view ?? result.evaluation).camera ?? (result.validated.success ? result.validated.data.camera : undefined),
+      displayFocus: (result.view ?? result.evaluation).focus,
+      frameSize: () => stage.current ? { width: stage.current.offsetWidth, height: stage.current.offsetHeight } : undefined,
       threeSelection,
       timeMs: motion ? motionTime(motion, timeMs) : Number.isFinite(timeMs) ? timeMs : 0,
       visuals: new Map(
@@ -241,9 +243,6 @@ export function Scene({
   );
   const depthReports = [...registry.depthReports.values()];
   const depthAdvisories = depthReports.flatMap(report => report.issues);
-  for (const surface of new Set(depthReports.filter(report => report.volumetric && (context.nodes.get(report.surface)?.focus.maxBlur ?? 0) > 0).map(report => report.surface))) {
-    depthAdvisories.push({ code: "depth-focus-deferred", path: `definition.depth.${surface}`, message: "Whole-surface focus blur is deferred while this surface uses volumetric depth." });
-  }
   // Editor consumers observe the committed evaluation; no instances, elements or callbacks leave the Scene.
   useLayout(() => {
     if (!inspector) return;
@@ -260,7 +259,7 @@ export function Scene({
       motion: result.state,
       issues: result.evaluation.issues,
       ...(depthAdvisories.length ? { advisories: depthAdvisories } : {}),
-      ...(depthReports.length ? { depth: depthReports.map(({ surface, hash, layers, explicitTiers }) => ({ surface, hash, layers, explicitTiers })) } : {}),
+      ...(depthReports.length ? { depth: depthReports.map(({ surface, hash, layers, explicitTiers, focus }) => ({ surface, hash, layers, explicitTiers, ...(focus ? { focus } : {}) })) } : {}),
       ...(result.evaluation.camera ? { camera: { ...result.evaluation.camera } } : {}),
       ...(result.evaluation.focus ? { focus: { ...result.evaluation.focus } } : {}),
       ...(result.view?.camera ? { view: { ...result.view.camera } } : {}),
@@ -300,6 +299,7 @@ export function Scene({
             pointerEvents: "none",
             perspective: validCamera?.perspective ?? 1400,
             perspectiveOrigin: "50% 50%",
+            ...(validCamera?.zoom === undefined ? {} : { scale: validCamera.zoom }),
             // Keep the backdrop outside the 3D sorting context so negative-z UI stays visible.
             // The inner camera stage preserves depth among all surfaces.
             transformStyle: "flat",
@@ -374,7 +374,7 @@ export function Surface({
   const leafGrouping = alpha < 1 ? "opacity" : paintFilter !== "none" ? "filter"
     : contentStyle?.clipPath && contentStyle.clipPath !== "none" || leafClip(visual) ? "clip-path" : undefined;
   const activeDepth = context && config && config.mode !== "off" ? { root: element.current, config, surface: id, registry: context.registry,
-    camera: context.displayCamera, world: node?.world, width: node?.width, height: node?.height, elevation: context.elevations?.get(id) ?? 1,
+    camera: context.displayCamera, focus: context.displayFocus, world: node?.world, width: node?.width, height: node?.height, elevation: context.elevations?.get(id) ?? 1,
     display: context.depthDisplay, light: config.light, intensity: config.intensity, leafGrouping } : undefined;
   useVolumetricDepth(activeDepth, element, proxies);
   useLayout(() => {
@@ -393,7 +393,7 @@ export function Surface({
     throw new Error("Surface and Motion must be rendered inside a Velora Scene.");
   }
   const { transforms } = context;
-  const volume = !!activeDepth && [...context.registry.depthReports.values()].some(report => report.surface === id && report.volumetric);
+  const depthFocus = !!activeDepth && [...context.registry.depthReports.values()].some(report => report.surface === id && report.focus?.length);
   const grouped = Array.from(context.registry.entries.values()).some(
     (binding) => binding.parent === token,
   );
@@ -403,7 +403,7 @@ export function Surface({
     node.width > 0 &&
     node.height > 0 &&
     node.focus.maxBlur > 0 &&
-    !volume &&
+    !depthFocus &&
     (content !== undefined || !grouped);
   const uniformBlur = filtering ? uniformFocusBlur(node.focus, node.width, node.height) : 0;
   const variables = Object.hasOwn(context.styles, id) ? context.styles[id] : undefined;

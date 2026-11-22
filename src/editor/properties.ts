@@ -1,4 +1,4 @@
-import { CameraSchema, FocusSchema, MotionSchema, TransformSchema, evaluateMotion, type MotionState, type TrackAddress } from "../core";
+import { CameraSchema, FocusSchema, MotionSchema, PERSPECTIVE_MAX, TransformSchema, evaluateMotion, type MotionState, type TrackAddress } from "../core";
 import type { SceneSnapshot } from "../react";
 import type { Doc } from "./store";
 import { findTrack } from "./model";
@@ -24,11 +24,11 @@ export const VISUAL_PROPS: readonly PropertySpec[] = [
 export const CAMERA_PROPS: readonly PropertySpec[] = [
   { name: "x", unit: "px", step: 1 }, { name: "y", unit: "px", step: 1 }, { name: "z", unit: "px", step: 1 },
   { name: "rotateX", unit: "°", step: 0.5 }, { name: "rotateY", unit: "°", step: 0.5 }, { name: "rotateZ", unit: "°", step: 0.5 },
-  { name: "perspective", unit: "px", step: 10, min: 100, max: 10_000 },
+  { name: "perspective", unit: "px", step: 10, min: 100, max: PERSPECTIVE_MAX }, { name: "zoom", step: 0.01, min: 0.25, max: 8 },
 ];
 export const FOCUS_PROPS: readonly PropertySpec[] = [
   { name: "distance", unit: "px", step: 10, min: 1 }, { name: "fStop", step: 0.1, min: 0.7, max: 128 },
-  { name: "focalLength", unit: "px", step: 1, min: 1, max: 300 }, { name: "maxBlur", unit: "px", step: 0.1, min: 0, max: 32 },
+  { name: "focalLength", unit: "px", step: 1, min: 1, max: 4000 }, { name: "maxBlur", unit: "px", step: 0.1, min: 0, max: 32 },
 ];
 const VISUAL_BASE: Record<string, number> = { elevation: 1, opacity: 1, blur: 0, brightness: 1, contrast: 1, saturate: 1, hueRotate: 0, grayscale: 0, clipTop: 0, clipRight: 0, clipBottom: 0, clipLeft: 0, clipRadius: 150 };
 /** The motion speed (authored ms per presentation ms); legacy recipes default to 0.5. */
@@ -54,7 +54,7 @@ export function valueAt(doc: Doc, address: TrackAddress, state: MotionState | un
   const { target, property } = address;
   if (target.kind === "camera") {
     const animated = state?.camera[property as keyof MotionState["camera"]];
-    return animated ?? (CameraSchema.safeParse(doc?.definition?.scene?.camera ?? {}).data as Record<string, number> | undefined)?.[property];
+    return animated ?? (CameraSchema.safeParse(doc?.definition?.scene?.camera ?? {}).data as Record<string, number> | undefined)?.[property] ?? (property === "zoom" ? 1 : undefined);
   }
   if (target.kind === "focus") {
     const animated = state?.focus[property as keyof MotionState["focus"]];
