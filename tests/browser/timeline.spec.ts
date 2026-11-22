@@ -92,8 +92,10 @@ test("a keyframe can be edited with the keyboard only", async ({ page }) => {
   await page.keyboard.press("ArrowLeft");
   await expect(page.locator(CELL(0))).toBeFocused();
   await page.keyboard.press("ArrowRight");
+  await expect(page.locator(CELL(1000))).toBeFocused();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: /Edit opacity keyframe/ });
+  await expect(dialog.getByLabel("Time (ms)")).toHaveValue("1000");
   await dialog.getByLabel("Value").fill("0.5");
   await dialog.getByLabel("Value").press("Enter");
   await until(async () => (await disk()).definition.motion.tracks[0].keyframes[1].value === 0.5);

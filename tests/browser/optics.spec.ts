@@ -1,11 +1,13 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { CaptureManifestSchema, FOCUS_BANDS, focusBand } from "../../src/core";
-import { openCapture } from "../../src/export/services";
+import { openCapture, decodePngDataUrl, sha256Hex } from "../../src/export/services";
+import { parsePng } from "../../src/export/compositor";
 
 const width = 640, height = 420, fixture = "/tests/fixtures/depth.html";
-test.use({ channel: "chromium", viewport: { width: 800, height: 600 } });
-const seek = (page: Page, time: number) => page.evaluate(ms => {
+test.use({ channel: "chromium", viewport: { width, height } });
+const seek = (page: Page, time: number) => page.evaluate(async ms => {
   (window as unknown as { depthFixture: { seek(ms: number): void } }).depthFixture.seek(ms);
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }, time);
 const layer = (page: Page, index: number) => page.locator(`[data-velora-depth-focus="${index}"]`);
 const blur = async (page: Page, index: number) => Number(await layer(page, index).getAttribute("data-velora-blur"));
@@ -55,6 +57,7 @@ test("the 200 mm rack exchanges sharpness and breathes identically in preview an
   await page.goto(`${fixture}?rack`);
   await expect(layer(page, 1)).toBeAttached();
   await expect(page.locator("[data-velora-focus-veil]").first()).toBeAttached();
+  await seek(page, 0);
   expect(await blur(page, 1)).toBeLessThan(0.5);
   expect(await blur(page, 0)).toBeGreaterThan(1.8);
   const startWidth = (await page.locator("#optics-chart").boundingBox())!.width;
@@ -64,16 +67,19 @@ test("the 200 mm rack exchanges sharpness and breathes identically in preview an
   expect(await blur(page, 1)).toBeGreaterThan(1.8);
   const endWidth = (await page.locator("#optics-chart").boundingBox())!.width;
   expect(endWidth / startWidth).toBeCloseTo(0.982, 3);
-  expect(await variance(page, "#optics-chart")).toBeGreaterThan(startChart * 1.35);
-  expect(await variance(page, "#optics-modal")).toBeLessThan(startModal / 1.35);
-  const expected = await page.locator("#depth-viewport").screenshot();
+  await expect.poll(() => variance(page, "#optics-chart")).toBeGreaterThan(startChart * 1.35);
+  await expect.poll(() => variance(page, "#optics-modal")).toBeLessThan(startModal / 1.35);
+  const clip = (await page.locator("#depth-viewport").boundingBox())!;
+  const expected = parsePng(await page.screenshot({ clip, animations: "disabled" }));
   const session = await openCapture({ url: new URL(`${fixture}?rack`, baseURL).href, width, height });
   try {
     const manifest = CaptureManifestSchema.parse(await session.manifest(1000));
     expect(manifest.depth?.[0].focus?.[0].blur).toBeLessThan(0.5);
-    const actual = await session.snapshot(1000, manifest);
-    expect(Buffer.from(actual.split(",")[1], "base64")).toEqual(expected);
-    expect(await session.snapshot(1000, manifest)).toBe(actual);
+    const frame = await session.snapshot(1000, manifest);
+    const actual = parsePng(decodePngDataUrl(frame));
+    expect([actual.width, actual.height]).toEqual([expected.width, expected.height]);
+    expect(sha256Hex(actual.pixels)).toBe(sha256Hex(expected.pixels));
+    expect(await session.snapshot(1000, manifest)).toBe(frame);
   } finally { await session.close(); }
 });
 

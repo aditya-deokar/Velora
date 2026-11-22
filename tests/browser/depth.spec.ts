@@ -1,10 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openCapture } from "../../src/export/services";
+import { openCapture, decodePngDataUrl, sha256Hex } from "../../src/export/services";
+import { parsePng } from "../../src/export/compositor";
 import { applyPoint, CameraSchema, cameraMatrix, CaptureManifestSchema, lensFor, projectWorld } from "../../src/core";
 
-test.use({ channel: "chromium", viewport: { width: 800, height: 600 } });
 const fixture = "/tests/fixtures/depth.html";
 const width = 640, height = 420;
+test.use({ channel: "chromium", viewport: { width, height } });
 type FixtureWindow = Window & { depthFixture: { seek(ms: number): void; active(value: boolean): void; capture(value: boolean): void } };
 const seek = (page: Page, time: number) => page.evaluate(ms => (window as unknown as FixtureWindow).depthFixture.seek(ms), time);
 
@@ -26,14 +27,17 @@ test("volumetric model creates parallax, proxies and deterministic capture witho
     const actual = await page.locator("#card-center").evaluate(node => { const r = node.getBoundingClientRect(); return { x: r.left, y: r.top }; });
     expect(Math.hypot(actual.x - projected.x, actual.y - projected.y)).toBeLessThan(0.5);
   }
-  const expected = await page.locator("#depth-viewport").screenshot({ animations: "disabled" });
+  const clip = (await page.locator("#depth-viewport").boundingBox())!;
+  const expected = parsePng(await page.screenshot({ clip, animations: "disabled" }));
   const capture = await openCapture({ url: new URL(fixture + "?focus", baseURL).href, width, height });
   try {
     const manifest = CaptureManifestSchema.parse(await capture.manifest(1000));
     expect(manifest.depth?.[0].layers).toContainEqual({ match: { anchor: "revenue" }, tier: "card", z: 24 });
     const frame = await capture.snapshot(1000, manifest);
     expect(await capture.snapshot(1000, manifest)).toBe(frame);
-    expect(Buffer.from(frame.split(",")[1], "base64")).toEqual(expected);
+    const actual = parsePng(decodePngDataUrl(frame));
+    expect([actual.width, actual.height]).toEqual([expected.width, expected.height]);
+    expect(sha256Hex(actual.pixels)).toBe(sha256Hex(expected.pixels));
   } finally { await capture.close(); }
   await page.evaluate(() => (window as unknown as FixtureWindow).depthFixture.active(false));
   await expect(host).toHaveJSProperty("innerHTML", original);

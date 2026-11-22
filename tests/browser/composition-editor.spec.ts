@@ -26,11 +26,14 @@ async function project(run: (root: string, url: string) => Promise<void>, setup:
     await put(root, ".velora/project.json", JSON.stringify({ version: 1, projectId, entry: "main.tsx", packageManager: "npm", adapter: "site", site: "http://127.0.0.1:5555" }));
     await put(root, "__velora/index.html", `<!doctype html><meta name="velora-project" content="${projectId}"><div id="root"></div><script type="module" src="/main.tsx"></script>`);
     await put(root, "main.tsx", `import {createRoot} from 'react-dom/client';
+      import {Host} from './Host'; createRoot(document.querySelector('#root')!).render(<Host/>);`);
+    await put(root, "Host.tsx", `
       import {ProjectPreview} from '@adityadeokar/velora/preview';
-      createRoot(document.querySelector('#root')!).render(<ProjectPreview projectId=${JSON.stringify(projectId)} enabled hot={import.meta.hot}
-        sceneModules={import.meta.glob('/src/velora/scenes/*.{scene.json,tsx}')}
-        compositionModules={import.meta.glob('/*.composition.json')}
-        assetUrls={import.meta.glob('/**/*.{wav,srt}', {query: '?url', import: 'default', eager: true})}/>);`);
+      const sceneModules = import.meta.glob('/src/velora/scenes/*.{scene.json,tsx}');
+      const compositionModules = import.meta.glob('/*.composition.json');
+      const assetUrls = import.meta.glob('/**/*.{wav,srt}', {query: '?url', import: 'default', eager: true});
+      export function Host() { return <ProjectPreview projectId=${JSON.stringify(projectId)} enabled hot={import.meta.hot}
+        sceneModules={sceneModules} compositionModules={compositionModules} assetUrls={assetUrls}/>; }`);
     await setup(root);
     dev = await createServer({ root, configFile: false, plugins: [react()], cacheDir: path.join(root, ".vite"),
       resolve: { alias: [
@@ -62,6 +65,16 @@ async function drag(page: Page, target: Locator, dx: number, dy = 0) {
   const rect = (await target.boundingBox())!;
   const x = rect.x + rect.width / 2, y = rect.y + Math.min(9, rect.height / 2);
   await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + dx, y + dy, { steps: 5 }); await page.mouse.up();
+}
+async function dropTransition(page: Page, source: Locator, target: Locator) {
+  await expect(source).toHaveAttribute("draggable", "true");
+  await expect(target).toBeVisible();
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  try {
+    await source.dispatchEvent("dragstart", { dataTransfer });
+    await target.dispatchEvent("dragover", { dataTransfer });
+    await target.dispatchEvent("drop", { dataTransfer });
+  } finally { await dataTransfer.dispose(); }
 }
 async function seek(page: Page, ms: number) {
   const time = page.getByRole("slider", { name: "Composition time" });
@@ -103,7 +116,7 @@ test("ripple, crossfade, slip, scene breadcrumb and beat-snap undo persist throu
     await drag(page, page.getByRole("button", { name: "Trim a out", exact: true }), -width / 10);
     await expect.poll(async () => (await read(root)).scenes.map(clip => clip.startMs)).toEqual([0, 900, 1900]);
     await saved(page);
-    await page.getByRole("button", { name: "crossfade", exact: true }).dragTo(page.getByRole("button", { name: "Transition into b" }));
+    await dropTransition(page, page.getByRole("button", { name: "crossfade", exact: true }), page.getByRole("button", { name: "Transition into b" }));
     await expect.poll(async () => (await read(root)).scenes[1].transition?.type).toBe("crossfade");
     const cut = (await read(root)).scenes[1];
     // Author a frame-aligned window using the keyboard property field.
@@ -179,13 +192,17 @@ test("recuts the 30 second launch blueprint and edits its music bed on the timel
     for (const [id, type] of tweaks) {
       const handle = page.getByRole("button", { name: `Transition into ${id}` });
       await handle.click(); await page.getByRole("button", { name: "Remove transition" }).click();
-      await page.getByRole("button", { name: type, exact: true }).dragTo(handle);
+      await expect(handle).toHaveAttribute("data-has-transition", "false");
+      await saved(page);
+      await dropTransition(page, page.getByRole("button", { name: type, exact: true }), handle);
       await expect.poll(async () => (await read(root)).scenes.find(clip => clip.id === id)?.transition?.type).toBe(type);
     }
     await page.getByRole("button", { name: /^Audio music,/ }).click();
-    for (const [name, value] of [["Gain", "0.65"], ["Fade in (ms)", "800"], ["Fade out (ms)", "1200"]]) {
+    for (const [name, key, value] of [["Gain", "gain", "0.65"], ["Fade in (ms)", "fadeInMs", "800"], ["Fade out (ms)", "fadeOutMs", "1200"]] as const) {
       const field = page.getByRole("spinbutton", { name, exact: true });
       await field.fill(value); await field.press("Enter");
+      await expect.poll(async () => (await read(root)).audio[0][key]).toBe(Number(value));
+      await saved(page);
     }
     await expect.poll(async () => (await read(root)).audio[0]).toMatchObject({ gain: 0.65, fadeInMs: 800, fadeOutMs: 1200 });
     const before = await read(root);

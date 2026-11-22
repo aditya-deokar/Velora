@@ -5,7 +5,7 @@ import {
   MotionTrackSchema,
   type MotionInput,
 } from "../../src/core/motion";
-import { UPDATING, committedFiles, diffRecords, golden, motionRecord, recipeSources, scaffoldSources } from "./v21-golden";
+import { UPDATING, committedFiles, diffRecords, golden, motionRecord, recipeSources, sameTemplateSamples, scaffoldSources } from "./v21-golden";
 
 const surface = { kind: "surface", id: "panel" } as const;
 function track(target: unknown = surface, property = "x", from = 0, to = 100) {
@@ -331,7 +331,12 @@ describe("v2.1 motion golden", () => {
     expect(Object.keys(expected.scaffolds).length).toBeGreaterThanOrEqual(100);
   });
   it("evaluates committed recipes byte-identically", () => expect(diffRecords(expected.recipes, actual.recipes)).toEqual([]));
-  it("evaluates template scaffolds byte-identically", () => expect(diffRecords(expected.scaffolds, actual.scaffolds)).toEqual([]));
+  it("matches template scaffold samples across supported Node math implementations", () => expect(diffRecords(expected.scaffolds, actual.scaffolds, sameTemplateSamples)).toEqual([]));
+  it("rejects numeric drift and shape changes outside the scaffold rounding tolerance", () => {
+    expect(sameTemplateSamples({ x: [1, 2] }, { x: [1 + 1e-13, 2] })).toBe(true);
+    expect(sameTemplateSamples({ x: [1, 2] }, { x: [1 + 1e-10, 2] })).toBe(false);
+    expect(sameTemplateSamples({ x: [1, 2] }, { x: { 0: 1, 1: 2 } })).toBe(false);
+  });
 });
 
 describe("v2.1 auto-bezier keyframes", () => {

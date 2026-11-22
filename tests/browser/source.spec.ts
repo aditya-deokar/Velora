@@ -1,8 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
-import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createServer, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
@@ -11,7 +9,6 @@ import { startSceneBridge } from "../../src/project/edit";
 import { audit, loadAudit } from "./audit";
 
 const workspace = fileURLToPath(new URL("../../", import.meta.url));
-const require = createRequire(import.meta.url);
 const binding = "src/velora/scenes/design.jsx";
 const recipeFile = "src/velora/scenes/design.scene.json";
 const original = `import { Surface } from ${JSON.stringify(VELORA_PACKAGE.name)};
@@ -33,10 +30,11 @@ const recipe = { version: 1, id: "design", title: "Source design", definition: {
 let root = "", vite: ViteDevServer | undefined, bridge: Awaited<ReturnType<typeof startSceneBridge>> | undefined;
 const read = (target: string) => readFile(path.join(root, target), "utf8");
 const disk = async () => JSON.parse(await read(recipeFile));
-test.afterEach(async () => { await bridge?.server.stop(); await vite?.close(); if (root) await rm(root, { recursive: true, force: true }); root = ""; bridge = undefined; vite = undefined; });
+test.afterEach(async () => { await bridge?.server.stop(); await vite?.close(); if (root) await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 }); root = ""; bridge = undefined; vite = undefined; });
 
 async function open(page: Page) {
-  root = await mkdtemp(path.join(tmpdir(), "velora-source-live-"));
+  // Keep Vite's project, source aliases and dependencies on the same volume on Windows runners.
+  root = await mkdtemp(path.join(workspace, ".test-dist", "source-host-"));
   const put = async (file: string, content: string) => { const target = path.join(root, file); await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, content); };
   await put("package.json", '{"name":"codemod-fixture","type":"module","private":true}');
   await put("index.html", '<div id="root"></div><script type="module" src="/src/main.jsx"></script>');
@@ -45,12 +43,10 @@ async function open(page: Page) {
     import Source from './velora/scenes/design.scene.json'; import Binding from './velora/scenes/design.jsx';
     export default function Host(){return <SceneLibrary sources={{'${recipeFile}':Source}} bindings={{'${binding}':Binding}} hot={import.meta.hot}/>;}`);
   await put(binding, original); await put(recipeFile, JSON.stringify(recipe, null, 2) + "\n");
-  const reactDeps = ["react", "react/jsx-runtime", "react/jsx-dev-runtime", "react-dom", "react-dom/client", "react-error-boundary", "zod"];
-  const aliases = reactDeps.map(name => ({ find: new RegExp(`^${name}$`), replacement: require.resolve(name) }));
-  vite = await createServer({ root, configFile: false, plugins: [react()], optimizeDeps: { include: reactDeps }, resolve: { alias: [
+  vite = await createServer({ root, configFile: false, plugins: [react()], cacheDir: path.join(root, ".vite"), resolve: { dedupe: ["react", "react-dom"], alias: [
     { find: `${VELORA_PACKAGE.name}/preview`, replacement: path.join(workspace, "src/preview/index.tsx") },
-    { find: VELORA_PACKAGE.name, replacement: path.join(workspace, "src/index.ts") }, ...aliases,
-  ] }, server: { host: "127.0.0.1", port: 0, fs: { allow: [workspace, root] } } });
+    { find: VELORA_PACKAGE.name, replacement: path.join(workspace, "src/index.ts") },
+  ] }, server: { host: "127.0.0.1", port: 0, fs: { allow: [workspace] } } });
   await vite.listen();
   const port = (vite.httpServer!.address() as { port: number }).port;
   const origin = `http://127.0.0.1:${port}`;

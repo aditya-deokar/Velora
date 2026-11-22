@@ -116,9 +116,18 @@ export function opticsRecord() {
 }
 
 /** Byte-level comparison of one golden document; returns the keys that changed. */
-export function diffRecords(expected: Record<string, unknown>, actual: Record<string, unknown>): string[] {
+export function diffRecords(expected: Record<string, unknown>, actual: Record<string, unknown>, equal = sameBytes): string[] {
   const keys = new Set([...Object.keys(expected), ...Object.keys(actual)]);
-  return [...keys].filter(key => JSON.stringify(expected[key]) !== JSON.stringify(actual[key])).sort();
+  return [...keys].filter(key => !equal(expected[key], actual[key])).sort();
+}
+function sameBytes(expected: unknown, actual: unknown) { return JSON.stringify(expected) === JSON.stringify(actual); }
+/** Runtime math implementations can round eased template samples differently in their last bits. */
+export function sameTemplateSamples(expected: unknown, actual: unknown): boolean {
+  if (Object.is(expected, actual)) return true;
+  if (typeof expected === "number" && typeof actual === "number") return Math.abs(expected - actual) <= 1e-12;
+  if (!expected || !actual || typeof expected !== "object" || typeof actual !== "object" || Array.isArray(expected) !== Array.isArray(actual)) return false;
+  const keys = Object.keys(expected);
+  return sameBytes(keys, Object.keys(actual)) && keys.every(key => sameTemplateSamples(Reflect.get(expected, key), Reflect.get(actual, key)));
 }
 export function goldenPath(name: string): string {
   return path.join(GOLDEN_DIRECTORY, name);
