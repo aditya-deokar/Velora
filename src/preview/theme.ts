@@ -7,6 +7,18 @@ import {studioTheme} from './studio-theme';
  */
 export const previewTheme = `
 ${studioTheme}
+[data-velora-layout=editor] .velora-editor-grid{position:absolute;inset:0;display:grid;grid-template-columns:var(--velora-left,260px) 1fr var(--velora-right,300px);grid-template-rows:auto 1fr var(--velora-bottom,280px);grid-template-areas:"top top top" "left center right" "bottom bottom bottom";background:#0b0b0d}
+[data-velora-layout=editor] .velora-editor-top{grid-area:top;display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid #ffffff1f;min-width:0}
+[data-velora-layout=editor] .velora-editor-top .velora-control{min-height:32px;padding:6px 12px}
+[data-velora-layout=editor] .velora-editor-toolbar{flex:1;display:flex;align-items:center;gap:8px;min-width:0;overflow-x:auto}
+[data-velora-layout=editor] .velora-editor-left{grid-area:left;overflow:auto;border-right:1px solid #ffffff1f}
+[data-velora-layout=editor] .velora-editor-right{grid-area:right;overflow:auto;border-left:1px solid #ffffff1f}
+[data-velora-layout=editor] .velora-editor-bottom{grid-area:bottom;overflow:hidden;border-top:1px solid #ffffff1f;display:flex;flex-direction:column;min-height:0}
+[data-velora-layout=editor] .velora-editor-center{grid-area:center;position:relative;overflow:hidden;min-width:0;min-height:0}
+[data-velora-layout=editor] .velora-editor-center .velora-viewport{position:absolute;inset:0}
+[data-velora-layout=editor] .velora-editor-message{position:absolute;left:12px;right:12px;bottom:12px;z-index:3}
+[data-velora-layout=editor] .velora-editor-export{position:absolute;top:56px;right:12px;z-index:5}
+@media (max-width:1100px){[data-velora-layout=editor] .velora-editor-grid{grid-template-columns:1fr;grid-template-rows:auto minmax(240px,40vh) auto auto auto;grid-template-areas:"top" "center" "bottom" "right" "left";overflow:auto}}
 [data-velora-preview]{position:fixed;inset:0;height:100dvh;overflow:hidden;background:#000;color:#fff;min-height:0;width:100%;box-sizing:border-box;isolation:isolate}
 .velora-chrome{font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-sizing:border-box;color:#fff}
 .velora-viewport{position:absolute;inset:0;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center}
@@ -20,6 +32,9 @@ ${studioTheme}
 .velora-controls{max-width:760px;max-height:calc(100dvh - 48px - env(safe-area-inset-bottom));overflow:auto;overscroll-behavior:contain;margin:0 auto;display:flex;flex-direction:column;gap:12px;pointer-events:auto;padding:6px;scrollbar-width:thin;scrollbar-color:#666 transparent}
 .velora-header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-shrink:0}
 .velora-heading{display:flex;align-items:center;gap:16px;min-width:0}
+.velora-stage-chip{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:11px;color:inherit}
+.velora-stage-chip select{min-height:28px;background:#23252b;color:#e5e8ef;border:1px solid #777c87;border-radius:4px}
+.velora-stage-chip output{max-width:42ch;overflow-wrap:anywhere}
 .velora-title{font-size:15px;font-weight:600;letter-spacing:-.2px;color:#fff;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .velora-control{appearance:none;box-sizing:border-box;border:1px solid #ffffff30;border-radius:999px;padding:11px 18px;background:#242424;color:#fff;font:500 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-decoration:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:9px;white-space:nowrap;min-height:44px;flex-shrink:0;transition:background .15s;box-shadow:none}
 .velora-control:hover{background:#3a3a3a}.velora-control:disabled{opacity:.45;cursor:default}

@@ -1,5 +1,6 @@
 import type { Composition } from "./composition";
 import type { BoundRecipe } from "./recipes";
+import { clipTiming } from "./motion";
 import { evaluateMotion, loopSeam } from "./motion";
 import { projectPoints, ASPECT_FRAMES, type Aspect } from "./shots";
 import { findTemplate, templateDefinition, type ParamValue } from "./templates";
@@ -83,11 +84,16 @@ export function reviewComposition(composition: Composition, scenes: readonly Sce
     if (segment.durationMs < pacing.minMs) add("ADV_SHOT_LENGTH", path, `Shot "${segment.id}" lasts ${segment.durationMs}ms; this platform reads best from ${pacing.minMs}ms.`, segment.startMs);
     if (segment.durationMs > pacing.maxMs) add("ADV_SHOT_LENGTH", path, `Shot "${segment.id}" lasts ${segment.durationMs}ms; this platform holds attention up to about ${pacing.maxMs}ms. Cut it or split it.`, segment.startMs);
     if (scene) {
+      const motion = scene.definition.motion;
+      const exit = (segment.inMs ?? 0) + segment.durationMs;
+      if (ordered.at(-1)?.segment !== segment && motion?.clips?.some(clip => clip.source && "rig" in clip.source && clip.source.rig === "whip-pan-macro"
+        && clip.startMs / (motion.speed ?? 0.5) < exit && exit - clipTiming(clip).endMs / (motion.speed ?? 0.5) < 300))
+        add("whip-unreadable", path, "Let the arrival hold for at least 300 ms before the cut.", segment.startMs);
       const needed = readingTimeMs(sceneCopy(scene));
       if (needed && needed > segment.durationMs) add("ADV_READING_TIME", path, `Shot "${segment.id}" shows copy that needs about ${needed}ms to read but is on screen ${segment.durationMs}ms.`, segment.startMs);
       if (scene.definition.motion?.loop) {
         const seam = loopSeam(scene.definition.motion);
-        if (Number.isFinite(seam) && seam > 0.5) add("ADV_LOOP_SEAM", path, `Scene "${scene.id}" loops with a ${seam.toFixed(2)} jump at the seam; match its first and last keyframes.`);
+        if (Number.isFinite(seam) && seam > 0.5) add("ADV_LOOP_SEAM", path, `Scene "${scene.id}" loops with a ${seam.toFixed(2)} jump at the seam; match its first and last keyframes.`, segment.startMs);
       }
     }
   }
@@ -107,7 +113,7 @@ export function reviewComposition(composition: Composition, scenes: readonly Sce
     const cutMs = b.segment.startMs + (transition && isOverlapTransition(transition.type) ? transition.durationMs : 0);
     const path = `composition.scenes.${b.index}`;
     if (a.scene && b.scene) {
-      const out = subjectOnScreen(a.scene, a.segment.durationMs), into = subjectOnScreen(b.scene, 0);
+      const out = subjectOnScreen(a.scene, (a.segment.inMs ?? 0) + a.segment.durationMs), into = subjectOnScreen(b.scene, b.segment.inMs ?? 0);
       if (out && into) {
         const jump = Math.hypot((out.x - into.x) * 16, (out.y - into.y) * 9) / Math.hypot(16, 9);
         const matchMarked = composition.markers.some(marker => marker.kind === "cue" && /match/i.test(marker.label) && Math.abs(marker.atMs - cutMs) <= 250);

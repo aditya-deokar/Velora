@@ -9,6 +9,7 @@ prerequisites:
 - Licensed music in assets/ if the film has a bed (none is bundled)
 commands:
 - new
+- edit
 - audio
 - compose
 - review
@@ -92,6 +93,14 @@ Each blueprint writes:
    - The mix is normalized to -14 LUFS / -1 dBTP by default (`loudness` on the composition; `false` skips it).
 6. **Captions.** `captions.style` is `karaoke`, `bold-pop`, `minimal`, `lower` or `burn` (FFmpeg). Words come from `wordsFile` (`{ "words": [{ "text", "startMs", "endMs" }] }`), or are spread by character count. Captions sit clear of 9:16 platform UI.
 7. **Review.** Run `velora review`, then the contact sheet, then a draft render, then `velora check --video` (flash safety), then the master.
+
+## Edit the cut in Studio
+
+Open **Compositions → Edit**, or run `velora edit --composition launch.composition.json --url http://127.0.0.1:5173` to enable saves. V selects, moves or reorders. B ripple-trims and shifts later shots. N rolls a shared edge. Y slips the source inside the shot. C splits at a frame. M drops a cue. Hold Shift during a drag to suspend snapping. Double-click a shot to edit its scene at the source time under the composition cursor.
+
+Drop an overlap transition on the incoming cut, then drag its handle to change the window. Overlays show opacity and blend on their clip bars. The music, voice and SFX lanes display peaks from declared audio assets and offer trim, gain and fade handles. Use **Snap all cuts to beats** to review cut deltas and apply them as one undo step. Review pins select the associated shot or overlay and seek to the advisory.
+
+Use `velora compose edit --composition launch.composition.json --ops ops.json --json` for the same edits from the CLI. Review the diff and repeat with `--expect-sha <sha> --write`. See `velora compose --help` for the `trim`, `move`, `split`, and `transition` helpers.
 
 ## Worked Example
 

@@ -14,3 +14,6 @@ export { Cursor, Typewriter, Spotlight, Callout, type CursorSkin } from "./inter
 export { Title, Counter, Countdown, Panel, Marquee, GradientText, CaptionTrack, cueWords, segmentText, type Split, type CaptionStyle, type CaptionCueInput, type CaptionWord } from "./type";
 export { VideoClip, ImageLayer } from "./media";
 export { LookLayer, GRAIN_FPS } from "./Look";
+export { TextAnimator, type TextAnimatorProps } from "./text-animator";
+export { DrawPath, trimDash, type DrawPathProps } from "./draw-path";
+export { Shape, polygonPoints, type ShapeKind, type ShapeProps } from "./shape";

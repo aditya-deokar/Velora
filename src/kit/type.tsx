@@ -1,7 +1,8 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useSceneTime } from "../react";
 import { tint } from "./color";
-import { useBrand, useReveal, useRevealer, type RevealTiming } from "./brand";
+import { MOTION_PERSONALITIES } from "../core";
+import { useBrand, useReveal, useRevealer, useRevealOverride, useRevealScale, type RevealTiming } from "./brand";
 
 /** SOURCE OF TRUTH: Title, Counter, Countdown, Panel, Marquee, GradientText, CaptionTrack, segmentText.
  * WHAT: brand-styled type that moves on the scene clock: masked line/word/grapheme reveals (Intl.Segmenter,
@@ -29,12 +30,15 @@ export function segmentText(text: string, by: Split, locale?: string): string[][
     return units;
   });
 }
-type TitleProps = RevealTiming & { text: string; by?: Split; accent?: string; size?: number; weight?: number; align?: CSSProperties["textAlign"]; color?: string; locale?: string; lineHeight?: number; style?: CSSProperties };
+type TitleProps = RevealTiming & { id?: string; text: string; by?: Split; accent?: string; size?: number; weight?: number; align?: CSSProperties["textAlign"]; color?: string; locale?: string; lineHeight?: number; style?: CSSProperties };
 /** Units rise from behind a mask in reading order (staggered by the brand's motion personality). */
-export function Title({ text, by = "word", accent, size = 96, weight = 650, align = "left", color, locale, lineHeight = 1.05, startMs = 0, durationMs = 900, easing, style }: TitleProps) {
+export function Title({ id, text, by = "word", accent, size = 96, weight = 650, align = "left", color, locale, lineHeight = 1.05, startMs = 0, durationMs = 900, easing, style }: TitleProps) {
   const brand = useBrand();
-  const reveal = useRevealer();
   const lines = segmentText(text, by, locale);
+  // An <id>.reveal track (0..1) scrubs the whole staggered reveal span instead of the prop timing.
+  const units = lines.flat().filter(unit => !/^\s+$/.test(unit)).length;
+  const personality = MOTION_PERSONALITIES[brand.motion];
+  const reveal = useRevealer(useRevealOverride(id, startMs, Math.max(0, units - 1) * personality.staggerMs + durationMs * personality.durationScale));
   let index = 0;
   return <div data-velora-title="" lang={locale} style={{ font: `${weight} ${size}px/${lineHeight} ${brand.fonts.display}`, letterSpacing: `${-0.02 * (size / 48)}px`, color: color ?? brand.colors.primary, textAlign: align, ...style }}>
     {lines.map((units, line) => <div key={line} style={{ display: "block" }}>
@@ -50,9 +54,10 @@ export function Title({ text, by = "word", accent, size = 96, weight = 650, alig
   </div>;
 }
 /** A number counting from `from` to `to` with tabular numerals and locale grouping. */
-export function Counter({ from = 0, to, decimals = 0, prefix = "", suffix = "", locale, size = 120, color, startMs = 0, durationMs = 1600, easing, style }: RevealTiming & { from?: number; to: number; decimals?: number; prefix?: string; suffix?: string; locale?: string; size?: number; color?: string; style?: CSSProperties }) {
+export function Counter({ id, from = 0, to, decimals = 0, prefix = "", suffix = "", locale, size = 120, color, startMs = 0, durationMs = 1600, easing, style }: RevealTiming & { id?: string; from?: number; to: number; decimals?: number; prefix?: string; suffix?: string; locale?: string; size?: number; color?: string; style?: CSSProperties }) {
   const brand = useBrand();
-  const progress = useReveal({ startMs, durationMs, easing: easing ?? "expo.out" });
+  const override = useRevealOverride(id, startMs, durationMs * useRevealScale());
+  const progress = useReveal({ startMs, durationMs, easing: easing ?? "expo.out" }, 0, override);
   const value = from + (to - from) * progress;
   const formatted = new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(Number(value.toFixed(decimals)));
   return <span data-velora-counter="" style={{ font: `700 ${size}px/1 ${brand.fonts.display}`, fontVariantNumeric: "tabular-nums", letterSpacing: `${-0.03 * (size / 48)}px`, color: color ?? brand.colors.primary, whiteSpace: "nowrap", ...style }}>{prefix}{formatted}{suffix}</span>;
@@ -130,7 +135,7 @@ export function Panel({ width, height, title, body, icon, startMs = 0, durationM
   const brand = useBrand();
   const reveal = useRevealer();
   const progress = reveal({ startMs, durationMs }, index);
-  return <div data-velora-panel="" style={{ boxSizing: "border-box", width, height, padding: Math.round(Math.min(width, height) * 0.1), borderRadius: brand.radius * 1.5, background: brand.colors.surface, border: "1px solid rgba(255,255,255,.08)",
+  return <div data-velora-panel="" data-velora-tier="card" style={{ boxSizing: "border-box", width, height, padding: Math.round(Math.min(width, height) * 0.1), borderRadius: brand.radius * 1.5, background: brand.colors.surface, border: "1px solid rgba(255,255,255,.08)",
     boxShadow: "0 30px 80px rgba(0,0,0,.35)", color: brand.colors.text, display: "flex", flexDirection: "column", gap: 12, opacity: progress, transform: `translateY(${((1 - progress) * 24).toFixed(2)}px)`, ...style }}>
     {icon && <span style={{ width: 48, height: 48, borderRadius: brand.radius, display: "grid", placeItems: "center", background: `${tint(brand.colors.accent, 15)}`, color: brand.colors.accent, font: `700 24px/1 ${brand.fonts.display}` }}>{icon}</span>}
     {title && <strong style={{ font: `650 ${Math.round(Math.min(44, width / 9))}px/1.15 ${brand.fonts.display}` }}>{title}</strong>}

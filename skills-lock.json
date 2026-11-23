@@ -286,6 +286,13 @@
       "skillPath": "skills/velora-launch/SKILL.md",
       "version": "0.1.2",
       "computedHash": "f5fe9e4704c463c3f0cfdee9159e08ab73605769d6bc091e8870d72eda2b69f7"
+    },
+    "velora-editor": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/velora-editor/SKILL.md",
+      "version": "0.1.2",
+      "computedHash": "3ea8b779684adeb1eab6d975fd26085a5a5bf1e4ebc2af3ec85603ba926a24e5"
     }
   }
 }

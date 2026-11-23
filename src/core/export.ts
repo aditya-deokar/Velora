@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { LookSchema } from "./looks";
+import { StageDprSchema, StagePresetSchema, StageSizeSchema, type StageDpr, type StageSize, type Stage } from "./stage";
+import { DepthEvidenceSchema, DepthLineageSchema } from "./depth";
+import { AnchorReportSchema } from "./targets";
 
 /** SOURCE OF TRUTH: ExportVideoSchema, CaptureManifestSchema, FrameRenderSchema, RenderManifestSchema, QualityPresetSchema, VideoCodecSchema.
  * WHAT: runtime contracts for local video requests, the live browser capture bridge,
@@ -34,6 +37,7 @@ const projectRelativeVideo = z.string().min(1).refine(value =>
 // Finishing options shared by live export and composition render; every field is optional so earlier requests are unchanged.
 const finishing = {
   quality: QualityPresetSchema.optional(),
+  stageDpr: StageDprSchema.optional(),
   codec: VideoCodecSchema.optional(),
   transparent: z.boolean().optional(),
   // Shutter angle in degrees (0 disables) and sub-frames per output frame.
@@ -42,7 +46,7 @@ const finishing = {
   gifFps: z.number().int().min(5).max(30).optional(),
   poster: z.number().finite().nonnegative().max(120_000).optional(),
 };
-type Finishing = { codec?: VideoCodec; transparent?: boolean; motionBlur?: number; motionSamples?: number; gifFps?: number; crf?: number };
+type Finishing = { codec?: VideoCodec; transparent?: boolean; motionBlur?: number; motionSamples?: number; gifFps?: number; crf?: number; stageDpr?: StageDpr };
 function checkFinishing(input: Finishing, output: string, ctx: z.RefinementCtx, path: string) {
   const codec = input.codec ?? "h264";
   const lower = output.toLowerCase();
@@ -56,14 +60,16 @@ function checkFinishing(input: Finishing, output: string, ctx: z.RefinementCtx, 
     ctx.addIssue({ code: "custom", path: ["gifFps"], message: "--gif-fps applies only with --codec gif." });
 }
 /** Resolved finishing for one render: explicit flags win over the quality preset. */
-export function resolveFinishing(input: Finishing & { quality?: QualityPreset }, frame: { width: number; height: number }) {
+export function resolveFinishing(input: Finishing & { quality?: QualityPreset }, frame: { width: number; height: number }, stage?: Pick<StageSize, "dpr">) {
   const quality = input.quality ?? "standard";
   const preset = QUALITY_PRESETS[quality];
   const motionBlur = input.motionBlur ?? preset.motionBlur;
   const motionSamples = motionBlur > 0 ? input.motionSamples ?? (preset.motionSamples || 8) : 0;
   // Supersampling never exceeds a 3840px capture side; 4K output renders at 1x.
   const largest = Math.max(frame.width, frame.height);
-  const supersample = preset.scale > 1 ? Math.max(1, Math.min(preset.scale, Math.floor(3840 / largest))) : preset.scale;
+  const stageDpr = input.stageDpr ?? stage?.dpr;
+  const requested = quality === "draft" ? preset.scale : Math.max(preset.scale, stageDpr ?? 1);
+  const supersample = requested > 1 ? Math.max(1, Math.min(requested, Math.floor(3840 / largest))) : requested;
   return { quality, codec: input.codec ?? "h264" as VideoCodec, transparent: !!input.transparent, motionBlur, motionSamples, supersample,
     gifFps: input.gifFps ?? 20, x264: preset.x264, crf: preset.crf, ...(input.crf !== undefined ? { crfOverride: input.crf } : {}) as { crfOverride?: number } };
 }
@@ -90,13 +96,27 @@ export const ExportVideoSchema = z.strictObject({
   if (input.captions && (input.codec ?? "h264") !== "h264")
     ctx.addIssue({ code: "custom", path: ["captions"], message: "Burned-in captions re-encode H.264; export with --codec h264." });
 });
+const CaptureBlurSchema = z.enum(["velocity", "shutter"]);
 export const CaptureManifestSchema = z.strictObject({
   version: z.literal(1),
   durationMs: z.number().nonnegative().max(120_000),
   selector: z.literal('[data-velora-capture="scene"]'),
   // The scene's look (browser layer already captured); export applies its finishing fields.
   look: LookSchema.optional(),
+  stage: StageSizeSchema.extend({ preset: StagePresetSchema.optional() }).optional(),
+  depth: z.array(DepthEvidenceSchema).optional(),
+  anchors: z.array(AnchorReportSchema).optional(),
+  blurMode: CaptureBlurSchema.optional(),
 });
+export const StageLineageSchema = StageSizeSchema.extend({
+  preset: StagePresetSchema.optional(), effectiveDpr: z.number().positive(), dprCapped: z.literal(true).optional(),
+});
+export type StageLineage = z.output<typeof StageLineageSchema>;
+export function stageLineage(stage: Pick<Stage, "width" | "height" | "dpr" | "preset">, finishing: ResolvedFinishing, override?: StageDpr): StageLineage {
+  const { width, height, dpr, preset } = stage;
+  return { width, height, dpr, ...(preset ? { preset } : {}), effectiveDpr: finishing.supersample,
+    ...(finishing.quality !== "draft" && finishing.supersample < (override ?? dpr) ? { dprCapped: true } : {}) };
+}
 export const ExportIssueSchema = z.strictObject({
   code: z.string(),
   message: z.string(),
@@ -117,6 +137,7 @@ export const FrameRenderSchema = z.strictObject({
   out: projectRelativeFile(".png"),
   cacheDir: z.string().min(1).optional(),
   noCache: z.boolean().optional(),
+  stageDpr: StageDprSchema.optional(),
 }).superRefine((input, ctx) => {
   if ((input.frame === undefined) === (input.timeMs === undefined))
     ctx.addIssue({ code: "custom", path: ["frame"], message: "Pass exactly one of --frame or --time." });
@@ -170,8 +191,12 @@ export const RenderManifestSchema = z.strictObject({
   codec: VideoCodecSchema.optional(),
   container: z.string().optional(),
   colorimetry: z.literal("bt709").optional(),
+  blurModes: z.array(z.strictObject({ sceneId: z.string(), mode: CaptureBlurSchema })).optional(),
   motionBlur: z.strictObject({ shutter: z.number(), samples: z.number().int() }).optional(),
   supersample: z.number().positive().optional(),
+  stage: StageLineageSchema.optional(),
+  stages: z.array(StageLineageSchema.extend({ sceneId: z.string() })).optional(),
+  depth: z.array(DepthLineageSchema.extend({ sceneId: z.string().optional() })).optional(),
   transparent: z.boolean().optional(),
   workers: z.number().int().positive().optional(),
   // Loudness normalization: target, first-pass measurement and the measured result.
@@ -267,6 +292,7 @@ export const ShotRenderSchema = z.strictObject({
   out: projectRelativeFile(".png"),
   // Still previews of export finishing: supersampling and motion blur at a given frame rate.
   quality: QualityPresetSchema.optional(),
+  stageDpr: StageDprSchema.optional(),
   motionBlur: z.number().finite().min(0).max(360).optional(),
   motionSamples: z.number().int().min(2).max(64).optional(),
   fps: ExportFrameRateSchema.optional(),
@@ -278,7 +304,7 @@ export type ShotRender = z.output<typeof ShotRenderSchema>;
 export const ShotRenderResultSchema = z.discriminatedUnion("success", [
   z.strictObject({ success: z.literal(true), data: z.strictObject({
     out: z.string(), sceneId: z.string(), timeMs: z.number().finite().nonnegative(),
-    sha: z.string(), clamped: z.boolean().optional(),
+    sha: z.string(), blurMode: CaptureBlurSchema.optional(), clamped: z.boolean().optional(), stage: StageLineageSchema.optional(), depth: z.array(DepthLineageSchema).optional(), checks: z.array(RenderCheckSchema).optional(),
   }) }),
   z.strictObject({ success: z.literal(false), issues: z.array(ExportIssueSchema) }),
 ]);
@@ -311,6 +337,7 @@ export const ExportVideoResultSchema = z.discriminatedUnion("success", [
   z.strictObject({ success: z.literal(true), data: z.strictObject({
     output: z.string(), fps: z.number(), frames: z.number().int(), durationMs: z.number(),
     codec: z.string().optional(), quality: z.string().optional(), poster: z.string().optional(),
+    stage: StageLineageSchema.optional(), depth: z.array(DepthLineageSchema).optional(), checks: z.array(RenderCheckSchema).optional(), blurMode: CaptureBlurSchema.optional(),
     audio: z.strictObject({ file: z.string(), codec: z.string(), driftMs: z.number(), peakDb: z.number().nullable() }).optional(),
     captions: z.strictObject({ file: z.string(), cues: z.number().int().nonnegative(), burnIn: z.boolean() }).optional(),
   }) }),
@@ -319,5 +346,5 @@ export const ExportVideoResultSchema = z.discriminatedUnion("success", [
 export type ExportVideo = z.output<typeof ExportVideoSchema>;
 export type CaptureManifest = z.output<typeof CaptureManifestSchema>;
 // seek may return a promise when components registered async settle work; services await it.
-export type CaptureBridge = CaptureManifest & { seek: (elapsedMs: number) => void | Promise<void> };
+export type CaptureBridge = CaptureManifest & { configure?: (options: { velocityBlur?: boolean }) => void; seek: (elapsedMs: number, options?: { inventory?: boolean }) => void | Promise<void> };
 export type ExportVideoResult = z.output<typeof ExportVideoResultSchema>;

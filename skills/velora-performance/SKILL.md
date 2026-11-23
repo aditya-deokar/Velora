@@ -45,7 +45,7 @@ Budgets table: procedural nodes at most 200; kinetic text surfaces at most 12; `
 1. Run `velora check --frames stills --budget-ms <ms> --json` and record p95 evidence on the real device.
 2. Reduce filtered surface counts; bake static layers to assets when over budget.
 3. Memoize the composed host subtree keyed by recipe; keep wrapper identity stable.
-4. Cap `pixelRatio`, isolate transforms and filters on visual leaves, and avoid flattening `preserve-3d` ancestors.
+4. Set `ThreeSurface pixelRatioCap` to 1 for iteration or 1.5 for more detail. Canvas backing pixels scale with the square of the device ratio. Measure `gl.info.render.calls` on representative frames, and reduce draw calls with instancing or fewer mesh and material groups. Keep DOM filters on visual leaves.
 5. Re-prove with `velora render --composition teaser.composition.json --frame 0 --out proof.png --json` and `velora check --frames stills --budget-ms <ms> --json`.
 
 ## Worked Example
@@ -90,3 +90,6 @@ Expected: raising `--budget-ms` is a measurement change, not a fix; real fixes l
 - Do not use this skill for correctness failures; load `velora-debug`.
 - Do not use this skill for audio drift or caption coverage; load `velora-audio` or `velora-verify`.
 - Do not quote this skill as a universal guarantee.
+## Budget depth layers
+
+Start with the default 48 classified layers per Surface. Use `maxLayers` or rules to keep the pieces that read at the output size. Classification runs on layout changes and camera motion updates the light from cached geometry. Record the depth hashes when comparing repeated renders, and run the depth performance test on the target hardware before raising the layer count.

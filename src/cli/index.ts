@@ -13,10 +13,16 @@ import { TRANSITION_CATALOG, buildTransition, describeTransition, type Transitio
 import { PROMPT_LIBRARY, findPrompt, promptPlaceholders } from "../core/prompts";
 import { ALL_DELIVER_TARGETS } from "../core/deliverables";
 import { formatOnboarding, terminalWelcome, type TerminalOptions } from "./terminal";
-import { executeDeliver, executeFrameRender, executeVideoRender, executeFramesRender, executeShotRender, executeCheck, executeSceneSnapshot, executeVideoExport, probeCapturePrerequisites } from "../export/commands";
-import { executeCreateCommand, executeStudioCommand, executeDoctorCommand, executeProjectCommand, executeAudioCommand, executeCaptionsCommand, executeSkillsCommand, executeInspectCommand, executeAssetsCommand, executeTemplateCommand, executeBrandCommand, executeEditorialCommand, type TemplateCommandResult, type BrandCommandResult, type EditorialCommandResult } from "../project/commands";
+import { executeDeliver, executeDepthResolve, executeFrameRender, executeVideoRender, executeFramesRender, executeShotRender, executeCheck, executeSceneSnapshot, executeVideoExport, probeCapturePrerequisites, readSceneAnchors, readSceneOptics, readSceneRigGeometry } from "../export/commands";
+import { parseElementTarget } from "../core/targets";
+import { RigKindSchema } from "../core/rigs";
+import { executeAnchorsCommand, executeCreateCommand, executeStudioCommand, executeDoctorCommand, executeProjectCommand, executeAudioCommand, executeCaptionsCommand, executeSkillsCommand, executeInspectCommand, executeAssetsCommand, executeTemplateCommand, executeBrandCommand, executeEditorialCommand, type TemplateCommandResult, type BrandCommandResult, type EditorialCommandResult } from "../project/commands";
 import { executeRecipeCommand, type RecipeCommandResult } from "../project/recipes";
+import { executeEditCommand, type EditOperation } from "../project/edit";
+import { executeCompositionEdit } from "../project/composition-edit";
 import type { ProjectResult } from "../core/project";
+import { StageDprSchema } from "../core/stage";
+import type { DepthConfig } from "../core/depth";
 
 /** SOURCE OF TRUTH: runCli adapter.
  * WHAT: translate terminal arguments into canonical project operations and format results.
@@ -28,7 +34,9 @@ import type { ProjectResult } from "../core/project";
  */
 type Environment = { root: string; port?: string; terminal?: TerminalOptions; progress?: (text: string) => void;
   // Long-running commands (studio) print their ready line through emit and register a stop for Ctrl-C.
-  emit?: (text: string) => void; onShutdown?: (stop: () => Promise<void>) => void };
+  emit?: (text: string) => void; onShutdown?: (stop: () => Promise<void>) => void;
+  // velora edit apply --ops - reads the batch from standard input.
+  readStdin?: () => Promise<string> };
 type Execute = typeof executeProjectCommand;
 type Doctor = (input: { url?: string }, context: { root: string }) => Promise<DoctorResult>;
 type Renderer = typeof executeFrameRender;
@@ -59,23 +67,27 @@ velora scenes [--project DIR] [--json]
 velora snapshot --scene ID --url ORIGIN [--time MS] [--project DIR] [--json]
 velora load [--scene ID] [--project DIR] [--json]
 velora validate [--project DIR] [--composition FILE] [--json]
-velora inspect [--project DIR] [--scene ID | --composition FILE] [--json]
+velora inspect [--project DIR] [--scene ID [--at MS --url ORIGIN] | --composition FILE] [--json]
 velora assets ls [--project DIR] [--json]
 velora assets check [--project DIR] [--json]
 velora assets add --as SOURCE --id ID [--project DIR] [--json]
 velora assets rm --id ID --yes [--project DIR] [--json]
-velora export --url URL --output FILE [--fps 24|25|30|50|60|120] [--width N --height N] [--quality draft|standard|master] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG] [--transparent] [--poster MS] [--audio FILE] [--captions FILE] [--project DIR] [--json]
+velora export --url URL --output FILE [--fps 24|25|30|50|60|120] [--width N --height N] [--quality draft|standard|master] [--stage-dpr DPR] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG] [--transparent] [--poster MS] [--audio FILE] [--captions FILE] [--project DIR] [--json]
 velora doctor [--project DIR] [--url ORIGIN] [--json]
 velora render --composition FILE --frame N --out PNG [--url ORIGIN] [--no-cache] [--project DIR] [--json]
-velora render --composition FILE --out VIDEO [--preset ID] [--quality Q] [--codec C] [--motion-blur DEG] [--aspects 16:9,9:16] [--poster MS] [--parallel N] [--fps N] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]
+velora render --composition FILE --out VIDEO [--preset ID] [--quality Q] [--stage-dpr DPR] [--codec C] [--motion-blur DEG] [--aspects 16:9,9:16] [--poster MS] [--parallel N] [--fps N] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]
 velora frames --composition FILE --out DIR [--every N | --at MS,...] [--contact-sheet [--columns N]] [--url ORIGIN] [--project DIR] [--json]
-velora deliver --composition FILE --targets youtube,reels,website-hero,... [--out DIR] [--quality Q] [--parallel N] [--url ORIGIN] [--project DIR] [--json]
-velora shot --scene ID --time MS --out PNG [--quality Q] [--motion-blur DEG] [--fps N] [--transparent] [--finish] [--url ORIGIN] [--project DIR] [--json]
+velora deliver --composition FILE --targets youtube,reels,website-hero,... [--out DIR] [--quality Q] [--stage-dpr DPR] [--parallel N] [--url ORIGIN] [--project DIR] [--json]
+velora shot --scene ID --time MS --out PNG [--quality Q] [--stage-dpr DPR] [--motion-blur DEG] [--fps N] [--transparent] [--finish] [--url ORIGIN] [--project DIR] [--json]
+velora anchors --scene ID [--time MS] [--url ORIGIN] [--project DIR] [--json]
+velora depth resolve --scene ID [--url ORIGIN] [--write] [--project DIR] [--json]
+velora edit lock --scene ID [--look-at TARGET] [--focus-follow TARGET] [--frame TARGET --fill FRACTION] [--weight 0..1] [--write] [--json]
 velora check --frames DIR [--budget-ms MS] [--project DIR] [--json]
 velora check --video FILE [--manifest FILE] [--budget-ms MS] [--project DIR] [--json]
 velora audio ls --composition FILE [--project DIR] [--json]
 velora audio beats (--file AUDIO | --composition FILE) [--write-markers] [--project DIR] [--json]
 velora compose snap --composition FILE [--to beats|downbeats] [--tolerance MS] [--write] [--project DIR] [--json]
+velora compose edit --composition FILE --ops FILE|- [--expect-sha SHA] [--write] [--project DIR] [--json]
 velora review --composition FILE [--platform ID] [--project DIR] [--json]
 velora audio check --composition FILE [--project DIR] [--json]
 velora captions validate --file FILE [--project DIR] [--json]
@@ -85,15 +97,21 @@ velora brand check [--project DIR] [--json]
 velora templates ls [--category C] [--tag T] [--aspect A] [--json]
 velora templates show --id ID [--json]
 velora templates check [--id ID] [--json]
-velora new scene --template ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--set KEY=VALUE]... [--aspect A] [--duration MS] [--title T] [--project DIR] [--json]
-velora new video --blueprint ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--aspect A] [--title T] [--project DIR] [--json]
+velora new scene --template ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--set KEY=VALUE]... [--aspect A] [--stage PRESET|WxH@DPR] [--duration MS] [--focus TARGET] [--title T] [--project DIR] [--json]
+velora new video --blueprint ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--aspect A] [--stage PRESET|WxH@DPR] [--title T] [--project DIR] [--json]
 velora transitions ls [--json]
 velora transitions describe --type TYPE [--json]
 velora prompts ls [--json]
 velora prompts show --id ID [--json]
 velora create DIR [--name NAME] [--blueprint ID] [--json]
-velora studio --site URL [--port P] [--check] [--project DIR] [--json]
+velora studio --site URL [--port P] [--check] [--edit [--scene ID] [--read-only]] [--project DIR] [--json]
 velora studio init --site URL [--project DIR] [--json]
+velora edit ls --scene ID [--at MS] [--project DIR] [--json]
+velora edit apply --scene ID --ops FILE|- [--expect-sha SHA] [--write] [--project DIR] [--json]
+velora edit key --scene ID --track REF --at MS --value V [--ease E] [--expect-sha SHA] [--write] [--project DIR] [--json]
+velora edit ease --scene ID --track REF --at MS --ease E [--expect-sha SHA] [--write] [--project DIR] [--json]
+velora edit paste --scene ID --from FILE --at MS [--onto SURFACE] [--expect-sha SHA] [--write] [--project DIR] [--json]
+velora edit [--scene ID | --composition FILE] [--port P] [--read-only] [--no-open] [--url ORIGIN] [--project DIR] [--json]
 velora skills install (--dir PATH | --agent claude|generic) [--agent claude|codex|cursor|generic] [--source PATH] [--json]
 velora skills ls [--dir PATH] [--source PATH] [--json]
 velora skills check [--dir PATH] [--source PATH] [--json]
@@ -117,25 +135,28 @@ const commandUsage: Record<string, string> = {
   scenes: "velora scenes [--project DIR] [--json]\n\nList the validated scene recipes in the project catalog.",
   load: "velora load [--scene ID] [--project DIR] [--json]\n\nLoad one scene recipe source (without --scene, report project status).",
   validate: "velora validate [--project DIR] [--composition FILE] [--json]\n\nValidate the project, scene recipes and bindings; with --composition, validate that timeline plus assets, audio, captions and transitions.\nReports actionable diagnostics with stable codes.",
-  inspect: "velora inspect [--project DIR] [--scene ID | --composition FILE] [--json]\n\nInspect the project, one scene or one composition file without mutating anything.\nWithout flags, report project identity plus recipe/asset counts.",
+  inspect: "velora inspect [--project DIR] [--scene ID [--at MS --url ORIGIN] | --composition FILE] [--json]\n\nInspect the project, one scene or one composition file without mutating anything.\nWithout flags, report project identity plus recipe/asset counts.",
   assets: "velora assets ls [--project DIR] [--json]\nvelora assets check [--project DIR] [--json]\nvelora assets add --as SOURCE --id ID [--project DIR] [--json]\nvelora assets rm --id ID --yes [--project DIR] [--json]\n\nManage project assets in assets/ (list, check, add a file under an ID, remove with confirmation).",
   snapshot: "velora snapshot --scene ID --url ORIGIN [--time MS] [--project DIR] [--json]\n\nCapture one frame PNG into the scene recipe at --time milliseconds (default midpoint).",
-  export: "velora export --url URL --output FILE [--fps 24|25|30|50|60|120] [--width N --height N] [--quality draft|standard|master] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG [--motion-samples N]] [--transparent] [--gif-fps N] [--poster MS] [--audio FILE] [--captions FILE] [--project DIR] [--json]\n\nRender the live scene to a project-relative video through the capture bridge.\n--quality master supersamples 2x and adds 180-degree motion blur; --codec picks the container (.mp4 .webm .mov .gif); --transparent needs vp9 or prores4444.\nOutput is BT.709-tagged.\n--audio mixes a project-relative audio file; --captions burns a project-relative .srt/.vtt file.\nRequires FFmpeg and Playwright Chromium; does not start the app server.",
+  export: "velora export --url URL --output FILE [--fps 24|25|30|50|60|120] [--width N --height N] [--quality draft|standard|master] [--stage-dpr DPR] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG [--motion-samples N]] [--transparent] [--gif-fps N] [--poster MS] [--audio FILE] [--captions FILE] [--project DIR] [--json]\n\nRender the live scene to a project-relative video through the capture bridge.\n--quality master supersamples 2x and adds 180-degree motion blur; --codec picks the container (.mp4 .webm .mov .gif); --transparent needs vp9 or prores4444.\nOutput is BT.709-tagged.\n--audio mixes a project-relative audio file; --captions burns a project-relative .srt/.vtt file.\nRequires FFmpeg and Playwright Chromium; does not start the app server.",
   doctor: "velora doctor [--project DIR] [--url ORIGIN] [--json]\n\nCheck Node, npm package, React, toolkit, scene catalog, FFmpeg and Chromium.\n--url also probes dev-server reachability. Exit 0 when every check passes, 1 otherwise.",
-  render: "velora render --composition FILE [--frame N | --time MS] --out PNG [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\nvelora render --composition FILE --out VIDEO [--preset ID] [--quality draft|standard|master] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG [--motion-samples N]] [--transparent] [--gif-fps N] [--aspects 16:9,9:16,1:1] [--poster MS] [--parallel 1-8] [--fps 24|25|30|50|60|120] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]\n\nRender one exact timeline frame to PNG plus a manifest, or the whole timeline to video.\nFrame mode needs exactly one of --frame/--time with a .png --out; video mode needs a .mp4, .webm, .mov or .gif --out.\n--preset applies a delivery target (explicit flags win) and reports budget warnings.\n--json streams newline-delimited progress lines ending with the result envelope (--no-stream prints only the envelope).",
+  render: "velora render --composition FILE [--frame N | --time MS] --out PNG [--stage-dpr DPR] [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\nvelora render --composition FILE --out VIDEO [--preset ID] [--quality draft|standard|master] [--stage-dpr DPR] [--codec h264|hevc|vp9|av1|prores4444|gif] [--motion-blur DEG [--motion-samples N]] [--transparent] [--gif-fps N] [--aspects 16:9,9:16,1:1] [--poster MS] [--parallel 1-8] [--fps 24|25|30|50|60|120] [--width N --height N] [--no-cache] [--no-stream] [--project DIR] [--json]\n\nRender one exact timeline frame to PNG plus a manifest, or the whole timeline to video.\nFrame mode needs exactly one of --frame/--time with a .png --out; video mode needs a .mp4, .webm, .mov or .gif --out.\n--preset applies a delivery target (explicit flags win) and reports budget warnings.\n--json streams newline-delimited progress lines ending with the result envelope (--no-stream prints only the envelope).",
   frames: "velora frames --composition FILE --out DIR [--every N | --at MS,...] [--contact-sheet [--columns N]] [--url ORIGIN] [--no-cache] [--cache-dir DIR] [--project DIR] [--json]\n\nExtract a PNG sequence plus manifest.json. Defaults to one frame per second.\nExactly one of --every (frame step) or --at (comma-separated milliseconds) may be given.",
-  shot: "velora shot --scene ID --time MS --out PNG [--quality draft|standard|master] [--motion-blur DEG [--motion-samples N]] [--fps N] [--transparent] [--finish] [--url ORIGIN] [--project DIR] [--json]\n\nCapture one still from a single scene without a composition.\n--quality and --motion-blur preview export finishing on one frame; --finish adds the look's export finishing (bloom, halation, aberration, sharpen, LUT).",
+  shot: "velora shot --scene ID --time MS --out PNG [--quality draft|standard|master] [--stage-dpr DPR] [--motion-blur DEG [--motion-samples N]] [--fps N] [--transparent] [--finish] [--url ORIGIN] [--project DIR] [--json]\n\nCapture one still from a single scene without a composition.\n--quality and --motion-blur preview export finishing on one frame; --finish adds the look's export finishing (bloom, halation, aberration, sharpen, LUT).",
+  anchors: "velora anchors --scene ID [--time MS] [--url ORIGIN] [--project DIR] [--json]\n\nInspect visible targets and classified depth layers in the running scene.",
+  depth: "velora depth resolve --scene ID [--url ORIGIN] [--write] [--project DIR] [--json]\n\nOpen the live scene in Chromium, classify its layers at time zero and freeze their anchor or selector, tier and elevation. Dry run unless --write is given.",
   check: "velora check --frames DIR [--budget-ms MS] [--project DIR] [--json]\nvelora check --video FILE [--manifest FILE] [--budget-ms MS] [--project DIR] [--json]\n\nRun automated visual checks over rendered evidence (technical checks only, never artistic scores).\nExactly one of --frames or --video is required; --manifest cross-checks video records.",
   audio: "velora audio ls --composition FILE [--project DIR] [--json]\nvelora audio check --composition FILE [--project DIR] [--json]\nvelora audio beats (--file AUDIO | --composition FILE) [--write-markers] [--project DIR] [--json]\n\nbeats detects tempo, beats and 4/4 downbeats in a music bed; --write-markers stores them on the composition for compose snap.\nList composition audio tracks with frame-snapped placement, or validate them\nagainst discovered assets (existence, type, size, codec, fades, ducking).",
   captions: "velora captions validate --file FILE [--project DIR] [--json]\nvelora captions check --composition FILE [--project DIR] [--json]\n\nValidate a .srt/.vtt file, or check a composition's captions against its timeline span.",
-  compose: "velora compose snap --composition FILE [--to beats|downbeats] [--tolerance MS] [--write] [--project DIR] [--json]\n\nMove each cut onto the nearest beat (or downbeat) marker within the tolerance (default 120 ms), keeping segments joined.\nPrints a dry-run diff; --write applies it. Add markers first with velora audio beats --composition FILE --write-markers.",
+  compose: "velora compose edit --composition FILE --ops FILE|-\nvelora compose trim --composition FILE --id ID --edge in|out --delta MS [--ripple]\nvelora compose move --composition FILE --id ID (--at MS | --before ID | --last)\nvelora compose split --composition FILE --id ID --at MS\nvelora compose transition --composition FILE --id ID (--type TYPE --duration MS [--direction DIR] | --remove)\nvelora compose snap --composition FILE [--to beats|downbeats] [--tolerance MS]\n\nAll commands accept --write, --project DIR and --json. Edits print a dry-run diff and accept --expect-sha SHA.\nSnap moves cuts to nearby beats (default 120 ms tolerance). Add beat markers with velora audio beats --composition FILE --write-markers.",
   review: "velora review --composition FILE [--platform ID] [--project DIR] [--json]\n\nAdvisory editorial review: hook in the first 2 s, shot length for the platform's pacing, reading time, end-card hold,\neye-trace and match-cut continuity, camera direction, loop seams and off-beat cuts. Findings are advice for a human, never errors.",
   brand: "velora brand init [--from-css FILE] [--name NAME] [--project DIR] [--json]\nvelora brand check [--project DIR] [--json]\n\nScaffold velora.brand.json (colors, gradients, fonts, radius, voice, motion personality calm|crisp|playful|bold), optionally seeded from a stylesheet's CSS custom properties, or validate it.\nEvery kit component and motion-graphics template reads these tokens at render time.",
   templates: "velora templates ls [--category C] [--tag T] [--aspect A] [--json]\nvelora templates show --id ID [--json]\nvelora templates check [--id ID] [--json]\n\nBrowse the shipped camera templates and blueprints, show one with its params and craft notes, or certify framing for every aspect and intensity.\nTemplates are starting points: velora new copies plain, editable source into your project.",
-  new: "velora new scene --template ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--set KEY=VALUE]... [--aspect 16:9|21:9|1:1|4:5|9:16] [--duration MS] [--title T] [--project DIR] [--json]\nvelora new video --blueprint ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--aspect A] [--title T] [--project DIR] [--json]\n\nScaffold a templated scene (recipe JSON + binding) or a blueprint composition with its scene pairs. Create-only: existing files are never overwritten.\n--component slots a real component (default export when #EXPORT is omitted); --route frames a page of the running app; neither writes a placeholder.\n--set may repeat (for example --set intensity=dramatic --set lens=35).",
+  new: "velora new scene --template ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--set KEY=VALUE]... [--aspect 16:9|21:9|1:1|4:5|9:16] [--stage PRESET|WxH@DPR] [--duration MS] [--focus TARGET] [--title T] [--project DIR] [--json]\nvelora new video --blueprint ID --id SLUG [--component PATH#EXPORT | --route /PATH] [--aspect A] [--stage PRESET|WxH@DPR] [--title T] [--project DIR] [--json]\n\nScaffold a templated scene (recipe JSON + binding) or a blueprint composition with its scene pairs. Create-only: existing files are never overwritten.\n--component slots a real component (default export when #EXPORT is omitted); --route frames a page of the running app; neither writes a placeholder.\n--set may repeat (for example --set intensity=dramatic --set lens=35).",
   transitions: "velora transitions ls [--json]\nvelora transitions describe --type TYPE [--json]\n\nList the entering-side transition catalog, or show one transition with example tracks.\nTransitions declare segment entrances; builders emit tracks to paste into recipe motion.",
-  deliver: "velora deliver --composition FILE --targets LIST [--out DIR] [--quality draft|standard|master] [--parallel N] [--no-cache] [--no-stream] [--url ORIGIN] [--project DIR] [--json]\n\nRender every launch asset from one composition into a fresh directory (default deliverables/<id>).\nTargets: youtube, x, x-square, linkedin, reels, instagram-feed, tiktok, shorts, website-hero, readme-gif, og-image, product-hunt (or any delivery preset id).\nEach video uses its preset (size, codec, quality, loudness) and steps rate control until it fits the preset's size budget; website-hero adds an MP4 fallback,\na JPEG poster, embed.html and HeroVideo.tsx; og-image and product-hunt add exact-size stills. deliverables.json records files, SHAs, sizes and warnings.",
+  deliver: "velora deliver --composition FILE --targets LIST [--out DIR] [--quality draft|standard|master] [--stage-dpr DPR] [--parallel N] [--no-cache] [--no-stream] [--url ORIGIN] [--project DIR] [--json]\n\nRender every launch asset from one composition into a fresh directory (default deliverables/<id>).\nTargets: youtube, x, x-square, linkedin, reels, instagram-feed, tiktok, shorts, website-hero, readme-gif, og-image, product-hunt (or any delivery preset id).\nEach video uses its preset (size, codec, quality, loudness) and steps rate control until it fits the preset's size budget; website-hero adds an MP4 fallback,\na JPEG poster, embed.html and HeroVideo.tsx; og-image and product-hunt add exact-size stills. deliverables.json records files, SHAs, sizes and warnings.",
   studio: "velora studio --site URL [--port P] [--check] [--project DIR] [--json]\nvelora studio init --site URL [--project DIR] [--json]\n\nAny-site mode for non-React sites (Astro, SvelteKit, Rails, Django, static HTML): a managed studio in your user cache\n(React and Vite never enter your project) served at <origin>/__velora/, with every other path proxied to your site's\nloopback dev server so routes frame same-origin. Scenes, compositions and assets stay in this project.\nRuns in the foreground until Ctrl-C; --check starts it, verifies studio, proxy and framing, then stops.\nRoute-level shots only: the site's own animations are frozen; drive states through routes or query params.",
+  edit: "velora edit rig --scene ID (--kind KIND | --clip ID) [--target TARGET] [--from TARGET --to TARGET] [--arc DEG] [--mass MASS] [--params JSON] [--duration MS] [--fill FRACTION] [--at MS] [--url ORIGIN] [--write] [--json]\nvelora edit lock --scene ID [--look-at TARGET] [--focus-follow TARGET] [--frame TARGET --fill FRACTION] [--weight 0..1] [--write] [--json]\nvelora edit depth --scene ID --surface ID --mode auto|rules|off [--intensity subtle|standard|dramatic] [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit lens --scene ID --preset 200mm-telephoto [--hold framing|position] [--write] [--json]\nvelora edit rack --scene ID --from TARGET --to TARGET --at MS --duration MS [--breathing 0.018] [--url ORIGIN] [--write] [--json]\nvelora edit stage --scene ID (--preset PRESET | --size WxH@DPR) [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit ls --scene ID [--at MS] [--project DIR] [--json]\nvelora edit apply --scene ID --ops FILE|- [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit key --scene ID --track REF --at MS --value V [--ease E] [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit ease --scene ID --track REF --at MS --ease E [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit paste --scene ID --from FILE --at MS [--onto SURFACE] [--expect-sha SHA] [--write] [--project DIR] [--json]\nvelora edit source outline [--scene ID] [--file FILE] [--json]\nvelora edit source wrap --file FILE --node PATH --id ID [--scene ID] [--content] [--write]\nvelora edit source group --file FILE --nodes PATH,PATH --id ID [--scene ID] [--write]\nvelora edit source anchor --scene ID --file FILE --node PATH --id ANCHOR [--write]\nvelora edit source expose --file FILE --node PATH --id ID --prop NAME [--options A,B] [--scene ID] [--write]\nvelora edit [--scene ID | --composition FILE] [--port P] [--read-only] [--no-open] [--url ORIGIN] [--project DIR] [--json]\n\nSurgical, diffable scene edits with exact undo, through the same EditOp vocabulary the studio editor uses.\nls lists tracks, clips, links, constraints and keyframes (--at adds evaluated values). apply, key and ease are dry runs:\nthey print the diff, labels and the inverse batch; --write writes once, compare-and-swap guarded (--expect-sha fails fast if the file changed).\nTrack refs: camera.z, focus.distance, <surface>.<prop>, style:<surface>.--name, channel:<id>, each with an optional @<clip>.\npaste applies a keyframe clipboard copied in the studio editor (application/x-velora-keyframes+json) at --at, optionally onto another surface.\nSource mutations show diffs by default. On --write, --expect-sha and --expect-recipe-sha can pin the reviewed revisions.\n--ops - reads the batch from stdin; an envelope's inverse can be applied directly to undo.\nWithout a subcommand, edit verifies the dev server, starts the loopback edit bridge (token in the URL fragment) and opens the editor; Ctrl-C stops it.",
   create: "velora create DIR [--name NAME] [--blueprint ID] [--json]\n\nWrite a starter launch studio into a new directory: a blank Vite React host with a branded landing page, velora.brand.json,\nand npm scripts (velora:setup runs init, installs the skills and scaffolds the blueprint, default launch-film-30s).\nFor teams without a React app; film an existing non-React site with velora studio --site.",
   prompts: "velora prompts ls [--json]\nvelora prompts show --id ID [--json]\n\nList the agent prompt library (launch film, feature drop, website hero loop, vertical teaser, cinematic dashboard, changelog, Product Hunt kit),\nor print one prompt to paste into your coding agent. Replace each <placeholder> before sending it.",
   skills: "velora skills install --dir PATH [--agent claude|codex|cursor|generic] [--source PATH] [--json]\nvelora skills ls [--dir PATH] [--source PATH] [--json]\nvelora skills check [--dir PATH] [--source PATH] [--json]\n\nInstall the Velora skills library (idempotent; differing files are ERR_SKILL_CONFLICT), list available/installed skills with version drift, or check front-matter and cross-links.\n--agent prints the registration snippet for that agent without writing config files.",
@@ -289,7 +310,7 @@ function templateOutput(result: TemplateCommandResult, json: boolean, human: (da
   };
 }
 // Templates and new share one flag grammar; --set is the only repeatable flag.
-function parseTemplateArgs(command: string, args: string[], subs: Record<string, string[]>, fail: (message: string, code?: string, name?: string) => CliResult):
+function parseTemplateArgs(command: string, args: string[], subs: Record<string, string[]>, fail: (message: string, code?: string, name?: string) => CliResult, booleanFlags: string[] = []):
   { sub: string; flags: Map<string, string | true>; sets: Record<string, string> } | { failed: CliResult } {
   const [sub, ...rest] = args;
   if (!sub || sub.startsWith("--")) return { failed: fail(`${command} requires a subcommand: ${Object.keys(subs).join(", ")}.`, "ERR_MISSING_VALUE", command) };
@@ -300,6 +321,11 @@ function parseTemplateArgs(command: string, args: string[], subs: Record<string,
     const flag = rest[i];
     if (!subs[sub].includes(flag)) return { failed: fail(`Unknown option: ${flag}`, "ERR_UNKNOWN_OPTION", command) };
     if (flag === "--json") { flags.set(flag, true); continue; }
+    if (booleanFlags.includes(flag)) {
+      if (flags.has(flag)) return { failed: fail(`Duplicate option: ${flag}`, "ERR_DUPLICATE_OPTION", command) };
+      flags.set(flag, true);
+      continue;
+    }
     const value = rest[++i];
     if (value === undefined || value.startsWith("--")) return { failed: fail(`Missing value for ${flag}`, "ERR_MISSING_VALUE", command) };
     if (flag === "--set") {
@@ -394,8 +420,8 @@ async function runTemplatesCommand(args: string[], environment: Environment, man
     (data: { templates: { id: string }[] }) => `Certified ${data.templates.length} template${data.templates.length === 1 ? "" : "s"} across every supported aspect and intensity: ${data.templates.map(t => t.id).join(", ")}.`);
 }
 async function runNewCommand(args: string[], environment: Environment, manager: TemplateManager, fail: (message: string, code?: string, name?: string) => CliResult): Promise<CliResult> {
-  const shared = ["--id", "--component", "--route", "--aspect", "--title", "--project", "--json"];
-  const parsed = parseTemplateArgs("new", args, { scene: ["--template", "--set", "--duration", ...shared], video: ["--blueprint", ...shared] }, fail);
+  const shared = ["--id", "--component", "--route", "--aspect", "--stage", "--title", "--project", "--json"];
+  const parsed = parseTemplateArgs("new", args, { scene: ["--template", "--set", "--duration", "--focus", ...shared], video: ["--blueprint", ...shared] }, fail);
   if ("failed" in parsed) return parsed.failed;
   const { sub, flags, sets } = parsed;
   const json = flags.has("--json");
@@ -407,9 +433,10 @@ async function runNewCommand(args: string[], environment: Environment, manager: 
   if (duration !== undefined && !/^\d+$/.test(duration)) return fail("--duration expects whole milliseconds.", "ERR_MISSING_VALUE", "new");
   const context = { root: value("--project") ?? environment.root };
   const common = { id: value("--id"), ...(flags.has("--component") ? { component: value("--component") } : {}), ...(flags.has("--route") ? { route: value("--route") } : {}),
-    ...(flags.has("--aspect") ? { aspect: value("--aspect") } : {}), ...(flags.has("--title") ? { title: value("--title") } : {}) };
+    ...(flags.has("--aspect") ? { aspect: value("--aspect") } : {}), ...(flags.has("--stage") ? { stage: value("--stage") } : {}),
+    ...(flags.has("--title") ? { title: value("--title") } : {}) };
   const result = sub === "scene"
-    ? await manager("new-scene", { template: value("--template"), ...common, set: sets, ...(duration !== undefined ? { durationMs: Number(duration) } : {}) }, context)
+    ? await manager("new-scene", { template: value("--template"), ...common, set: sets, ...(flags.has("--focus") ? { focus: value("--focus") } : {}), ...(duration !== undefined ? { durationMs: Number(duration) } : {}) }, context)
     : await manager("new-video", { blueprint: value("--blueprint"), ...common }, context);
   return templateOutput(result, json, (data: { files: string[] }) => `Created (yours to edit):\n${data.files.map(file => "  " + file).join("\n")}`);
 }
@@ -511,19 +538,187 @@ async function runCreateCommand(args: string[], environment: Environment, manage
   if (!result.success) return { code: 1, stdout: "", stderr: (json ? JSON.stringify(result) : result.issues.map(humanIssue).join("\n")) + "\n" };
   return { code: 0, stdout: (json ? JSON.stringify(result) : `Created ${result.data.dir} (${result.data.files.length} files, blueprint ${result.data.blueprint}). Next:\n${result.data.next.map(step => "  " + step).join("\n")}`) + "\n", stderr: "" };
 }
+// velora edit: ls/apply/key/ease are dry runs unless --write; without a subcommand it runs the edit bridge
+// in the foreground (Ctrl-C stops it), like studio.
+async function runEditCommand(args: string[], environment: Environment, manager: typeof executeEditCommand, fail: (message: string, code?: string, name?: string) => CliResult): Promise<CliResult> {
+  const grammar: Record<string, { values: string[]; booleans: string[] }> = {
+    ls: { values: ["--scene", "--at", "--project"], booleans: ["--json"] },
+    apply: { values: ["--scene", "--ops", "--expect-sha", "--label", "--project"], booleans: ["--write", "--json"] },
+    key: { values: ["--scene", "--track", "--at", "--value", "--ease", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
+    ease: { values: ["--scene", "--track", "--at", "--ease", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
+    stage: { values: ["--scene", "--preset", "--size", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
+    depth: { values: ["--scene", "--surface", "--mode", "--intensity", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
+    lens: { values: ["--scene", "--preset", "--hold", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
+    rig: { values: ["--scene", "--kind", "--clip", "--target", "--from", "--to", "--arc", "--mass", "--params", "--duration", "--fill", "--at", "--url", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
+    lock: { values: ["--scene", "--look-at", "--focus-follow", "--frame", "--fill", "--weight", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
+    rack: { values: ["--scene", "--from", "--to", "--at", "--duration", "--breathing", "--url", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
+    paste: { values: ["--scene", "--from", "--at", "--onto", "--expect-sha", "--project"], booleans: ["--write", "--json"] },
+    bridge: { values: ["--scene", "--composition", "--port", "--url", "--project"], booleans: ["--read-only", "--no-open", "--json"] },
+    preset: { values: ["--scene", "--preset", "--to", "--layer", "--title", "--values", "--at", "--expect-sha", "--label", "--project"], booleans: ["--write", "--json"] },
+    source: { values: ["--scene", "--file", "--node", "--nodes", "--id", "--prop", "--options", "--expect-sha", "--expect-recipe-sha", "--project"], booleans: ["--write", "--content", "--json"] },
+  };
+  const sub = args[0] && !args[0].startsWith("--") ? args[0] : "bridge";
+  if (sub === "bridge" && args[0] && !args[0].startsWith("--")) return fail(`Unknown edit subcommand: ${args[0]}.`, "ERR_UNKNOWN_COMMAND", "edit");
+  if (!Object.hasOwn(grammar, sub) || (sub === "bridge" && args[0] === "bridge")) return fail(`Unknown edit subcommand: ${sub}. See velora help edit for the available commands.`, "ERR_UNKNOWN_COMMAND", "edit");
+  // velora edit preset ls|show|save|apply [flags]
+  const action = sub === "preset" ? (args[1] && !args[1].startsWith("--") ? args[1] : "ls") : undefined;
+  if (action !== undefined && !["ls", "show", "save", "apply"].includes(action)) return fail(`Unknown preset action: ${action}. Expected ls, show, save or apply.`, "ERR_UNKNOWN_COMMAND", "edit");
+  const sourceAction = sub === "source" ? (args[1] && !args[1].startsWith("--") ? args[1] : "outline") : undefined;
+  if (sourceAction && !["outline", "wrap", "group", "expose", "anchor"].includes(sourceAction)) return fail(`Unknown source action: ${sourceAction}. Expected outline, wrap, group, expose or anchor.`, "ERR_UNKNOWN_COMMAND", "edit");
+  const rest = sub === "bridge" ? args : args.slice((sub === "preset" || sub === "source") && args[1] && !args[1].startsWith("--") ? 2 : 1);
+  const spec = grammar[sub];
+  const flags = new Map<string, string | true>();
+  for (let i = 0; i < rest.length; i++) {
+    const flag = rest[i];
+    if (!spec.values.includes(flag) && !spec.booleans.includes(flag)) return fail(`Unknown option: ${flag}`, "ERR_UNKNOWN_OPTION", "edit");
+    if (flags.has(flag)) return fail(`Duplicate option: ${flag}`, "ERR_DUPLICATE_OPTION", "edit");
+    if (spec.booleans.includes(flag)) { flags.set(flag, true); continue; }
+    const value = rest[++i];
+    if (value === undefined || (value.startsWith("--") && flag !== "--value")) return fail(`Missing value for ${flag}`, "ERR_MISSING_VALUE", "edit");
+    flags.set(flag, value);
+  }
+  for (const flag of ["--at", "--port", "--duration", "--breathing", "--fill", "--weight", "--arc"]) if (flags.has(flag) && !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(flags.get(flag) as string)) return fail(`${flag} must be a nonnegative number.`, "ERR_MISSING_VALUE", "edit");
+  const json = flags.has("--json");
+  const text = (flag: string) => flags.get(flag) as string | undefined;
+  let rigParams: Record<string, unknown> | undefined;
+  const rigKind = sub === "rig" && flags.has("--kind") ? RigKindSchema.safeParse(text("--kind") === "telephoto-orbit" ? "telephoto-parallax-orbit" : text("--kind")) : undefined;
+  if (rigKind && !rigKind.success) return fail("Choose drone-flyover, telephoto-parallax-orbit or whip-pan-macro.", "ERR_MISSING_VALUE", "edit");
+  if (sub === "rig") {
+    try {
+      const supplied: unknown = flags.has("--params") ? JSON.parse(text("--params")!) : {};
+      if (!supplied || typeof supplied !== "object" || Array.isArray(supplied)) throw new Error();
+      rigParams = { ...supplied };
+    } catch { return fail("--params needs a JSON object.", "ERR_MISSING_VALUE", "edit"); }
+    for (const name of ["target", "from", "to"] as const) if (flags.has("--" + name)) {
+      const target = parseElementTarget(text("--" + name)!);
+      if (!target) return fail("--" + name + " expects surface:name or surface:css(selector).", "ERR_MISSING_VALUE", "edit");
+      rigParams[name] = target;
+    }
+    for (const [flag, key] of [["--arc", "arcDeg"], ["--duration", "durationMs"], ["--fill", "fill"]])
+      if (flags.has(flag)) rigParams[key] = Number(text(flag));
+    if (flags.has("--mass")) rigParams.mass = text("--mass");
+  }
+  let opsText: string | undefined;
+  if (text("--ops") === "-") {
+    if (!environment.readStdin) return fail("--ops - needs standard input.", "ERR_MISSING_VALUE", "edit");
+    opsText = await environment.readStdin();
+  }
+  const input = {
+    ...(text("--composition") ? { composition: text("--composition") } : {}),
+    ...(text("--size") ? { size: text("--size") } : {}),
+    ...(sub === "depth" ? { surface: text("--surface"), mode: text("--mode") as DepthConfig["mode"], intensity: text("--intensity") as DepthConfig["intensity"] } : {}),
+    ...(sub === "lens" ? { hold: text("--hold") as "framing" | "position" | undefined } : {}),
+    ...(sub === "rig" ? { rigKind: rigKind?.data, rigClip: text("--clip"), rigParams, url: text("--url") ?? `http://127.0.0.1:${environment.port ?? "5173"}` } : {}),
+    ...(sub === "lock" ? { lookAt: text("--look-at"), focusFollow: text("--focus-follow"), frame: text("--frame"),
+      fill: flags.has("--fill") ? Number(text("--fill")) : undefined, weight: flags.has("--weight") ? Number(text("--weight")) : undefined } : {}),
+    ...(sub === "rack" ? { duration: flags.has("--duration") ? Number(text("--duration")) : undefined,
+      breathing: flags.has("--breathing") ? Number(text("--breathing")) : undefined, url: text("--url") ?? `http://127.0.0.1:${environment.port ?? "5173"}` } : {}),
+    ...(text("--scene") ? { scene: text("--scene") } : {}), ...(flags.has("--at") ? { at: Number(text("--at")) } : {}),
+    ...(text("--ops") && text("--ops") !== "-" ? { ops: text("--ops") } : {}), ...(opsText !== undefined ? { opsText } : {}),
+    ...(text("--expect-sha") ? { expectSha: text("--expect-sha") } : {}), ...(flags.has("--write") ? { write: true } : {}),
+    ...(text("--track") ? { track: text("--track") } : {}), ...(text("--value") !== undefined ? { value: text("--value") } : {}),
+    ...(text("--ease") ? { ease: text("--ease") } : {}), ...(text("--label") ? { label: text("--label") } : {}),
+    ...(text("--from") ? { from: text("--from") } : {}), ...(text("--onto") ? { onto: text("--onto") } : {}),
+    ...(flags.has("--port") ? { port: Number(text("--port")) } : {}), ...(flags.has("--read-only") ? { readOnly: true } : {}),
+    ...(action ? { action: action as "ls" | "show" | "save" | "apply" } : {}), ...(text("--preset") ? { preset: text("--preset") } : {}), ...(text("--to") ? { to: text("--to") } : {}),
+    ...(text("--layer") ? { layer: text("--layer") } : {}), ...(text("--title") ? { title: text("--title") } : {}), ...(text("--values") ? { values: text("--values") as "absolute" | "relative" } : {}),
+    ...(sourceAction ? { sourceAction: sourceAction as "outline" | "wrap" | "group" | "expose" | "anchor", file: text("--file"), node: text("--node"), nodes: text("--nodes")?.split(","),
+      sourceId: text("--id"), content: flags.has("--content"), prop: text("--prop"), enumOptions: text("--options")?.split(","), expectRecipeSha: text("--expect-recipe-sha") } : {}),
+    ...(sub === "bridge" ? { launch: !flags.has("--no-open"), url: text("--url") ?? `http://127.0.0.1:${environment.port ?? "5173"}` } : {}),
+  };
+  const log = sub === "bridge" && json && environment.emit ? (entry: Record<string, unknown>) => environment.emit!(JSON.stringify({ log: entry }) + "\n") : undefined;
+  const result = await manager(sub as EditOperation, input, { root: text("--project") ?? environment.root, ...(sub === "rack" ? { readOptics: readSceneOptics } : {}), ...(sub === "rig" ? { readRigGeometry: readSceneRigGeometry } : {}), ...(environment.terminal?.version ? { version: environment.terminal.version } : {}), ...(log ? { log } : {}) });
+  if (!result.success) return { code: 1, stdout: "", stderr: (json ? JSON.stringify(result) : result.issues.map(humanIssue).join("\n")) + "\n" };
+  const { server, ...envelope } = result;
+  const data = result.data as Record<string, unknown>;
+  if (sub === "bridge") {
+    const body = (json ? JSON.stringify(envelope) : `Edit bridge ${data.readOnly ? "(read-only) " : ""}listening on ${data.bridge}\n  Editor: ${data.url}\n  Press Ctrl-C to stop.`) + "\n";
+    if (!server || !environment.emit) { await server?.stop(); return { code: 0, stdout: body, stderr: "" }; }
+    environment.emit(body);
+    environment.onShutdown?.(server.stop);
+    const exit = await server.closed;
+    return { code: exit === 0 || exit === null ? 0 : 1, stdout: "", stderr: "" };
+  }
+  if (json) return { code: 0, stdout: JSON.stringify(envelope) + "\n", stderr: "" };
+  if (sub === "source") {
+    const outlines = data.outlines as import("../core/source").SourceDocument[] | undefined;
+    const diffs = data.diffs as { diff: string; file: string; git: string }[] | undefined;
+    const output = outlines ? outlines.map(outline => `${outline.file} (${outline.sha})\n${outline.nodes.map(node => `  ${node.start.line}:${node.start.column}  ${node.path}${node.text ? `  ${node.text}` : ""}`).join("\n")}`).join("\n")
+      : `${data.written ? "Applied source edit" : "Source edit dry run"}\n${data.layoutWarning ? `${data.layoutWarning}\n` : ""}${(diffs ?? []).map(entry => `${entry.file} (${entry.git})\n${entry.diff}`).join("\n")}`;
+    return { code: 0, stdout: output + "\n", stderr: "" };
+  }
+  if (sub === "ls") {
+    const tracks = data.tracks as { track: { target: { kind: string; id?: string }; property: string; clip?: string }; keyframes: { atMs: number; value: unknown }[] }[];
+    const lines = tracks.map(entry => `${entry.track.target.id ?? entry.track.target.kind}.${entry.track.property}${entry.track.clip ? "@" + entry.track.clip : ""}\t${entry.keyframes.map(frame => `${frame.atMs}ms=${JSON.stringify(frame.value)}`).join("  ")}`);
+    return { code: 0, stdout: `${data.path} (sha ${String(data.sha).slice(0, 12)}…, ${data.durationMs}ms)\n${lines.join("\n") || "No tracks."}\n`, stderr: "" };
+  }
+  const labels = (data.labels as string[]).map(label => "  " + label).join("\n");
+  const status = data.written ? `Wrote ${data.path} (sha ${String(data.nextSha).slice(0, 12)}…).` : `Dry run: ${data.path} is unchanged. Add --write to apply (--expect-sha ${data.sha}).`;
+  return { code: 0, stdout: `${labels}\n${data.diff || "(no change)"}\n${status}\n`, stderr: "" };
+}
+
+async function runCompositionEdit(args: string[], environment: Environment, fail: (message: string, code?: string, name?: string) => CliResult): Promise<CliResult> {
+  const commands: Record<string, string[]> = { edit: ["--ops"], trim: ["--id", "--edge", "--delta", "--ripple"], move: ["--id", "--at", "--before", "--last"],
+    split: ["--id", "--at", "--new-id"], transition: ["--id", "--type", "--duration", "--direction", "--ease", "--seed", "--sfx", "--remove"] };
+  const [sub, ...rest] = args;
+  if (!Object.hasOwn(commands, sub)) return fail("Choose compose edit, trim, move, split, transition or snap.", "ERR_UNKNOWN_COMMAND", "compose");
+  const allowed = new Set([...commands[sub], "--composition", "--expect-sha", "--project", "--write", "--json"]);
+  const switches = new Set(["--write", "--json", "--ripple", "--last", "--remove"]);
+  const flags = new Map<string, string>();
+  for (let i = 0; i < rest.length; i++) {
+    const key = rest[i];
+    if (!allowed.has(key)) return fail(`Unknown option: ${key}`, "ERR_UNKNOWN_OPTION", "compose");
+    if (flags.has(key)) return fail(`Duplicate option: ${key}`, "ERR_DUPLICATE_OPTION", "compose");
+    const value = switches.has(key) ? "true" : rest[++i];
+    if (!value || value.startsWith("--")) return fail(`Missing value for ${key}`, "ERR_MISSING_VALUE", "compose");
+    flags.set(key, value);
+  }
+  const composition = flags.get("--composition"), id = flags.get("--id"), opsFile = flags.get("--ops");
+  const missing = !composition ? "--composition" : sub === "edit" ? !opsFile && "--ops" : !id && "--id";
+  if (missing) return fail(`compose ${sub} needs ${missing}.`, "ERR_MISSING_VALUE", "compose");
+  const number = (flag: string) => Number(flags.get(flag));
+  let ops: unknown;
+  if (sub === "trim") ops = [{ op: "segment.trim", id, edge: flags.get("--edge"), deltaMs: number("--delta"), mode: flags.has("--ripple") ? "ripple" : "plain" }];
+  if (sub === "move") {
+    if (["--at", "--before", "--last"].filter(flag => flags.has(flag)).length !== 1)
+      return fail("Choose one of --at, --before or --last.", "ERR_INVALID_FLAG_COMBINATION", "compose");
+    ops = [flags.has("--at") ? { op: "segment.move", id, atMs: number("--at") } : { op: "segment.reorder", id, beforeId: flags.get("--before") ?? null }];
+  }
+  if (sub === "split") ops = [{ op: "segment.split", id, atMs: number("--at"), newId: flags.get("--new-id") }];
+  if (sub === "transition") {
+    const type = flags.get("--type");
+    if (flags.has("--remove") && commands.transition.slice(1, -1).some(flag => flags.has(flag)))
+      return fail("--remove takes only a segment ID.", "ERR_INVALID_FLAG_COMBINATION", "compose");
+    let ease: unknown = flags.get("--ease");
+    if (typeof ease === "string" && ease.startsWith("{")) {
+      try { ease = JSON.parse(ease); }
+      catch { return fail("--ease must be an easing name or JSON object.", "ERR_EDIT_INVALID", "compose"); }
+    }
+    ops = [flags.has("--remove") ? { op: "transition.remove", segmentId: id } : { op: "transition.set", segmentId: id,
+      type, durationMs: number("--duration"), direction: flags.get("--direction"), ease,
+      seed: flags.has("--seed") ? number("--seed") : undefined, sfx: flags.get("--sfx") }];
+  }
+  if (opsFile === "-" && !environment.readStdin) return fail("--ops - needs standard input.", "ERR_MISSING_VALUE", "compose");
+  const result = await executeCompositionEdit({ composition: composition!, ops, opsFile: opsFile === "-" ? undefined : opsFile,
+    opsText: opsFile === "-" ? await environment.readStdin!() : undefined, expectSha: flags.get("--expect-sha"), write: flags.has("--write") },
+  { root: flags.get("--project") ?? environment.root });
+  if (!result.success) return { code: 1, stdout: "", stderr: (flags.has("--json") ? JSON.stringify(result) : result.issues.map(humanIssue).join("\n")) + "\n" };
+  const { data } = result;
+  return { code: 0, stderr: "", stdout: (flags.has("--json") ? JSON.stringify(result) : `${data.written ? "Wrote" : flags.has("--write") ? "No changes to" : "Dry run for"} ${data.path} (base SHA ${data.sha})\n${data.diff || "(no change)"}`) + "\n" };
+}
 // Any-site mode: `studio init` records the site project; `studio` provisions and runs the managed studio in the
 // foreground (Ctrl-C stops it); `--check` starts it, verifies studio, proxy and framing, then stops.
 async function runStudioCommand(args: string[], environment: Environment, manager: typeof executeStudioCommand, fail: (message: string, code?: string, name?: string) => CliResult): Promise<CliResult> {
   const init = args[0] === "init";
   const rest = init ? args.slice(1) : args;
   if (!init && rest[0] && !rest[0].startsWith("--")) return fail(`Unknown studio subcommand: ${rest[0]}. Expected init, or flags.`, "ERR_UNKNOWN_COMMAND", "studio");
-  const allowed = init ? ["--site", "--project", "--json"] : ["--site", "--port", "--check", "--project", "--json"];
+  const allowed = init ? ["--site", "--project", "--json"] : ["--site", "--port", "--check", "--edit", "--scene", "--read-only", "--project", "--json"];
   const flags = new Map<string, string | true>();
   for (let i = 0; i < rest.length; i++) {
     const flag = rest[i];
     if (!allowed.includes(flag)) return fail(`Unknown option: ${flag}`, "ERR_UNKNOWN_OPTION", "studio");
     if (flags.has(flag)) return fail(`Duplicate option: ${flag}`, "ERR_DUPLICATE_OPTION", "studio");
-    if (flag === "--json" || flag === "--check") flags.set(flag, true);
+    if (flag === "--json" || flag === "--check" || flag === "--edit" || flag === "--read-only") flags.set(flag, true);
     else {
       const value = rest[++i];
       if (!value || value.startsWith("--")) return fail(`Missing value for ${flag}`, "ERR_MISSING_VALUE", "studio");
@@ -533,7 +728,9 @@ async function runStudioCommand(args: string[], environment: Environment, manage
   if (flags.has("--port") && !/^\d{2,5}$/.test(flags.get("--port") as string)) return fail("--port must be a TCP port number.", "ERR_MISSING_VALUE", "studio");
   const json = flags.has("--json");
   const operation = init ? "studio-init" : flags.has("--check") || !environment.emit ? "studio-check" : "studio-start";
-  const result = await manager(operation, { ...(flags.has("--site") ? { site: flags.get("--site") as string } : {}), ...(flags.has("--port") ? { port: Number(flags.get("--port")) } : {}) },
+  if ((flags.has("--scene") || flags.has("--read-only")) && !flags.has("--edit")) return fail("--scene and --read-only need --edit.", "ERR_INVALID_FLAG_COMBINATION", "studio");
+  const result = await manager(operation, { ...(flags.has("--site") ? { site: flags.get("--site") as string } : {}), ...(flags.has("--port") ? { port: Number(flags.get("--port")) } : {}),
+    ...(flags.has("--edit") ? { edit: true, ...(flags.has("--scene") ? { scene: flags.get("--scene") as string } : {}), ...(flags.has("--read-only") ? { readOnly: true } : {}) } : {}) },
     { root: (flags.get("--project") as string | undefined) ?? environment.root, ...(environment.terminal?.version ? { version: environment.terminal.version } : {}) });
   if (!result.success) return { code: 1, stdout: "", stderr: (json ? JSON.stringify(result) : result.issues.map(humanIssue).join("\n")) + "\n" };
   const { server, ...envelope } = result;
@@ -543,6 +740,7 @@ async function runStudioCommand(args: string[], environment: Environment, manage
       + `\n  Workspace: ${result.data.workspace}${result.data.installed ? ` (installed, ${Math.round((result.data.workspaceBytes ?? 0) / 1048576)} MB)` : ""}`
       + (result.data.checks ?? []).map(check => `\n  ${check.pass ? "ok" : "FAIL"} ${check.id}: ${check.detail}`).join("")
       + result.data.warnings.map(warning => `\n  Warning: ${warning.message}`).join("")
+      + (result.data.editor ? `\n  Editor: ${result.data.editor}` : "")
       + (server ? "\n  Render with --url " + server.origin + ". Press Ctrl-C to stop." : "");
   const body = (json ? JSON.stringify(envelope) : human) + "\n";
   if (!server) return { code: 0, stdout: body, stderr: "" };
@@ -649,7 +847,7 @@ async function runInspectCommand(
   args: string[], environment: Environment, inspectManager: InspectManager,
   fail: (message: string, code?: string, name?: string) => CliResult,
 ): Promise<CliResult> {
-  const allowed = ["--project", "--scene", "--composition", "--json"];
+  const allowed = ["--project", "--scene", "--composition", "--at", "--url", "--json"];
   const flags = new Map<string, string | true>();
   for (let i = 0; i < args.length; i++) {
     const flag = args[i];
@@ -664,6 +862,10 @@ async function runInspectCommand(
   }
   if (flags.has("--scene") && flags.has("--composition"))
     return fail("Pass only one of --scene or --composition.", "ERR_INVALID_FLAG_COMBINATION", "inspect");
+  if ((flags.has("--at") || flags.has("--url")) && !flags.has("--scene"))
+    return fail("Pass --scene when inspecting focus at a time.", "ERR_INVALID_FLAG_COMBINATION", "inspect");
+  const time = Number(flags.get("--at") ?? 0);
+  if (!Number.isFinite(time) || time < 0) return fail("--at must be a nonnegative time in ms.", "ERR_MISSING_VALUE", "inspect");
   const context = { root: (flags.get("--project") as string | undefined) ?? environment.root };
   const json = flags.has("--json");
   try {
@@ -672,6 +874,15 @@ async function runInspectCommand(
       ...(flags.has("--composition") ? { composition: flags.get("--composition") as string } : {}),
     }, context);
     if (!result.success) return operationalFailure("inspect", result.issues, json);
+    if (result.data.kind === "scene" && (flags.has("--url") || flags.has("--at") && result.data.hasDepth)) {
+      try {
+        const [surfaces] = await readSceneOptics(context.root, result.data.id, flags.get("--url") as string ?? `http://127.0.0.1:${environment.port ?? "5173"}`, [time]);
+        const layers = surfaces.flatMap(({ surface, layers, focus }) => layers.flatMap((layer, index) => focus?.[index] ? [{ surface, ...layer, ...focus[index] }] : []));
+        if (json) return { code: 0, stdout: JSON.stringify(withCommand({ ...result, data: { ...result.data, atMs: time, layerFocus: layers } }, "inspect")) + "\n", stderr: "" };
+        const lines = layers.map(({ surface, match, signed, blur }) => `${surface} ${"anchor" in match ? match.anchor : match.selector}: ${signed.toFixed(2)} px from focus, ${blur.toFixed(2)} px blur`);
+        return { code: 0, stdout: [humanInspect(result.data), ...lines].join("\n") + "\n", stderr: "" };
+      } catch (error) { return operationalFailure("inspect", [{ code: "invalid-capture", message: error instanceof Error ? error.message : "Live depth focus could not be read." }], json); }
+    }
     return { code: 0, stdout: (json ? JSON.stringify(withCommand(result, "inspect")) : humanInspect(result.data)) + "\n", stderr: "" };
   } catch {
     return operationalFailure("inspect", [{ code: "ERR_INTERNAL", message: "inspect failed unexpectedly. Check local files and retry." }], json);
@@ -730,6 +941,7 @@ function humanCheck(checks: { id: string; pass: boolean; detail: string }[], uni
 // Finishing flags shared by export and render (validated by the core schemas).
 function finishingInput(flags: Map<string, string | true>) {
   return {
+    ...stageDprInput(flags),
     ...(flags.has("--quality") ? { quality: flags.get("--quality") as string } : {}),
     ...(flags.has("--codec") ? { codec: flags.get("--codec") as string } : {}),
     ...(flags.has("--transparent") ? { transparent: true } : {}),
@@ -738,6 +950,9 @@ function finishingInput(flags: Map<string, string | true>) {
     ...(flags.has("--gif-fps") ? { gifFps: Number(flags.get("--gif-fps")) } : {}),
     ...(flags.has("--poster") ? { poster: Number(flags.get("--poster")) } : {}),
   } as Record<string, never>;
+}
+function stageDprInput(flags: Map<string, string | true>) {
+  return flags.has("--stage-dpr") ? { stageDpr: StageDprSchema.parse(Number(flags.get("--stage-dpr"))) } : {};
 }
 function progressCollector(json: boolean, noStream: boolean): { lines: string[]; onProgress?: (done: number, total: number) => void; flush: (body: string) => string } {
   const lines: string[] = [];
@@ -760,7 +975,7 @@ function serverUrl(flags: Map<string, string | true>, environment: Environment):
 function cliVersion(environment: Environment): { version: string } | Record<string, never> {
   return environment.terminal?.version ? { version: environment.terminal.version } : {};
 }
-export async function runCli(argv: string[], environment: Environment, execute: Execute = executeProjectCommand, exporter: typeof executeVideoExport = executeVideoExport, recipes: typeof executeRecipeCommand = executeRecipeCommand, snapshotter:typeof executeSceneSnapshot=executeSceneSnapshot, doctor: Doctor = defaultDoctor, renderer: Renderer = executeFrameRender, audioManager?: AudioManager, captionManager?: CaptionManager, videoRenderer?: VideoRenderer, framesRenderer?: FramesRenderer, shotRenderer?: ShotRenderer, checkRunner?: CheckRunner, skillsManager?: SkillsManager, inspectManager?: InspectManager, assetsManager?: AssetsManager, templateManager?: TemplateManager, brandManager?: BrandManager, editorialManager?: EditorialManager, deliverer?: typeof executeDeliver, creator?: typeof executeCreateCommand, studioManager?: typeof executeStudioCommand): Promise<CliResult> {
+export async function runCli(argv: string[], environment: Environment, execute: Execute = executeProjectCommand, exporter: typeof executeVideoExport = executeVideoExport, recipes: typeof executeRecipeCommand = executeRecipeCommand, snapshotter:typeof executeSceneSnapshot=executeSceneSnapshot, doctor: Doctor = defaultDoctor, renderer: Renderer = executeFrameRender, audioManager?: AudioManager, captionManager?: CaptionManager, videoRenderer?: VideoRenderer, framesRenderer?: FramesRenderer, shotRenderer?: ShotRenderer, checkRunner?: CheckRunner, skillsManager?: SkillsManager, inspectManager?: InspectManager, assetsManager?: AssetsManager, templateManager?: TemplateManager, brandManager?: BrandManager, editorialManager?: EditorialManager, deliverer?: typeof executeDeliver, creator?: typeof executeCreateCommand, studioManager?: typeof executeStudioCommand, editManager?: typeof executeEditCommand): Promise<CliResult> {
   if (argv.length === 1 && ["--version", "-v"].includes(argv[0]))
     return {code:0, stdout:(environment.terminal?.version ?? "development") + "\n", stderr:""};
   if (argv.length === 0 || (argv.length === 1 && ["--help", "-h", "help"].includes(argv[0])))
@@ -795,11 +1010,43 @@ export async function runCli(argv: string[], environment: Environment, execute: 
     return {code:0,stdout:(args[0]==="--json"?JSON.stringify({...guide,command:"guide"}):`${VELORA_BRAND.title}\n${VELORA_BRAND.url}\n\n${text}`)+"\n",stderr:""};
   }
   const aliases = { init: "init-project", sync: "sync-project", open: "open-preview", load: "load-project", validate: "validate-project" } as const;
-  if (command !== "snapshot" && command !== "export" && command !== "scenes" && command !== "doctor" && command !== "render" && command !== "audio" && command !== "captions" && command !== "transitions" && command !== "prompts" && command !== "deliver" && command !== "create" && command !== "studio" && command !== "templates" && command !== "new" && command !== "brand" && command !== "compose" && command !== "review" && command !== "frames" && command !== "shot" && command !== "check" && command !== "skills" && command !== "inspect" && command !== "assets" && !Object.hasOwn(aliases, command)) return fail(`Unknown command: ${command}`, "ERR_UNKNOWN_COMMAND");
+  if (command === "anchors") {
+    const parsed = parseTemplateArgs(command, ["inspect", ...args], { inspect: ["--scene", "--time", "--url", "--project", "--json"] }, fail);
+    if ("failed" in parsed) return parsed.failed;
+    const value = (flag: string) => parsed.flags.get(flag) as string | undefined;
+    const scene = value("--scene"), time = value("--time");
+    if (!scene) return fail("anchors requires --scene.", "ERR_MISSING_VALUE", command);
+    if (time !== undefined && !/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(time)) return fail("--time must be nonnegative milliseconds.", "ERR_MISSING_VALUE", command);
+    const result = await executeAnchorsCommand({ scene, time: time === undefined ? undefined : Number(time), url: value("--url") ?? `http://127.0.0.1:${environment.port ?? "5173"}` },
+      { root: value("--project") ?? environment.root }, readSceneAnchors);
+    if (!result.success) return { code: 1, stdout: "", stderr: (wantsJson ? JSON.stringify(result) : result.issues.map(humanIssue).join("\n")) + "\n" };
+    const { data } = result;
+    const rows = data.anchors.map(({ target, tier, rect, elevation }) => `  ${target.surface}:${"anchor" in target ? target.anchor : `css(${target.selector})`}${tier ? ` (${tier})` : ""} · ${rect.width.toFixed(1)} × ${rect.height.toFixed(1)} px · z ${elevation.toFixed(1)}`);
+    return { code: 0, stdout: (wantsJson ? JSON.stringify(result) : [`${data.sceneId} at ${data.timeMs} ms`, ...rows].join("\n")) + "\n", stderr: "" };
+  }
+  if (command === "depth") {
+    const parsed = parseTemplateArgs(command, args, { resolve: ["--scene", "--url", "--write", "--project", "--json"] }, fail, ["--write"]);
+    if ("failed" in parsed) return parsed.failed;
+    const { flags } = parsed;
+    const text = (flag: string) => flags.get(flag) as string | undefined;
+    const scene = text("--scene");
+    if (!scene) return fail("depth resolve requires --scene.", "ERR_MISSING_VALUE", command);
+    const result = await executeDepthResolve({ scene, url: text("--url") ?? `http://127.0.0.1:${environment.port ?? "5173"}`, write: flags.has("--write") },
+      { root: text("--project") ?? environment.root });
+    if (!result.success) {
+      const issues = result.issues.map(normalizeIssue);
+      return { code: 1, stdout: "", stderr: (wantsJson ? JSON.stringify({ ...result, issues, next: nextForIssues(issues) }) : issues.map(humanIssue).join("\n")) + "\n" };
+    }
+    const diff = (result.data as Record<string, unknown>).diff;
+    return { code: 0, stdout: (wantsJson ? JSON.stringify(result) : `${flags.has("--write") ? "Froze" : "Would freeze"} ${scene} depth layers.\n${typeof diff === "string" ? diff : ""}`) + "\n", stderr: "" };
+  }
+  if (command !== "snapshot" && command !== "export" && command !== "scenes" && command !== "doctor" && command !== "render" && command !== "audio" && command !== "captions" && command !== "transitions" && command !== "prompts" && command !== "deliver" && command !== "create" && command !== "studio" && command !== "edit" && command !== "templates" && command !== "new" && command !== "brand" && command !== "compose" && command !== "review" && command !== "frames" && command !== "shot" && command !== "check" && command !== "skills" && command !== "inspect" && command !== "assets" && !Object.hasOwn(aliases, command)) return fail(`Unknown command: ${command}`, "ERR_UNKNOWN_COMMAND");
   if (command === "transitions") return runTransitionsCommand(args, fail);
   if (command === "prompts") return runPromptsCommand(args, fail);
   if (command === "studio") return runStudioCommand(args, environment, studioManager ?? executeStudioCommand, fail);
+  if (command === "edit") return runEditCommand(args, environment, editManager ?? executeEditCommand, fail);
   if (command === "create") return runCreateCommand(args, environment, creator ?? executeCreateCommand, fail);
+  if (command === "compose" && args[0] !== "snap") return runCompositionEdit(args, environment, fail);
   if (command === "compose" || command === "review" || (command === "audio" && args[0] === "beats")) return runEditorialCommand(command, args, environment, editorialManager ?? executeEditorialCommand, fail);
   if (command === "brand") return runBrandCommand(args, environment, brandManager ?? executeBrandCommand, fail);
   if (command === "templates") return runTemplatesCommand(args, environment, templateManager ?? executeTemplateCommand, fail);
@@ -814,12 +1061,12 @@ export async function runCli(argv: string[], environment: Environment, execute: 
   if (command === "assets") return runAssetsCommand(args, environment, assetsManager ?? executeAssetsCommand, fail);
   const flagSets: Record<string, string[]> = {
     snapshot: ["--project","--url","--scene","--time","--json"],
-    export: ["--project", "--url", "--output", "--fps", "--width", "--height", "--audio", "--captions", "--quality", "--codec", "--transparent", "--motion-blur", "--motion-samples", "--gif-fps", "--poster", "--json"],
+    export: ["--project", "--url", "--output", "--fps", "--width", "--height", "--audio", "--captions", "--quality", "--stage-dpr", "--codec", "--transparent", "--motion-blur", "--motion-samples", "--gif-fps", "--poster", "--json"],
     doctor: ["--project", "--url", "--json"],
-    render: ["--composition", "--frame", "--time", "--out", "--url", "--no-cache", "--cache-dir", "--parallel", "--fps", "--width", "--height", "--no-stream", "--quality", "--codec", "--transparent", "--motion-blur", "--motion-samples", "--gif-fps", "--poster", "--preset", "--aspects", "--project", "--json"],
+    render: ["--composition", "--frame", "--time", "--out", "--url", "--no-cache", "--cache-dir", "--parallel", "--fps", "--width", "--height", "--no-stream", "--quality", "--stage-dpr", "--codec", "--transparent", "--motion-blur", "--motion-samples", "--gif-fps", "--poster", "--preset", "--aspects", "--project", "--json"],
     frames: ["--composition", "--out", "--every", "--at", "--contact-sheet", "--columns", "--url", "--no-cache", "--cache-dir", "--project", "--json"],
-    deliver: ["--composition", "--targets", "--out", "--quality", "--parallel", "--no-cache", "--no-stream", "--url", "--project", "--json"],
-    shot: ["--scene", "--time", "--out", "--url", "--quality", "--motion-blur", "--motion-samples", "--fps", "--transparent", "--finish", "--project", "--json"],
+    deliver: ["--composition", "--targets", "--out", "--quality", "--stage-dpr", "--parallel", "--no-cache", "--no-stream", "--url", "--project", "--json"],
+    shot: ["--scene", "--time", "--out", "--url", "--quality", "--stage-dpr", "--motion-blur", "--motion-samples", "--fps", "--transparent", "--finish", "--project", "--json"],
     check: ["--frames", "--video", "--manifest", "--budget-ms", "--project", "--json"],
   };
   const allowed: string[] = flagSets[command] ?? ["--project", "--package", "--url", "--no-open", "--json", "--scene", "--adapter", "--composition"];
@@ -836,6 +1083,8 @@ export async function runCli(argv: string[], environment: Environment, execute: 
     }
   }
   if (flags.has("--adapter") && command !== "init") return fail("--adapter is only valid for init.", "ERR_INVALID_FLAG_COMBINATION", command);
+  if (flags.has("--stage-dpr") && !StageDprSchema.safeParse(Number(flags.get("--stage-dpr"))).success)
+    return fail("--stage-dpr must be 1, 1.25, 1.5, 1.75, 2 or 3.", "ERR_UNKNOWN_OPTION", command);
   if (flags.has("--package") && command !== "init") return fail("--package is only valid for init.", "ERR_INVALID_FLAG_COMBINATION", command);
   if (flags.has("--composition") && !["validate", "render", "frames", "deliver"].includes(command)) return fail("--composition is only valid for validate, render, frames or deliver.", "ERR_INVALID_FLAG_COMBINATION", command);
   if (flags.has("--scene") && !["load", "open", "snapshot", "shot"].includes(command)) return fail("--scene is only valid for load, open, shot or snapshot.", "ERR_INVALID_FLAG_COMBINATION", command);
@@ -870,6 +1119,7 @@ export async function runCli(argv: string[], environment: Environment, execute: 
           composition: flags.get("--composition") as string,
           ...(flags.has("--frame") ? { frame: Number(flags.get("--frame")) } : { timeMs: Number(flags.get("--time")) }),
           out,
+          ...stageDprInput(flags),
           ...(flags.has("--cache-dir") ? { cacheDir: flags.get("--cache-dir") as string } : {}),
           ...(flags.has("--no-cache") ? { noCache: true as const } : {}),
         }, {
@@ -925,6 +1175,7 @@ export async function runCli(argv: string[], environment: Environment, execute: 
       const result = await deliver({
         composition: flags.get("--composition") as string,
         targets: String(flags.get("--targets")).split(",").map((value) => value.trim()).filter(Boolean),
+        ...stageDprInput(flags),
         ...(flags.has("--out") ? { out: flags.get("--out") as string } : {}),
         ...(flags.has("--quality") ? { quality: flags.get("--quality") as "draft" } : {}),
         ...(flags.has("--parallel") ? { parallel: Number(flags.get("--parallel")) } : {}),
@@ -983,6 +1234,7 @@ export async function runCli(argv: string[], environment: Environment, execute: 
         scene: flags.get("--scene") as string,
         timeMs: Number(flags.get("--time")),
         out: flags.get("--out") as string,
+        ...stageDprInput(flags),
         ...(flags.has("--quality") ? { quality: flags.get("--quality") as "master" } : {}),
         ...(flags.has("--motion-blur") ? { motionBlur: Number(flags.get("--motion-blur")) } : {}),
         ...(flags.has("--motion-samples") ? { motionSamples: Number(flags.get("--motion-samples")) } : {}),

@@ -11,8 +11,10 @@ import {
 } from "../core/composition";
 import type { SceneIssue } from "../core/scene";
 import * as services from "./services";
-/** SOURCE OF TRUTH: discoverRecipes, discoverAssets, discoverSharedComponents, discoverCompositionFiles, loadComposition, scoped source loading.
- * WHAT: read bounded recipe, asset, component and composition files and validate through RESOURCES and core schemas.
+import { PresetSchema } from "../core/presets";
+/** SOURCE OF TRUTH: discoverRecipes, discoverAssets, discoverSharedComponents, discoverCompositionFiles, loadComposition, discoverPresets, scoped source loading.
+ * WHAT: read bounded recipe, asset, component, composition and preset files and validate through RESOURCES and core schemas
+ * (presets are data, never executed).
  * WHY: CLI and framework catalog generators share exactly one discovery policy.
  * WHERE: recipes and project commands call these operations; services owns all effects.
  */
@@ -148,4 +150,27 @@ export async function loadComposition(root: string, file: string): Promise<{ com
   if (!parsed.success)
     return { issues: parsed.error.issues.map((issue) => ({ code: "ERR_COMPOSITION_INVALID", path: `composition.${issue.path.join(".")}`, message: issue.message })) };
   return { composition: parsed.data };
+}
+
+export const PRESET_DIRECTORY = "src/velora/presets";
+const PRESET_FILE = /\/([a-z0-9]+(?:-[a-z0-9]+)*)\.preset\.json$/;
+export type DiscoveredPreset = { id: string; path: string; sha: string; title?: string; kind?: string; issues?: { path: string; message: string }[] };
+/** Project presets (`src/velora/presets/<id>.preset.json`): bounded, regular files only, validated by PresetSchema. */
+export async function discoverPresets(root: string): Promise<DiscoveredPreset[]> {
+  const out: DiscoveredPreset[] = [];
+  for (const entry of await services.scanDirectory(root, PRESET_DIRECTORY, 512)) {
+    const match = PRESET_FILE.exec(entry);
+    if (!match) continue;
+    try { if (!(await services.isRegularFile(root, entry))) continue; } catch { continue; }
+    const text = await services.readText(root, entry, 1_000_000);
+    if (text === undefined) continue;
+    const sha = services.textSha256(text);
+    let value: unknown;
+    try { value = JSON.parse(text.replace(/^\uFEFF/, "")); } catch { out.push({ id: match[1], path: entry, sha, issues: [{ path: entry, message: "The preset is not valid JSON." }] }); continue; }
+    const parsed = PresetSchema.safeParse(value);
+    if (!parsed.success) { out.push({ id: match[1], path: entry, sha, issues: parsed.error.issues.map(issue => ({ path: issue.path.join("."), message: issue.message })) }); continue; }
+    if (parsed.data.id !== match[1]) { out.push({ id: match[1], path: entry, sha, issues: [{ path: "id", message: `The preset id "${parsed.data.id}" must match its file name (${match[1]}).` }] }); continue; }
+    out.push({ id: parsed.data.id, path: entry, sha, title: parsed.data.title, kind: parsed.data.kind });
+  }
+  return out;
 }

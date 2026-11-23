@@ -132,6 +132,28 @@ From the cinematic-track request (2026-11-04):
 | D13 | Rig physics | Simulated offline at a fixed 240 Hz step and baked into paths, clips and constraints with provenance. No runtime integrator. Banking is an additive roll clip. | 16 |
 | D14 | DOM targets | Named anchors (`data-velora-anchor`) first. CSS selectors are allowed only when they match exactly one element. Targets are measured transform-free, inside RouteFrames after scroll. A missing or ambiguous target **refuses capture** (`ERR_TARGET_MISSING`), never a guess. | 15 |
 
+**Decision record (Phase 00.1, 2026-11-14).** The maintainer asked to implement Phases 00 and 01, so D1–D14
+are recorded as **accepted at their recommendations** for this work. Explicit per-decision confirmation is
+still pending. It must come before the phase each row names, and D1 and D9 must come before any work past
+Phase 01 (both are stop conditions in Phase 00.1).
+
+| # | Status | Notes |
+|---|---|---|
+| D1 | Confirmed 2026-11-14 (instruction to implement Phase 03); implemented | Bridge design unbuilt; the checker already reserves `src/project/services/**` (bridgeServices) and `src/project/edit.ts` (commands). |
+| D2 | Accepted and implemented (01) | The recipe `editor` block is optional editor-owned metadata; the renderer and `presentPreview` ignore it. |
+| D3 | Confirmed by the Phase 08 implementation request | Every host source write requires explicit confirmation and compares the reviewed revisions. |
+| D4 | Confirmed in Phase 09 | The optional `three` layer uses `three` and React Three Fiber 9. The S3 spike passed on React 19.2.0. The core entry retains React 18.2+ support. |
+| D5 | Accepted (recommendation), confirm before 11 | Guide stays version 3 through 01. |
+| D6 | Resolved 2026-11-16: in-house | Built in-house (SVG per visible row, virtualized, dense rows as paths); measured budgets in `artifacts/phase-05-exit.md`. |
+| D7 | Accepted (recommendation) | Phase 01 changes are additive within recipe version 1 and scene version 3. |
+| D8 | Accepted and enforced (00) | The architecture rule `gsap-ban` rejects `gsap` and `@gsap/*` in every layer. |
+| D9 | Accepted for Phase 12 | Recipes opt in with concrete stage dimensions. |
+| D10 | Accepted after S7 | Chromium preserved layout at 2×. The 1080p screenshot mean rose from 92 ms to 366 ms on the reference machine. |
+| D11 | Accepted for Phase 13 | Host styles go through the reversible ledger. Chromium confirmed proxy sorting and iframe cleanup. |
+| D12 | Accepted for Phase 14 | Lens presets use full-frame perspective and stage pixels per millimetre. Legacy `lensFor` keeps its original range and focal-length output. |
+| D13 | Accepted. Phase 16 bakes the follower at a fixed step and uses additive banking. | Phase 16 |
+| D14 | Accepted. Phase 15 implements named or unique selector targets and refuses capture if a lock becomes unresolved. | Phase 15 |
+
 ## 4. Open-source verdict (summary)
 
 No existing open-source editor can be adopted wholesale without breaking a Velora invariant.
@@ -282,9 +304,25 @@ These edges aren't drawn: 12 → 14, 12 → 15, 01 → 13, 02 → 16.
 
 ## 10. Final status
 
-Planned 2026-11-04; cinematic track (12–16) added the same day. No phase started. Phase 00
-begins after decisions D1–D14 are confirmed.
+Planned 2026-11-04; cinematic track (12–16) added the same day. Phases 00 and 01 were implemented
+on 2026-11-14 (decisions recorded in §3, explicit confirmation pending).
 
 | Phase | Status | Headline evidence |
 |---|---|---|
-| 00–16 | not started | — |
+| 00 | done except spikes | Goldens (motion, spatial, optics/shot, format corpus, capture) and `scripts/golden.mjs`, baselines, and v2.1 checker layers. S3 and S6–S8 passed. S5 partly run. S1–S2 and S4 pending ([spike evidence](artifacts/phase-00-spikes.md)). |
+| 01 | done | Motion model v3 with goldens unchanged; compiled evaluator about 1,700x faster than the Phase 00 baseline at 300 tracks (`artifacts/phase-01-exit.md`). |
+| 02 | done | Clips, staggers, position paths, links, lookAt/focusFollow and the orbit rig; goldens unchanged (`artifacts/phase-02-exit.md`). |
+| 03 | done | `EditOpSchema`/`applyEdits` with exact inverses, the formatting-preserving writer, `velora edit`, and the secure loopback bridge and watcher (`artifacts/phase-03-exit.md`). S2 not run. |
+| 04 | done | Edit mode shell: store, bridge client, layers, inspector, history, palette; scripted journey byte-exact with undo; time to first keyframe 1.5 s (`artifacts/phase-04-exit.md`). |
+| 05 | done (budgets partly) | Dope sheet, snapping, clip bars, graph editor, easing library, `edit paste`; 200×1000 timeline with no long tasks; drag/graph budgets not yet met (`artifacts/phase-05-exit.md`). |
+| 06 | implemented, viewport budget open | Picking, gizmos, motion paths, director view, and focus tools ([exit report](artifacts/phase-06-exit.md)). |
+| 07 | implemented, CI gate open | Clip grouping and timing, stagger drag, behavior and camera libraries, project presets, and keyframeable text, paths, and shapes ([exit report](artifacts/phase-07-exit.md)). |
+| 08 | implemented, dashboard validation open | JSX picking, reviewed source edits, channel exposure, and guarded undo. Vite and Next fixture workflows passed ([exit report](artifacts/phase-08-exit.md)). |
+| 09 | done | Optional Three.js entry, deterministic glTF capture, shared camera and studio gizmos. Product-orbit exports and the installed React 18 fixture passed byte comparisons ([exit report](artifacts/phase-09-exit.md)). |
+| 10 | implemented | Composition lanes, editing operations, scoped waveforms, beat snapping, scene handoff, and CLI parity. The 30-second recut and crossfade comparison passed ([exit report](artifacts/phase-10-exit.md)). |
+| 11 | implementation landed, release gates open | Agent handoff and parity, guide format 4, accessibility and release checks. Hardware timing and the cinematic prerequisites still gate 1.1.0 ([status report](artifacts/phase-11-exit.md)). |
+| 12 | implemented | Laptop viewport parity, HiDPI capture, DPR cap, native stage editing, and template certification ([exit report](artifacts/phase-12-exit.md)). |
+| 13 | implemented | Volumetric and projected depth, reversible host styles, camera-reactive light, Studio authoring and frozen capture lineage ([exit report](artifacts/phase-13-exit.md)). |
+| 14 | implemented | Physical lens presets, zoom and framing hold, per-layer depth of field, rack focus, and Studio and CLI authoring ([exit report](artifacts/phase-14-exit.md)). |
+| 15 | Implemented | [phase-15-exit.md](artifacts/phase-15-exit.md) |
+| 16 | Implemented | Fixed-step physical camera rigs, Studio and CLI authoring, and verified preview-to-capture parity ([exit report](artifacts/phase-16-exit.md)). |

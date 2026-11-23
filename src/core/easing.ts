@@ -113,7 +113,9 @@ export function applyEasing(easing: Easing, progress: number): number {
   return easing.jump === "start" ? Math.min(1, Math.ceil(progress * easing.steps) / easing.steps) : Math.floor(progress * easing.steps) / easing.steps;
 }
 /** True when the curve leaves 0..1 (overshoot), which reads as jitter on camera tracks. */
-export function easingOvershoots(easing: Easing): boolean {
+export function easingOvershoots(easing: Easing | "auto"): boolean {
+  // Auto-bezier keyframes use monotone tangents, which never overshoot.
+  if (easing === "auto") return false;
   if (typeof easing === "string") return /^(?:back|elastic)\./.test(easing);
   if ("cubicBezier" in easing) return easing.cubicBezier[1] < 0 || easing.cubicBezier[1] > 1 || easing.cubicBezier[3] < 0 || easing.cubicBezier[3] > 1;
   if ("spring" in easing) return easing.spring.damping < 2 * Math.sqrt(easing.spring.stiffness * easing.spring.mass);

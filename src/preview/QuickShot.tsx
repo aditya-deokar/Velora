@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ASPECT_FRAMES, QUICK_SHOT_PARAMS, SCROLL_CHANNEL, SUBJECT_ID, quickShotQuery, readQuickShot, type PreviewDefinitionInput, type QuickShotState } from "../core";
-import { Surface } from "../react";
+import { ASPECT_FRAMES, QUICK_SHOT_PARAMS, SCROLL_CHANNEL, SUBJECT_ID, quickShotQuery, readQuickShot, stageCompositeLayout, templateSubject, type PreviewDefinitionInput, type QuickShotState } from "../core";
+import { AppStage, Surface } from "../react";
 import { RouteFrame } from "../kit";
 import { ScenePreview } from "./ScenePreview";
 import { ParamPanel } from "./ParamPanel";
@@ -32,7 +32,7 @@ export function QuickShot({ children, backHref, onBack, hot }: { children?: Reac
   // rendered shot follow once per animation frame.
   const [draft, setDraft] = useState<QuickShotState>();
   // Hosts without children (Next studio route) always frame a route; default to the home page.
-  const state: QuickShotState | undefined = draft ?? (shot && { template: shot.template, aspect: shot.aspect, overrides: shot.overrides,
+  const state: QuickShotState | undefined = draft ?? (shot && { template: shot.template, aspect: shot.aspect, stage: shot.stage, overrides: shot.overrides,
     ...(shot.route !== undefined ? { route: shot.route } : live ? {} : { route: "/" }) });
   const pending = useRef<QuickShotState | null>(null);
   const frame = useRef(0);
@@ -57,22 +57,23 @@ export function QuickShot({ children, backHref, onBack, hot }: { children?: Reac
   };
   const lastValid = useRef<PreviewDefinitionInput | undefined>(undefined);
   if (shot?.definition) lastValid.current = shot.definition as PreviewDefinitionInput;
-  const subject = ASPECT_FRAMES[state?.aspect ?? "16:9"].subject;
+  const subject = templateSubject(state?.aspect ?? "16:9", shot?.definition?.stage);
   const route = state?.route;
   const brand = useProjectBrand();
-  const layout = shot?.composite?.layout;
+  const rawLayout = shot?.composite?.layout;
+  const layout = useMemo(() => rawLayout && stageCompositeLayout(rawLayout), [rawLayout]);
   // Layered and motion-graphics templates render their layout; the slot holds the same live app or route.
   const content = useMemo(() => layout
     ? <TemplateLayout layout={layout} brand={brand} slot={props => {
         const width = Number(props.width), height = Number(props.height);
         return <div style={{ width, height, overflow: "hidden", background: "#fff" }}>
-          {route !== undefined ? <RouteFrame route={route} width={width} height={height}/> : children}
+          <AppStage fit={{width, height}}>{route !== undefined ? <RouteFrame route={route}/> : children}</AppStage>
         </div>;
       }}/>
     : <Surface id={SUBJECT_ID} style={{ width: subject.width, height: subject.height, overflow: "hidden", background: "#fff" }}>
-      {route !== undefined
-        ? <RouteFrame route={route} width={subject.width} height={subject.height} scrollChannel={SCROLL_CHANNEL}/>
-        : children}
+      <AppStage fit={subject}>{route !== undefined
+        ? <RouteFrame route={route} scrollChannel={SCROLL_CHANNEL}/>
+        : children}</AppStage>
     </Surface>, [children, route, subject.width, subject.height, layout, brand]);
   if (!shot || !state) return null;
   const href = typeof location === "undefined" ? "http://localhost:5173/" + quickShotSearch(state) : location.origin + location.pathname + quickShotSearch(state, location.search);

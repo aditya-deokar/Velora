@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { MotionTrackSchema, type MotionTrack } from "./motion";
-/** SOURCE OF TRUTH: CascadeSchema, createCascadeTracks.
+import { MotionTrackSchema, MEMBER_PLACEHOLDER, type MotionTrack, type MotionClipInput } from "./motion";
+/** SOURCE OF TRUTH: CascadeSchema, createCascadeTracks, createCascadeClip.
  * WHAT: ordered depth entrances with overlapping, softly eased settling.
  * WHY: authored scenes and agents share one staircase recipe with an explicit opt-out.
  * WHERE: callers bind existing IDs; MotionSchema owns speed and interpolation.
@@ -27,4 +27,18 @@ export function createCascadeTracks(input: CascadeInput): MotionTrack[] {
       {timeMs:at+options.entranceMs,value:0},
     ]});
   });
+}
+/** The same cascade as one clip: a stagger clip (members offset by staggerMs) when every item shares one
+ * depth and the default timing, otherwise a plain clip wrapping the cascade tracks. Evaluates equal to
+ * createCascadeTracks. */
+export function createCascadeClip(input: CascadeInput, id = "cascade"): MotionClipInput {
+  const options = CascadeSchema.parse(input);
+  const uniform = options.cascade && options.depthStep === 0 && options.items.every(item => item.atMs === undefined);
+  if (!uniform || options.items.length < 2) return { id, label: "Cascade", startMs: 0, tracks: createCascadeTracks(input) };
+  return {
+    id, label: "Cascade", startMs: 0,
+    members: options.items.map(item => item.id),
+    stagger: { eachMs: options.staggerMs, order: "forward" },
+    tracks: [{ target: { kind: "surface", id: MEMBER_PLACEHOLDER }, property: "z", keyframes: [{ timeMs: 0, value: options.depth }, { timeMs: options.entranceMs, value: 0 }] }],
+  };
 }

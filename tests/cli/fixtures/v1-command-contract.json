@@ -1,0 +1,343 @@
+{
+  "baseline": "2b3a269",
+  "commands": [
+    {
+      "name": "guide",
+      "flags": [
+        "--json"
+      ]
+    },
+    {
+      "name": "init",
+      "flags": [
+        "--adapter",
+        "--project",
+        "--package",
+        "--url",
+        "--no-open",
+        "--json"
+      ]
+    },
+    {
+      "name": "open",
+      "flags": [
+        "--scene",
+        "--project",
+        "--url",
+        "--no-open",
+        "--json"
+      ]
+    },
+    {
+      "name": "sync",
+      "flags": [
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "scenes",
+      "flags": [
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "load",
+      "flags": [
+        "--scene",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "validate",
+      "flags": [
+        "--project",
+        "--composition",
+        "--json"
+      ]
+    },
+    {
+      "name": "inspect",
+      "flags": [
+        "--project",
+        "--scene",
+        "--composition",
+        "--json"
+      ]
+    },
+    {
+      "name": "assets",
+      "flags": [
+        "--as",
+        "--id",
+        "--yes",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "snapshot",
+      "flags": [
+        "--scene",
+        "--url",
+        "--time",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "export",
+      "flags": [
+        "--url",
+        "--output",
+        "--fps",
+        "--width",
+        "--height",
+        "--audio",
+        "--captions",
+        "--quality",
+        "--codec",
+        "--transparent",
+        "--motion-blur",
+        "--motion-samples",
+        "--gif-fps",
+        "--poster",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "doctor",
+      "flags": [
+        "--project",
+        "--url",
+        "--json"
+      ]
+    },
+    {
+      "name": "render",
+      "flags": [
+        "--composition",
+        "--frame",
+        "--time",
+        "--out",
+        "--parallel",
+        "--no-cache",
+        "--cache-dir",
+        "--fps",
+        "--width",
+        "--height",
+        "--url",
+        "--project",
+        "--json",
+        "--no-stream",
+        "--quality",
+        "--codec",
+        "--transparent",
+        "--motion-blur",
+        "--motion-samples",
+        "--gif-fps",
+        "--poster",
+        "--preset",
+        "--aspects"
+      ]
+    },
+    {
+      "name": "frames",
+      "flags": [
+        "--composition",
+        "--out",
+        "--every",
+        "--at",
+        "--contact-sheet",
+        "--columns",
+        "--no-cache",
+        "--cache-dir",
+        "--url",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "shot",
+      "flags": [
+        "--scene",
+        "--time",
+        "--out",
+        "--url",
+        "--quality",
+        "--motion-blur",
+        "--motion-samples",
+        "--fps",
+        "--transparent",
+        "--finish",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "check",
+      "flags": [
+        "--frames",
+        "--video",
+        "--manifest",
+        "--budget-ms",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "audio",
+      "flags": [
+        "--composition",
+        "--file",
+        "--write-markers",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "captions",
+      "flags": [
+        "--file",
+        "--composition",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "compose",
+      "flags": [
+        "--composition",
+        "--to",
+        "--tolerance",
+        "--write",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "review",
+      "flags": [
+        "--composition",
+        "--platform",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "brand",
+      "flags": [
+        "--from-css",
+        "--name",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "templates",
+      "flags": [
+        "--category",
+        "--tag",
+        "--aspect",
+        "--id",
+        "--json"
+      ]
+    },
+    {
+      "name": "new",
+      "flags": [
+        "--template",
+        "--blueprint",
+        "--id",
+        "--component",
+        "--route",
+        "--set",
+        "--aspect",
+        "--duration",
+        "--title",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "transitions",
+      "flags": [
+        "--type",
+        "--json"
+      ]
+    },
+    {
+      "name": "deliver",
+      "flags": [
+        "--composition",
+        "--targets",
+        "--out",
+        "--quality",
+        "--parallel",
+        "--no-cache",
+        "--no-stream",
+        "--url",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "studio",
+      "flags": [
+        "--site",
+        "--port",
+        "--check",
+        "--project",
+        "--json"
+      ]
+    },
+    {
+      "name": "create",
+      "flags": [
+        "--name",
+        "--blueprint",
+        "--json"
+      ]
+    },
+    {
+      "name": "prompts",
+      "flags": [
+        "--id",
+        "--json"
+      ]
+    },
+    {
+      "name": "skills",
+      "flags": [
+        "--dir",
+        "--agent",
+        "--source",
+        "--json"
+      ]
+    }
+  ],
+  "envelopes": {
+    "success": [
+      "success",
+      "command",
+      "data",
+      "warnings",
+      "next"
+    ],
+    "failure": [
+      "success",
+      "command",
+      "issues",
+      "next"
+    ],
+    "issue": [
+      "code",
+      "message",
+      "path",
+      "hint"
+    ]
+  }
+}

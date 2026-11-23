@@ -32,7 +32,7 @@ export const TimelineSchema = z.strictObject({
   segments: z.array(TimelineSegmentSchema).min(1),
 });
 export type Timeline = z.output<typeof TimelineSchema>;
-export type TimelineIssue = { code: string; path: string; message: string };
+export type TimelineIssue = { code: "ERR_TIMELINE_INVALID" | "ERR_TIMELINE_OVERLAP" | "ERR_TRANSITION_INVALID"; path: string; message: string };
 
 // Canonical frame sampler: every renderer (preview scrub, frame capture,
 // video encoding) converts through these two functions and no other math.
@@ -76,23 +76,29 @@ export function validateTimeline(timeline: unknown): { valid: boolean; issues: T
     return { valid: false, issues: parsed.error.issues.map((issue) => ({ code: "ERR_TIMELINE_INVALID", path: `timeline.${issue.path.join(".")}`, message: issue.message })) };
   const issues: TimelineIssue[] = [];
   const ordered = [...parsed.data.segments].sort((a, b) => a.startMs - b.startMs);
-  for (let i = 1; i < ordered.length; i++) {
+  let previousMaxEnd = 0;
+  for (let i = 0; i < ordered.length; i++) {
     const prev = ordered[i - 1], segment = ordered[i];
-    const prevEnd = prev.startMs + prev.durationMs;
+    const prevEnd = prev ? prev.startMs + prev.durationMs : 0;
     const path = `timeline.segments.${parsed.data.segments.indexOf(segment)}`;
-    if (segment.startMs >= prevEnd) continue;
     const transition = segment.transition;
+    const olderOverlap = previousMaxEnd - segment.startMs > 0.000001;
+    previousMaxEnd = Math.max(previousMaxEnd, prevEnd);
     // The only legal overlap: an overlap transition whose window is exactly the overlap, shorter than both shots.
     if (transition && isOverlapTransition(transition.type)) {
       const overlap = prevEnd - segment.startMs;
-      if (Math.abs(overlap - transition.durationMs) > 0.5)
-        issues.push({ code: "ERR_TIMELINE_OVERLAP", path, message: `Segment "${segment.id}" overlaps "${prev.id}" by ${round(overlap)}ms but its ${transition.type} lasts ${transition.durationMs}ms. Start it at ${round(prevEnd - transition.durationMs)}ms.` });
+      if (overlap <= 0 || Math.abs(overlap - transition.durationMs) > 0.5)
+        issues.push({ code: "ERR_TIMELINE_OVERLAP", path, message: `Segment "${segment.id}" needs a preceding segment with an overlap of ${transition.durationMs}ms for its ${transition.type}. Actual overlap: ${round(Math.max(0, overlap))}ms.` });
       else if (transition.durationMs >= Math.min(prev.durationMs, segment.durationMs))
         issues.push({ code: "ERR_TIMELINE_OVERLAP", path, message: `The ${transition.type} (${transition.durationMs}ms) must be shorter than both "${prev.id}" and "${segment.id}".` });
-      else if (i >= 2 && ordered[i - 2].startMs + ordered[i - 2].durationMs > segment.startMs)
+      else if (olderOverlap)
         issues.push({ code: "ERR_TIMELINE_OVERLAP", path, message: `Segment "${segment.id}" would overlap three segments at once; leave room between transitions.` });
       continue;
     }
+    if (transition && transition.durationMs > segment.durationMs) {
+      issues.push({ code: "ERR_TRANSITION_INVALID", path: `${path}.transition.durationMs`, message: `Transition lasts ${transition.durationMs}ms but segment "${segment.id}" spans ${segment.durationMs}ms.` });
+    }
+    if (!prev || segment.startMs >= prevEnd - 0.000001) continue;
     issues.push({ code: "ERR_TIMELINE_OVERLAP", path, message: `Segment "${segment.id}" starts at ${segment.startMs}ms but "${prev.id}" runs until ${prevEnd}ms. Butt-join segments, trim them, or declare an overlap transition (${"crossfade, dip-to-black, wipe, whip, …"}) lasting exactly the overlap.` });
   }
   const span = timelineDuration(parsed.data.segments);
@@ -103,9 +109,8 @@ export function validateTimeline(timeline: unknown): { valid: boolean; issues: T
 // Build a timeline from a validated composition: one segment per scene entry,
 // global duration derived from the span. Transition metadata (Phase 05) rides
 // on segments without changing timing here.
-export function timelineFromComposition(composition: Pick<Composition, "fps" | "scenes">): Timeline {
-  const segments = composition.scenes.map((scene) => ({ id: scene.id, recipe: scene.recipe, startMs: scene.startMs, durationMs: scene.durationMs, ...(scene.transition ? { transition: scene.transition } : {}) }));
-  return TimelineSchema.parse({ version: 1 as const, fps: composition.fps, durationMs: timelineDuration(segments), segments });
+export function timelineFromComposition(composition: Pick<Composition, "fps" | "scenes">, fps = composition.fps): Timeline {
+  return TimelineSchema.parse({ version: 1, fps, durationMs: timelineDuration(composition.scenes), segments: composition.scenes });
 }
 
 const round = (value: number) => Math.round(value * 100) / 100;

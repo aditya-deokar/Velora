@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ASPECT_FRAMES, TEMPLATE_CATALOG, decodeBase64Url, encodeBase64Url, projectSubject, quickShotCommands, quickShotQuery, readQuickShot, templateDefinition, resolveTemplateParams, type QuickShotState } from "../../src/core";
+import { ASPECT_FRAMES, TEMPLATE_CATALOG, decodeBase64Url, encodeBase64Url, projectSubject, quickShotCommands, quickShotQuery, readQuickShot, stageFromSpec, templateDefinition, templateSubject, resolveTemplateParams, type QuickShotState } from "../../src/core";
 
 const query = (state: QuickShotState) => new URLSearchParams(quickShotQuery(state));
 
@@ -22,7 +22,8 @@ describe("quick-shot URL contract", () => {
     expect(shot.issues).toEqual([]);
     expect({ template: shot.template, route: shot.route, aspect: shot.aspect, overrides: shot.overrides }).toEqual(state);
     const manifest = TEMPLATE_CATALOG.find(entry => entry.id === "hero-push")!;
-    expect(shot.definition).toEqual(templateDefinition(manifest, resolveTemplateParams(manifest, state.overrides).params, "9:16"));
+    const stage = stageFromSpec("laptop-14")!;
+    expect(shot.definition).toEqual({ ...templateDefinition(manifest, resolveTemplateParams(manifest, state.overrides).params, "9:16", templateSubject("9:16", stage)), stage });
     expect(shot.definition!.width).toBe(ASPECT_FRAMES["9:16"].width);
   });
   it("omits defaults from the URL and ignores unrelated params", () => {
@@ -43,9 +44,9 @@ describe("quick-shot URL contract", () => {
     const state: QuickShotState = { template: "scroll-through", route: "/", aspect: "9:16", overrides: { intensity: "standard", focusRegion: "0,0,400,200" } };
     const href = "http://127.0.0.1:5173/?velora-preview=1&velora-quick=scroll-through";
     const commands = quickShotCommands(state, href, { id: "landing" });
-    expect(commands.scaffold).toBe("npx velora new scene --template scroll-through --id landing --route / --aspect 9:16 --set intensity=standard --set focusRegion=0,0,400,200 --json");
+    expect(commands.scaffold).toBe("npx velora new scene --template scroll-through --id landing --route / --aspect 9:16 --set intensity=standard --set focusRegion=0,0,400,200 --stage laptop-14 --json");
     expect(commands.export).toBe(`npx velora export --url '${href}' --output landing.mp4 --width 1080 --height 1920 --fps 30`);
-    expect(quickShotCommands({ template: "hero-push", aspect: "16:9", overrides: {} }, href).scaffold).toBe("npx velora new scene --template hero-push --id hero-push-shot --component <path#Export> --json");
+    expect(quickShotCommands({ template: "hero-push", aspect: "16:9", overrides: {} }, href).scaffold).toBe("npx velora new scene --template hero-push --id hero-push-shot --component <path#Export> --stage laptop-14 --json");
     expect(quickShotCommands({ template: "hero-push", route: "/it's", aspect: "16:9", overrides: {} }, href).scaffold).toContain("--route '/it'\\''s'");
   });
 });

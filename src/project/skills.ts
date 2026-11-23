@@ -15,7 +15,7 @@ export const VELORA_SKILL_NAMES = Object.freeze([
   "velora-gsap", "velora-threejs", "velora-ewmotion", "velora-typography",
   "velora-transitions", "velora-audio", "velora-export", "velora-debug",
   "velora-performance", "velora-verify", "velora-templates", "velora-cinematography",
-  "velora-brand", "velora-looks", "velora-motion-design", "velora-editing", "velora-launch",
+  "velora-brand", "velora-looks", "velora-motion-design", "velora-editing", "velora-launch", "velora-editor",
 ]);
 export const REQUIRED_SKILL_SECTIONS = Object.freeze([
   "## When to Use This Skill",
@@ -138,7 +138,7 @@ export function validateSkillContent(
       continue;
     }
     for (const flag of ref.flags) {
-      if (!entry.flags.includes(flag))
+      if (flag !== "--help" && !entry.flags.includes(flag))
         issues.push({ code: "ERR_SKILL_INVALID", path: "SKILL.md", message: `"velora ${ref.command} ${flag}" documents an unknown flag. See velora ${ref.command} --help.` });
     }
   }

@@ -13,12 +13,16 @@ const sceneDoc = `/** SOURCE OF TRUTH: SceneSchema, TransformSchema.
  * WHY: keep all consumers consistent.
  * WHERE: consumed by spatial evaluator.
  */`;
-const spatialDoc = `/** SOURCE OF TRUTH: evaluateScene, transformToCss, focusForSurface, sampleFocus, focusMask, cameraToCss, uniformFocusBlur.
+const spatialDoc = `/** SOURCE OF TRUTH: evaluateScene, transformToCss, focusForSurface, sampleFocus, focusMask, cameraToCss, uniformFocusBlur, resolveConstraints, projectWorld, screenRay, intersectPlane, surfaceQuad, coverScaleAt.
  * WHAT: evaluate transforms and focus.
  * WHY: prevent divergent renderer math.
  * WHERE: consumed by React adapter.
  */`;
 const valid = {
+ 'src/core/depth.ts': `/** SOURCE OF TRUTH: DEPTH_TIERS, classifyDepth, evaluateDepthLayers. WHAT: classify depth and compute light. WHY: keep capture and preview consistent. WHERE: consumed by the depth renderers. */
+ export const DEPTH_TIERS=Object.freeze({}); export function classifyDepth(){return [];} export function evaluateDepthLayers(){return [];}`,
+ 'src/react/depth/ledger.ts': `/** SOURCE OF TRUTH: createStyleLedger. WHAT: record inline styles before writes. WHY: restore host DOM exactly. WHERE: consumed by the depth renderers. */
+ export function createStyleLedger(){return {};}`,
  'src/project/discovery.ts':`/** SOURCE OF TRUTH: discoverRecipes. WHAT: read scoped recipes. WHY: share discovery policy. WHERE: project commands call this owner. */ export function discoverRecipes(){return {}}`,
  'src/project/portable.ts':`/** SOURCE OF TRUTH: portableIntegration, portableCatalog. WHAT: generate host connection source. WHY: reuse shared rendering contracts. WHERE: project commands write generated files. */ export function portableIntegration(){return {}} export function portableCatalog(){return ''}`,
  'src/core/recipes.ts':`/** SOURCE OF TRUTH: SceneRecipeSchema, SceneSnapshotSchema, SnapshotSceneSchema, loadSceneRecipes, ListScenesSchema, LoadSceneSchema, OpenSceneSchema.
@@ -46,6 +50,18 @@ const valid = {
  * WHERE: browser preview calls this operation.
  */
  import {z} from 'zod'; export const PreviewDefinitionSchema=z.strictObject({}); export function presentPreview(){return {};}`,
+ 'src/core/stage.ts': `/** SOURCE OF TRUTH: StageSchema, STAGE_PRESETS, resolutionBudget.
+ * WHAT: define concrete logical stage geometry and raster demand.
+ * WHY: keep layout independent from capture dimensions.
+ * WHERE: preview and export read the same stage contract.
+ */
+ import {z} from 'zod'; export const StageSchema=z.strictObject({}); export const STAGE_PRESETS=Object.freeze({}); export function resolutionBudget(){return {};}`,
+ 'src/react/stage.tsx': `/** SOURCE OF TRUTH: AppStage, useAppStage.
+ * WHAT: render a named size container and expose its metrics.
+ * WHY: guarantee consistent viewport layout across preview and export.
+ * WHERE: used by generated scene bindings.
+ */
+ export function AppStage(){return null;} export function useAppStage(){return undefined;}`,
  'src/preview/ScenePreview.tsx': `/** SOURCE OF TRUTH: ScenePreview.
  * WHAT: render the shared preview interface.
  * WHY: avoid duplicate product shells.
@@ -80,21 +96,43 @@ import {z} from 'zod'; export const ExportVideoSchema=z.strictObject({}); export
  */
 export function executeVideoExport(){return {};} export function executeSceneSnapshot(){return {};}`,
 
- 'src/core/choreography.ts': `/** SOURCE OF TRUTH: CascadeSchema, createCascadeTracks.
+ 'src/core/choreography.ts': `/** SOURCE OF TRUTH: CascadeSchema, createCascadeTracks, createCascadeClip.
  * WHAT: define validated entrances.
  * WHY: prevent duplicate choreography.
  * WHERE: consumed by scene authors.
  */
-import {z} from 'zod'; export const CascadeSchema=z.strictObject({}); export function createCascadeTracks(){return [];}`,
+import {z} from 'zod'; export const CascadeSchema=z.strictObject({}); export function createCascadeTracks(){return [];} export function createCascadeClip(){return {};}`,
 
   'src/core/project.ts': `/** SOURCE OF TRUTH: InitProjectSchema, SyncProjectSchema.\n * WHAT: validate project command inputs.\n * WHY: keep adapters using contracts.\n * WHERE: consumed by trusted commands.\n */\nimport { z } from 'zod'; export const InitProjectSchema=z.strictObject({}); export const SyncProjectSchema=z.strictObject({});`,
   'src/project/commands.ts': `/** SOURCE OF TRUTH: executeProjectCommand.\n * WHAT: execute validated project commands.\n * WHY: protect scoped project state.\n * WHERE: invoked through CLI adapters.\n */\nexport async function executeProjectCommand(){return {};}`, 
   'src/core/scene.ts': `${sceneDoc}\nimport { z } from 'zod';\nexport const TransformSchema = z.strictObject({ x: z.number() });\nexport const SceneSchema = z.strictObject({ transform: TransformSchema }).superRefine(() => {});`,
-  'src/core/spatial.ts': `${spatialDoc}\nimport { SceneSchema } from './scene';\nexport function evaluateScene(input: unknown) { return SceneSchema.parse(input); }\nexport const transformToCss = () => 'none'; export const focusForSurface=()=>0; export const sampleFocus=()=>0; export const focusMask=()=>''; export const cameraToCss=()=>''; export const uniformFocusBlur=()=>0;`,
+  'src/core/spatial.ts': `${spatialDoc}\nimport { SceneSchema } from './scene';\nexport function evaluateScene(input: unknown) { return SceneSchema.parse(input); }\nexport const transformToCss = () => 'none'; export const focusForSurface=()=>0; export const sampleFocus=()=>0; export const focusMask=()=>''; export const cameraToCss=()=>''; export const uniformFocusBlur=()=>0; export const resolveConstraints=()=>({}); export const projectWorld=()=>null; export const screenRay=()=>({}); export const intersectPlane=()=>null; export const surfaceQuad=()=>[]; export const coverScaleAt=()=>1;`,
+  'src/core/shots.ts': '/** SOURCE OF TRUTH: buildOrbitRig, buildRackFocus.\n * WHAT: compile camera rigs and focus moves to data.\n * WHY: one vocabulary for shots.\n * WHERE: consumed by templates and agents.\n */\nexport function buildOrbitRig(){return {};} export function buildRackFocus(){return {};}',
   'src/core/easing.ts': '/** SOURCE OF TRUTH: applyEasing.\n * WHAT: easing curves for motion segments.\n * WHY: one evaluator for every renderer.\n * WHERE: consumed by core motion.\n */\nimport { z } from \'zod\'; export function applyEasing(){return 0;}',
   'src/core/noise.ts': '/** SOURCE OF TRUTH: NoiseSchema, sampleNoise.\n * WHAT: seeded noise texture over time.\n * WHY: deterministic handheld camera motion.\n * WHERE: consumed by core motion.\n */\nimport { z } from \'zod\'; export const NoiseSchema=z.strictObject({}); export function sampleNoise(){return 0;}',
-  'src/core/lens.ts': '/** SOURCE OF TRUTH: perspectiveForFocalLength, focalLengthForPerspective, lensFor.\n * WHAT: lens millimetres mapped to perspective.\n * WHY: one lens language for every shot.\n * WHERE: consumed by builders and the guide.\n */\nexport function perspectiveForFocalLength(){return 0;} export function focalLengthForPerspective(){return 0;} export function lensFor(){return 0;}',
-  'src/core/motion.ts': '/** SOURCE OF TRUTH: MotionSchema, evaluateMotion, motionDuration, motionTime, cinematicProgress, cinematicTimeAtProgress, sampleFrameTime, loopSeam.\n * WHAT: validate motion and time.\n * WHY: prevent multiple competing clocks.\n * WHERE: consumed by React adapters.\n */\nimport { z } from \'zod\'; export const MotionSchema=z.strictObject({}); export function evaluateMotion(){return 0;} export function motionDuration(){return 0;} export function motionTime(){return 0;} export function cinematicProgress(){return 0;} export function cinematicTimeAtProgress(){return 0;} export function sampleFrameTime(){return 0;} export function loopSeam(){return 0;}',
+  'src/core/rigs.ts': '/** SOURCE OF TRUTH: simulateFollower, buildDroneFlyover, buildTelephotoOrbit, buildWhipPan, velocityBlurAt.\n * WHAT: bake physical rigs and sample motion blur.\n * WHY: offline physics preserves deterministic playback.\n * WHERE: consumed by camera builders and capture.\n */\nexport function simulateFollower(){return [];} export function buildDroneFlyover(){return {};} export function buildTelephotoOrbit(){return {};} export function buildWhipPan(){return {};} export function velocityBlurAt(){return {};}',
+  'src/core/targets.ts': '/** SOURCE OF TRUTH: ElementTargetSchema, resolveTarget.\n * WHAT: validate live target names and selectors.\n * WHY: keep constraints stable across layout changes.\n * WHERE: consumed by the spatial evaluator.\n */\nimport { z } from \'zod\'; export const ElementTargetSchema=z.union([z.strictObject({}),z.strictObject({})]); export function resolveTarget(){return {};}',
+  'src/react/anchors.ts': '/** SOURCE OF TRUTH: measureAnchors.\n * WHAT: read transform-free element geometry.\n * WHY: publish current layout during scene playback.\n * WHERE: consumed by the React scene registry.\n */\nexport function measureAnchors(){return {};}',
+  'src/core/lens.ts': '/** SOURCE OF TRUTH: perspectiveForFocalLength, focalLengthForPerspective, lensFor, LENS_PRESETS, lensPreset, applyLens.\n * WHAT: lens millimetres mapped to perspective.\n * WHY: one lens language for every shot.\n * WHERE: consumed by builders and the guide.\n */\nexport const LENS_PRESETS=Object.freeze({}); export function perspectiveForFocalLength(){return 0;} export function focalLengthForPerspective(){return 0;} export function lensFor(){return 0;} export function lensPreset(){return {};} export function applyLens(){return [];}',
+  'src/core/color.ts': '/** SOURCE OF TRUTH: parseCssColor, mixColors.\n * WHAT: parse and blend CSS colors.\n * WHY: deterministic perceptual color frames.\n * WHERE: consumed by core motion.\n */\nexport function parseCssColor(){return 0;} export function mixColors(){return 0;}',
+  'src/core/animatable.ts': '/** SOURCE OF TRUTH: AnimatableSpecSchema.\n * WHAT: typed animatable prop specs.\n * WHY: one contract for keyframeable props.\n * WHERE: consumed by the React hook.\n */\nimport { z } from "zod"; export const AnimatableSpecSchema=z.record(z.string(), z.number());',
+  'src/react/animatable.ts': '/** SOURCE OF TRUTH: useAnimatable.\n * WHAT: read typed props at scene time.\n * WHY: components share the motion clock.\n * WHERE: consumed by kit components.\n */\nexport function useAnimatable(){return {};}',
+  'src/editor/store.ts': '/** SOURCE OF TRUTH: createEditorStore.\n * WHAT: editor fixture behavior.\n * WHY: one owner for editor policy.\n * WHERE: consumed by editor panels.\n */\nexport function createEditorStore(){return {};}',
+  'src/editor/intents.ts': '/** SOURCE OF TRUTH: intentToOps.\n * WHAT: editor fixture behavior.\n * WHY: one owner for editor policy.\n * WHERE: consumed by editor panels.\n */\nexport function intentToOps(){return [];}',
+  'src/editor/commands.ts': '/** SOURCE OF TRUTH: EDITOR_COMMANDS.\n * WHAT: editor fixture behavior.\n * WHY: one owner for editor policy.\n * WHERE: consumed by editor panels.\n */\nexport const EDITOR_COMMANDS=Object.freeze([]);',
+  'src/react/inspector.ts': '/** SOURCE OF TRUTH: useSceneInspector.\n * WHAT: editor fixture behavior.\n * WHY: one owner for editor policy.\n * WHERE: consumed by editor panels.\n */\nexport function useSceneInspector(){return undefined;}',
+  'src/core/edit.ts': '/** SOURCE OF TRUTH: EditOpSchema, applyEdits.\n * WHAT: typed edit operations and reducer.\n * WHY: one vocabulary for every author.\n * WHERE: consumed by the edit command.\n */\nimport { z } from \'zod\'; export const EditOpSchema=z.discriminatedUnion(\'op\', [z.strictObject({}), z.strictObject({})]); export function applyEdits(){return {};}',
+  'src/core/json.ts': '/** SOURCE OF TRUTH: formatJsonDocument.\n * WHAT: write JSON preserving formatting.\n * WHY: minimal diffs for author files.\n * WHERE: consumed by the edit command.\n */\nexport function formatJsonDocument(){return \'\';}',
+  'src/project/edit.ts': '/** SOURCE OF TRUTH: executeEditCommand.\n * WHAT: apply edit batches to recipes.\n * WHY: one write policy for agents and editors.\n * WHERE: CLI calls this owner.\n */\nexport async function executeEditCommand(){return {};}',
+  'src/core/motion.ts': '/** SOURCE OF TRUTH: MotionSchema, evaluateMotion, motionDuration, motionTime, cinematicProgress, cinematicTimeAtProgress, sampleFrameTime, loopSeam, monotoneTangents.\n * WHAT: validate motion and time.\n * WHY: prevent multiple competing clocks.\n * WHERE: consumed by React adapters.\n */\nimport { z } from \'zod\'; export function monotoneTangents(){return [];} export const MotionSchema=z.strictObject({}); export function evaluateMotion(){return 0;} export function motionDuration(){return 0;} export function motionTime(){return 0;} export function cinematicProgress(){return 0;} export function cinematicTimeAtProgress(){return 0;} export function sampleFrameTime(){return 0;} export function loopSeam(){return 0;}',
+  'src/core/behaviors.ts': '/** SOURCE OF TRUTH: BEHAVIOR_CATALOG, buildBehavior.\n * WHAT: compile behaviors to clips.\n * WHY: share behavior definitions.\n * WHERE: consumed by the editor.\n */\nexport const BEHAVIOR_CATALOG=Object.freeze([]); export function buildBehavior(){return {};}',
+  'src/core/source.ts': '/** SOURCE OF TRUTH: SourceOutlineSchema.\n * WHAT: validate source outlines.\n * WHY: share source data.\n * WHERE: consumed by the editor.\n */\nimport { z } from "zod"; export const SourceOutlineSchema=z.strictObject({});',
+  'src/project/source.ts': '/** SOURCE OF TRUTH: outlineSource, wrapElement.\n * WHAT: inspect source and prepare edits.\n * WHY: preserve host formatting.\n * WHERE: used by the source bridge.\n */\nexport function outlineSource(){return [];} export function wrapElement(){return {};}',
+  'src/core/presets.ts': '/** SOURCE OF TRUTH: PresetSchema.\n * WHAT: validate project presets.\n * WHY: share preset data.\n * WHERE: consumed by project adapters.\n */\nimport { z } from "zod"; export const PresetSchema=z.strictObject({});',
+  'src/core/typography.ts': '/** SOURCE OF TRUTH: textAnimatorAt.\n * WHAT: evaluate text selectors.\n * WHY: share range selection.\n * WHERE: consumed by the kit.\n */\nexport function textAnimatorAt(){return [];}',
+  'src/kit/text-animator.tsx': '/** SOURCE OF TRUTH: TextAnimator.\n * WHAT: render animated text.\n * WHY: share text animation.\n * WHERE: consumed by scene authors.\n */\nexport function TextAnimator(){return null;}',
+  'src/kit/draw-path.tsx': '/** SOURCE OF TRUTH: DrawPath.\n * WHAT: render trimmed paths.\n * WHY: share stroke animation.\n * WHERE: consumed by scene authors.\n */\nexport function DrawPath(){return null;}',
+  'src/kit/shape.tsx': '/** SOURCE OF TRUTH: Shape.\n * WHAT: render animated shapes.\n * WHY: share shape animation.\n * WHERE: consumed by scene authors.\n */\nexport function Shape(){return null;}',
   'src/core/index.ts': `export * from './scene'; export { evaluateScene, transformToCss } from './spatial';`,
 };
 const fixture = (file, text, options) => checkArchitecture({ ...valid, [file]: text }, options);
@@ -102,6 +140,12 @@ const rejects = (file, text, rule = 'module-boundary', options) => {
   const issues = fixture(file, text, options);
   assert.ok(issues.some(issue => issue.file === file && issue.rule === rule), JSON.stringify(issues));
 };
+test('host styles can only be written by the depth ledger', () => {
+  rejects('src/kit/DepthFixture.tsx', `function apply(element){element.style.transform='translateZ(2px)'}`, 'host-style-ledger');
+  rejects('src/react/depth/Projected.tsx', `function apply(element){element.style.setProperty('box-shadow','none')}`, 'host-style-ledger');
+  rejects('src/react/depth/Volumetric.tsx', `function apply(element){element.style.cssText='color:red'}`, 'host-style-ledger');
+  assert.deepEqual(fixture('src/react/depth/Volumetric.tsx', `function add(doc){ const plane=doc.createElement('div'); plane.style.transform='translateZ(2px)'; }`), []);
+});
 
 test('allowed canonical declarations, barrels, imports and browser adapter', () => {
   assert.deepEqual(checkArchitecture({ ...valid,
@@ -183,8 +227,14 @@ for (const text of [
   assert.ok(fixture('src/core/scene.ts', text).some(issue => issue.rule === 'canonical-presence'));
 });
 test('empty function or signature cannot satisfy evaluator presence', () => {
-  const issues = fixture('src/core/spatial.ts', `${spatialDoc}\nexport function evaluateScene(): void; export function transformToCss() {}`);
-  assert.equal(issues.filter(issue => issue.rule === 'canonical-presence').length, 7);
+  const incomplete = valid['src/core/spatial.ts']
+    .replace('export function evaluateScene(input: unknown) { return SceneSchema.parse(input); }', 'export function evaluateScene(): void;')
+    .replace("export const transformToCss = () => 'none';", 'export function transformToCss() {}');
+  const missing = fixture('src/core/spatial.ts', incomplete).filter(issue => issue.rule === 'canonical-presence');
+  assert.deepEqual(missing.map(issue => issue.message), [
+    'Expected exactly one exported runtime implementation of evaluateScene in src/core/spatial.ts.',
+    'Expected exactly one exported runtime implementation of transformToCss in src/core/spatial.ts.',
+  ]);
 });
 test('absent owner fails even if declarations are elsewhere', () => {
   const { 'src/core/scene.ts': scene, ...rest } = valid;
@@ -360,3 +410,80 @@ test('kit may compose core and react', () => {
 test('kit cannot reach project services', () => rejects('src/kit/Frame.tsx', "import {readText} from '../project/services'; export function Frame(){readText('a','b'); return null;}"));
 test('kit cannot reach export services', () => rejects('src/kit/Frame.tsx', "import {openCapture} from '../export/services'; export function Frame(){openCapture({}); return null;}"));
 test('kit cannot read node globals', () => rejects('src/kit/Frame.tsx', "export function Frame(){return process.cwd();}", 'runtime-global'));
+
+// v2.1 Phase 00.5 layers: editor, three, bridgeServices and sourceAdapter, each with precise rule ids.
+test('v2.1 positive fixtures: editor composes preview, three composes React Three Fiber', () => {
+  const issues = checkArchitecture({ ...valid,
+    'src/editor/Inspector.tsx': `import {useState} from 'react'; import {Scene} from '../react'; import {ScenePreview} from '../preview/ScenePreview'; import {applyEasing} from '../core/easing'; export function Inspector(){useState(0); applyEasing(); return <Scene/>;}`,
+    'src/three/ThreeSurface.tsx': `import {Canvas} from '@react-three/fiber'; import {Mesh} from 'three'; import {useChannel} from '../react'; export function ThreeSurface(){useChannel('x'); return <Canvas/>;}`,
+    'src/preview/EditMode.tsx': `export const loadEditor = () => import('../editor/Inspector');`,
+    'src/project/services/bridge.ts': `import {createServer} from 'node:http'; import {atomic} from '../services'; const port = process.env.PORT; createServer();`,
+    'src/project/services.ts': `export const atomic=()=>0;`,
+    'src/project/source.ts': `${valid['src/project/source.ts']}\nimport ts from 'typescript'; export const outline=()=>ts.version;`,
+    'src/project/edit.ts': `/** SOURCE OF TRUTH: executeEditCommand.
+ * WHAT: apply edit batches to recipes.
+ * WHY: one write policy for agents and editors.
+ * WHERE: CLI calls this owner.
+ */
+import {outline} from './source'; import {createServer} from './services/bridge'; outline(); export async function executeEditCommand(){return {};}`,
+  });
+  assert.deepEqual(issues, []);
+});
+for (const [file, text, rule] of [
+  ['src/editor/save.ts', `import {executeProjectCommand} from '../project/commands';`, 'editor-project-boundary'],
+  ['src/editor/save.ts', `import {atomicWrite} from '../project/services';`, 'editor-project-boundary'],
+  ['src/editor/render.ts', `import {executeVideoExport} from '../export/commands';`, 'editor-project-boundary'],
+  ['src/editor/render.ts', `const x = import('../export/services');`, 'editor-project-boundary'],
+  ['src/preview/Shell.tsx', `import {Inspector} from '../editor/Inspector';`, 'editor-lazy-boundary'],
+  ['src/preview/Shell.tsx', `const editor = import('../editor/Inspector');`, 'editor-lazy-boundary'],
+  ['src/preview/EditMode.tsx', `import {Inspector} from '../editor/Inspector';`, 'editor-lazy-boundary'],
+  ['src/editor/Gizmo.tsx', `import {useFrame} from '@react-three/fiber';`, 'editor-three-boundary'],
+  ['src/editor/Gizmo.tsx', `import {Mesh} from 'three';`, 'editor-three-boundary'],
+  ['src/editor/Gizmo.tsx', `import {ThreeSurface} from '../three/ThreeSurface';`, 'editor-three-boundary'],
+  ['src/core/ease.ts', `import gsap from 'gsap';`, 'gsap-ban'],
+  ['src/react/ease.ts', `import {CustomEase} from 'gsap/CustomEase';`, 'gsap-ban'],
+  ['src/editor/ease.ts', `import {useGSAP} from '@gsap/react';`, 'gsap-ban'],
+  ['src/kit/ease.tsx', `const g = import('gsap');`, 'gsap-ban'],
+  ['src/three/ease.ts', `import gsap from 'gsap';`, 'gsap-ban'],
+  ['src/core/color.ts', `import React from 'react';`, 'module-boundary'],
+  ['src/core/color.ts', `import {Canvas} from '@react-three/fiber';`, 'module-boundary'],
+  ['src/three/leak.ts', `import {readFile} from 'node:fs';`, 'module-boundary'],
+  ['src/three/leak.ts', `import {Inspector} from '../editor/Inspector';`, 'module-boundary'],
+  ['src/project/source.ts', `import {readFile} from 'node:fs/promises';`, 'module-boundary'],
+  ['src/project/services/bridge.ts', `import {executeProjectCommand} from '../commands';`, 'module-boundary'],
+]) test(`v2.1 layer rejects ${file}: ${text}`, () => rejects(file, text, rule));
+test('v2.1 editor cannot read Node globals', () => rejects('src/editor/env.ts', 'process.env.HOME;', 'runtime-global'));
+
+test('v2.1 Phase 01 owners cannot be reimplemented elsewhere', () => {
+  for (const text of ['export function parseCssColor(){return 0;}', 'export const mixColors=()=>0;', 'export function monotoneTangents(){return [];}', 'export function useAnimatable(){return {};}'])
+    rejects('src/kit/copied.ts', text, 'canonical-owner');
+  rejects('src/preview/copied.ts', "import {z} from 'zod'; export const AnimatableSpecSchema=z.record(z.string(), z.number());", 'canonical-owner');
+});
+test('a record schema needs key and value schemas to count as an implementation', () => {
+  const doc = '/** SOURCE OF TRUTH: AnimatableSpecSchema.\n * WHAT: typed animatable prop specs.\n * WHY: one contract for keyframeable props.\n * WHERE: consumed by the React hook.\n */\n';
+  assert.ok(fixture('src/core/animatable.ts', doc + "import { z } from 'zod'; export const AnimatableSpecSchema=z.record();").some(issue => issue.rule === 'canonical-presence'));
+});
+
+test('v2.1 Phase 02 owners cannot be reimplemented elsewhere', () => {
+  for (const text of ['export function createCascadeClip(){return {};}', 'export function buildOrbitRig(){return {};}', 'export const resolveConstraints=()=>({});'])
+    rejects('src/react/copied.ts', text, 'canonical-owner');
+});
+
+test('v2.1 Phase 03 owners cannot be reimplemented elsewhere', () => {
+  for (const text of ['export function applyEdits(){return {};}', 'export function formatJsonDocument(){return "";}', 'export async function executeEditCommand(){return {};}'])
+    rejects('src/cli/copied.ts', text, 'canonical-owner');
+  rejects('src/preview/copied.ts', "import {z} from 'zod'; export const EditOpSchema=z.discriminatedUnion('op', [z.strictObject({}), z.strictObject({})]);", 'canonical-owner');
+});
+
+test('v2.1 Phase 06 projection owners cannot be reimplemented elsewhere', () => {
+  for (const text of ['export function projectWorld(){return null;}', 'export const screenRay=()=>({});', 'export function intersectPlane(){return null;}', 'export function surfaceQuad(){return [];}'])
+    rejects('src/editor/viewport/copied.ts', text, 'canonical-owner');
+});
+
+test('v2.1 Phase 04 owners cannot be reimplemented elsewhere', () => {
+  for (const text of ['export function createEditorStore(){return {};}', 'export function intentToOps(){return [];}', 'export const EDITOR_COMMANDS=Object.freeze([]);', 'export function useSceneInspector(){return undefined;}'])
+    rejects('src/preview/copied.ts', text, 'canonical-owner');
+});
+test('frozen catalogs must be frozen literals', () => {
+  assert.ok(fixture('src/editor/commands.ts', '/** SOURCE OF TRUTH: EDITOR_COMMANDS.\n * WHAT: editor fixture behavior.\n * WHY: one owner for editor policy.\n * WHERE: consumed by editor panels.\n */\nexport const EDITOR_COMMANDS=[];').some(issue => issue.rule === 'canonical-presence'));
+});

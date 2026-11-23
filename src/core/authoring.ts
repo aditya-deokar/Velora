@@ -3,12 +3,16 @@ import { VELORA_BRAND, VELORA_PACKAGE } from "./branding";
 import { CLI_COMMANDS, CommandIndexSchema } from "./cli-schema";
 import { SceneRecipeSchema, SCENE_RECIPE_DIRECTORY } from "./recipes";
 import { CameraSchema, FocusSchema, SceneSchema, TransformSchema, SCENE_BACKGROUND } from "./scene";
-import { MotionSchema, MotionTrackSchema, MotionKeyframeSchema, SURFACE_VISUAL_PROPERTIES, loopSeam, motionDuration } from "./motion";
+import { MotionSchema, MotionTrackSchema, MotionKeyframeSchema, SURFACE_VISUAL_PROPERTIES, loopSeam, motionDuration, motionTracks, pathSpeeds } from "./motion";
 import { EASING_NAMES, easingOvershoots } from "./easing";
-import { perspectiveForFocalLength } from "./lens";
+import { LENS_PRESETS, lensPreset, perspectiveForFocalLength, type LensPresetId } from "./lens";
 import { CascadeSchema } from "./choreography";
-import { SUPPORTED_EXPORT_FPS, CaptureManifestSchema, QUALITY_PRESETS, CODEC_CONTAINERS, ALPHA_CODECS } from "./export";
+import { SUPPORTED_EXPORT_FPS, CaptureManifestSchema, QUALITY_PRESETS, CODEC_CONTAINERS, ALPHA_CODECS, resolveFinishing } from "./export";
+import { DEFAULT_STAGE, StageSchema, STAGE_PRESETS, STAGE_DPRS, sceneStageBudget } from "./stage";
+import { DEFAULT_DEPTH_LIGHT, DEPTH_TIERS, DepthMapSchema } from "./depth";
 import { DELIVERY_PRESETS } from "./delivery";
+import { RIG_KINDS, RIG_MASSES, RigGeometrySchema, rigSmoothness, rigClearance, RigMassSchema } from "./rigs";
+import { LookSchema } from "./looks";
 import { PROMPT_LIBRARY } from "./prompts";
 
 /** SOURCE OF TRUTH: getAuthoringGuide, reviewAuthoring, AuthoringGuideSchema.
@@ -22,7 +26,7 @@ const ConceptSchema = z.strictObject({
   choices:z.string(), pitfalls:z.string(), verify:z.string(),
 });
 export const AuthoringGuideSchema = z.strictObject({
-  version:z.literal(3), purpose:z.string(), creativeFreedom:z.string(), stageBackdrop:z.literal(SCENE_BACKGROUND),
+  version:z.literal(4), purpose:z.string(), creativeFreedom:z.string(), stageBackdrop:z.literal(SCENE_BACKGROUND),
   concepts:z.array(ConceptSchema), workflow:z.array(z.string()),
   capabilities:z.record(z.string(),z.unknown()),
   cliVersion:z.string().min(1).optional(),
@@ -104,7 +108,7 @@ const concepts: z.infer<typeof ConceptSchema>[] = [
  verify:"Name the size, angle and move of every shot in the brief's shot list, then check the contact sheet (velora frames --contact-sheet) shows that variety."},
  {id:"lens",title:"Lens language",
  meaning:"Focal length sets how space feels. Wide lenses (24-35 mm) exaggerate depth and make near edges loom; normal (50 mm) reads natural; long lenses (85-135 mm) compress layers together and isolate a subject with shallow focus.",
- mechanism:"perspectiveForFocalLength(mm, frameHeight) converts millimetres to CSS perspective and lensFor returns the matching focus focalLength. capabilities.lenses lists the values for common lenses. Animating perspective against camera z keeps the subject's size while the background stretches or compresses: a dolly zoom (the dolly-zoom template).",
+ mechanism:"lensPreset uses full-frame millimetres for perspective and stage pixels per millimetre for the focus focalLength. Use edit lens with framing hold for compression or position hold to compensate with camera.zoom. Zoom scales the image around its center at a fixed viewpoint. edit rack synchronizes additive zoom breathing with the focus pull.",
  choices:"Use a wide lens for monumental surveys and dramatic near edges, a normal lens for product truth, a long lens for macro details, rack focus and layered parallax that should feel calm. Keep one lens per shot unless the lens change is the effect.",
  pitfalls:"Very wide perspective with large z travel crosses the projection plane. Long lenses flatten depth so parallax nearly disappears; add depth separation if layers should still relate.",
  verify:"Compare a still at 35 mm and at 85 mm for the same framing and confirm the chosen feel serves the brief."},
@@ -124,13 +128,61 @@ const concepts: z.infer<typeof ConceptSchema>[] = [
  meaning:"A scene is finished when its real rendered behavior communicates the intended reveal, not merely when its configuration validates.",
  mechanism:"Use ScenePreview from "+VELORA_PACKAGE.preview+" for the shared product interface. It owns paused playback, seek/replay, source validation/recovery, viewport fitting and the capture bridge, using the canonical Scene and motion clock. Supply stable Surface children and a definition containing scene metadata, optional motion, width and height. Pass hot={import.meta.hot} in Vite for update/error/reconnection feedback. For a deliberately custom low-level integration, Scene, motionDuration, SceneErrorBoundary and useSceneCapture remain available; do not register a second capture bridge inside ScenePreview. velora export samples the same live scene at exact frame times using FFmpeg; FPS controls cadence, not speed.",
  choices:"Preview first and revise code through the existing development server. Export only when requested, choosing the requested output cadence. The installed CLI does not need an AI login and does not infer a page's private data. Existing coding agents inspect the host project and use their own credentials/subscription tooling.",
- pitfalls:"Do not assume an agent will discover guidance without being directed to it: start with velora guide. reviewAuthoring validates the supplied scene/motion metadata and returns advisory checks, not a visual quality score or proof of actual DOM registration. No visual builder or autonomous AI service is provided; templates only scaffold editable source.",
+ pitfalls:"Start with velora guide. reviewAuthoring checks supplied scene and motion metadata. Confirm actual registration, framing and readability in the browser. Templates scaffold editable source and the Studio edits that source through a local bridge.",
  verify:"Run host types/build, inspect Scene diagnostics and actual registered IDs, scrub several frames, test interaction/reduced motion/mobile and measure playback. Register capture before exporting; use a fresh relative MP4 output path. Compare exported frames with preview and confirm duration/cadence. Record unresolved limits honestly."},
+ {id:"app-stage",title:"App stage and output frame",
+ meaning:"The app lays out at a concrete CSS viewport. Export dimensions choose the video pixels independently.",
+ mechanism:"AppStage creates a named size container. RouteFrame without width or height inherits that box, so viewport media queries see its logical dimensions.",
+ choices:"Start new app shots at laptop-14 (1512 × 982 @2×). Choose laptop-13 for compact layouts or use the Studio to save the actual viewport.",
+ pitfalls:"Use RouteFrame for window media queries and AppStage container queries for in-tree UI. A raster close-up can exceed the available DPR even when the layout is correct.",
+ verify:"Run velora inspect --scene ID --json for the stage budget and test a close-up with velora shot."},
+ {id:"depth-layers",title:"UI depth and light",
+ meaning:"Lift classified UI regions into tiers and let the camera drive parallax, contact shadows and sheen.",
+ mechanism:"definition.depth configures each Surface. In-tree layers use CSS 3D. RouteFrame projects the equivalent camera rays into the iframe.",
+ choices:"Use subtle depth for readable UI. Mark unusual elements with data-velora-tier or give a recipe rule a stable anchor.",
+ pitfalls:"Grouping properties flatten 3D. Split app clipping into a leaf or mark the clipping ancestor flat. Volumetric depth defers whole-leaf focus blur.",
+ verify:"Scrub Depth view and use velora depth resolve to freeze the layout. Compare the depth hash in capture manifests."},
+ {id:"editor",title:"Studio edits and agent handoff",
+ meaning:"Studio and coding agents edit the same scene or composition JSON. A gesture is an EditOp batch with a diff and an inverse.",
+ mechanism:"Open a running project with velora edit --scene ID or velora edit --composition FILE. The authenticated loopback bridge writes validated text using SHA-256 compare-and-swap. Scene batches use velora edit apply and composition batches use velora compose edit.",
+ choices:"Use the scene timeline and graph for timing, the viewport for framing, and the composition lanes for cutting. Ask agent copies the selection, playhead and history into a prompt for the coding agent you choose.",
+ pitfalls:"Use --expect-sha for agent writes. When a file changes, re-read it and regenerate the dry run. Review source promotion diffs before confirming a JSX edit.",
+ verify:"Check the JSON diff and scrub both endpoints of the affected range. Undo one gesture to confirm the expected history boundary."},
+ {id:"clips-groups",title:"Clips and groups share timing",
+ meaning:"A clip packages related tracks under one local timing window. A Surface group controls spatial ancestry.",
+ mechanism:"Clip timing maps presentation onto authored keys through trim, speed, play count, easing and stagger. Replace and additive clips compose in the same evaluator.",
+ choices:"Group selected tracks into a clip for a shared entrance. Stagger ordered layers to guide reading, and keep the final poses settled.",
+ pitfalls:"Ungrouping a clip with nonlinear retiming can require baking. Review the sampled deviation before applying a baked result.",
+ verify:"Scrub the first key, overlap, and landing. Confirm the group retains the source layout and intended reading order."},
+ {id:"paths-constraints",title:"Paths and spatial constraints",
+ meaning:"Position paths describe movement through space. Constraints solve camera aim and focus against the evaluated scene.",
+ mechanism:"Position tracks use cubic paths and arc-length tables. lookAt aims the camera at its target and focusFollow derives the focal distance from target depth.",
+ choices:"Use a continuous path for travel or an orbit. Constrain aim and focus when the target's depth changes over the shot.",
+ pitfalls:"Choose either a position path or x/y/z tracks for the same target, and keep linked properties acyclic.",
+ verify:"Run velora anchors on the running scene and use the named target in the lock. Review the frame and blur across the shot, including after layout changes."},
+ {id:"animatables",title:"Expose typed component controls",
+ meaning:"Animatables let the timeline control component values such as a chart reveal, label state or color.",
+ mechanism:"useAnimatable registers number, color, boolean and enum props. Channel tracks write those values through the scene clock. TextAnimator exposes reveal and selector channels for scrubbing text.",
+ choices:"Expose an existing component prop where the intended animation has semantic meaning. Use the JSX source outline to review supported promotion or prop-exposure edits.",
+ pitfalls:"Keep component data and providers in the host. A boolean or enum is a discrete state, so choose switch timing explicitly.",
+ verify:"Check the live Animatables group and seek backward and forward to the same frame."},
+ {id:"style-color",title:"Style variables and color",
+ meaning:"Surface style tracks animate CSS custom properties that ordinary components can consume.",
+ mechanism:"Number tracks carry units. Color values interpolate in OKLab with premultiplied alpha.",
+ choices:"Use a custom property to animate an accent, gradient component or local effect while preserving the existing host CSS.",
+ pitfalls:"Use explicit supported color values. Preserve legibility throughout the move and keep direct layout work out of the scene clock.",
+ verify:"Inspect the intermediate color as well as both endpoints in the real component."},
+ {id:"three",title:"Three.js inside the scene clock",
+ meaning:"The optional Three.js entry renders a model as a Surface alongside live DOM UI.",
+ mechanism:"React 19 hosts with React Three Fiber 9 and Three.js can import ThreeSurface, Animated and useGLTFClips from the /three entry. Scene time drives the renderer and glTF clip sampling. Registered objects supply channels, picks, gizmos and anchors.",
+ choices:"Use an isolated canvas camera or the shared camera when DOM and 3D need the same projection. Keep the canvas asset loading path observable.",
+ pitfalls:"Keep model time absolute. Avoid independent tickers, accumulated delta or editing Three.js internals from the Studio.",
+ verify:"Seek to the same time after a backward scrub and compare the resulting frame with capture."},
 ];
 export function getAuthoringGuide(input?: { cliVersion?: string }): AuthoringGuide {
   const {items: _items,...cascadeDefaults}=CascadeSchema.parse({items:[{id:"subject"}]});
   return AuthoringGuideSchema.parse({
-    version:3,
+    version:4,
     cliVersion: input?.cliVersion ?? "development",
     commands: [...CLI_COMMANDS],
     stageBackdrop:SCENE_BACKGROUND,
@@ -144,10 +196,16 @@ export function getAuthoringGuide(input?: { cliVersion?: string }): AuthoringGui
       "Approve the opening still visually before adding motion: strong near/far perspective, intentional close crop, identifiable detail and visible progressive focus in black void. Reject a small flat overview when the request calls for a dramatic shot. Reference images establish composition cues; motion direction comes from the brief, not a still image.",
       "Compose real components as stable Surface children of ScenePreview from "+VELORA_PACKAGE.preview+", using canonical motion helpers and matching scene node metadata. Keep the normal app available. Use an authored scene route without velora-preview=1: that query activates the separate ProjectPreview bootstrap around the whole app. Do not nest the two previews. For automatic discovery instead use src/velora/scenes/<id>.scene.json plus matching <id>.tsx: the library owns ScenePreview around the selected component, so that component returns Surface content, not another preview shell.",
       "Use reviewAuthoring on the supplied metadata, host checks and the live scene diagnostics. Inspect actual browser frames and fix fidelity, framing, clipping and performance issues.",
+      "For a Studio handoff, capture the selected tracks or cut, playhead and edit intent with Ask agent. Dry-run the matching scene or composition operation and pin the reviewed SHA before writing.",
       "Use the scene library at ?velora-preview=1. Adding a valid recipe/component pair automatically adds a row; ?velora-preview=1&velora-scene=<id> deep-links it. The installed entry must include the DEV-only sceneModules glob; rerun velora init to upgrade older wrappers. The catalog is code-driven, not a separate database. Native list scrolling keeps its camera/focus fixed. After creating or revising each scene, run velora snapshot --scene <id> --url <running-app-url> to save its real PNG thumbnail in the recipe; use --time <milliseconds> to choose a frame (default midpoint). Snapshots are local cached images of rendered host data, not live tile animations; regenerate them after changing the scene.",
       "Show the shared paused product preview. Revise source code from user feedback; do not recreate playback or diagnostic controls per scene. ScenePreview registers capture for static and animated scenes and exposes the canonical CLI export command when valid. Export only when requested.",
     ],
     capabilities:{
+      rigs: { kinds: RIG_KINDS, stepHz: 240, bakeHz: 60, masses: RIG_MASSES, params: {
+        "drone-flyover": ["waypoints", "altitude", "durationMs", "speed", "lens", "mass", "bank", "through", "lookAhead", "margin"],
+        "telephoto-parallax-orbit": ["target", "lens", "arcDeg", "axis", "durationMs", "mass", "fill", "depthBoost"],
+        "whip-pan-macro": ["from", "to", "lens", "durationMs", "mass", "settle", "fill", "blur"],
+      } },
       brand:VELORA_BRAND,
       package:{name:VELORA_PACKAGE.name,preview:VELORA_PACKAGE.preview},
       example:{
@@ -170,18 +228,31 @@ export default function PageSurvey() {
       sceneVersion:SceneSchema.parse({nodes:[]}).version,
       camera:CameraSchema.parse({}),focus:FocusSchema.parse({}),surface:TransformSchema.parse({}),
       motionDefaults:MotionSchema.parse({durationMs:0,tracks:[]}),
-      tracks:MotionTrackSchema.options.map(option=>({target:option.shape.target.shape.kind.value,properties:"options" in option.shape.property?[...option.shape.property.options]:[option.shape.property.value]})),
+      tracks:MotionTrackSchema.options.map(option=>({target:option.shape.target.shape.kind.value as string,properties:"options" in option.shape.property?[...option.shape.property.options]:"value" in option.shape.property?[option.shape.property.value as string]:["--<name>"]})).reduce<{target:string,properties:string[]}[]>((all,entry)=>{const prior=all.find(other=>other.target===entry.target);if(prior){for(const property of entry.properties)if(!prior.properties.includes(property))prior.properties.push(property);}else all.push({target:entry.target,properties:[...entry.properties]});return all;},[]),
       cascadeDefaults,
       easingDefault:MotionKeyframeSchema.parse({timeMs:0,value:0}).easing,
-      easings:{names:[...EASING_NAMES],cubicBezier:"{cubicBezier:[x1,y1,x2,y2]} with x in 0..1",spring:"{spring:{stiffness?:170,damping?:26,mass?:1}}",steps:"{steps:n,jump?:'end'|'start'}"},
+      easings:{names:[...EASING_NAMES],auto:"keyframe easing \"auto\": per-keyframe auto-bezier (monotone cubic Hermite through neighbors, continuous velocity, no overshoot); numeric keyframes only",cubicBezier:"{cubicBezier:[x1,y1,x2,y2]} with x in 0..1",spring:"{spring:{stiffness?:170,damping?:26,mass?:1}}",steps:"{steps:n,jump?:'end'|'start'}"},
       trackOptions:{interpolation:["segments","smooth"],ease:"smooth tracks only: one easing across the whole track",noise:"{amplitude,frequency?:0.5,octaves?:2,seed?:0} on position, rotation and channel tracks"},
       surfaceVisuals:[...SURFACE_VISUAL_PROPERTIES],
+      grade:"brightness/contrast/saturate 0..4, hueRotate -360..360 deg, grayscale 0..1: content leaf only, composed after focus and artistic blur",
+      transformAdditions:{scaleX:"(0,100] multiplies scale",scaleY:"(0,100]",scaleZ:"(0,100]",skewX:"-89..89 deg",skewY:"-89..89 deg",originX:"-100..200 % pivot (default 50)",originY:"-100..200 % pivot (default 50)",order:"translate3d rotateX rotateY rotateZ scale scale3d skew"},
+      styleTracks:"{target:{kind:'style',id:<surface id>},property:'--name',keyframes:[{timeMs,value:number}],unit?:'px'|'%'|'deg'|'em'|'rem'|'vw'|'vh'|''} or color keyframes {timeMs,value:'#rrggbb'|rgb()|hsl()|oklab()|oklch(),easing?}; the Surface's outer element gets the custom property and descendants read var(--name). Colors blend in OKLab with premultiplied alpha and print rgb(R G B / A); named colors are rejected.",
+      animatables:"useAnimatable(id, {prop:{type:'number',default,min?,max?,step?,unit?,label?}|{type:'color',default}|{type:'boolean',default}|{type:'enum',options,default}}, {channels?}) returns typed values at scene time from channel tracks <id>.<prop> (numbers clamp, booleans switch at 0.5, enums hold the rounded index; color props take color keyframes). Kit Title, Counter, Typewriter and Callout accept id: an <id>.reveal track (0..1) scrubs their reveal span.",
+      clips:"motion.clips[] {id,label?,startMs,speed?,inMs?,durationMs?,loop?:false|count,ease?,mode?:'replace'|'add',tracks?,clips?(nest <=4),members?,stagger?:{eachMs,order?:'forward'|'reverse'|'center-out'|'edges-in'|{random:seed},ease?},source?}: local = inMs + ease((t - startMs) * speed / span) * span; holds local 0 before and the end after; one replace owner per property; add clips sum offsets (onto the static base without an owner). Stagger tracks target {kind:'surface',id:'$member'}; member offset = ease(position) * eachMs * (n - 1). createCascadeClip builds one.",
+      positionPaths:"{target:{kind:'surface',id}|{kind:'camera'},property:'position',keyframes:[{timeMs,value:[x,y,z],easing?,inTangent?,outTangent?}],rove?,orient?:{axis:'yaw'|'yaw-pitch',offsetDeg?}}: cubic Bezier segments (auto Catmull-Rom handles), easing maps time to distance along each segment (64-sample arc-length tables); rove gives constant speed; excludes x/y/z tracks on the same target.",
+      links:"motion.links[] {to:TrackRef,from:TrackRef|{channel},scale?:1,offset?:0,delayMs?:0,mode?:'replace'|'add'}: to(t) = from(t - delayMs) * scale + offset; acyclic, chains <= 8, at most 256; no expressions.",
+      constraints:"scene.constraints[] (<=16): {kind:'lookAt',subject?:'camera',target:{surface,anchor?:[u,v]}|{point:[x,y,z]}|{surface,anchor:string}|{surface,selector},weight?:0..1|channel TrackRef} derives camera rotateX/rotateY so the target is at center or compose:[x%,y%]; {kind:'frame',target,fill,axis?} solves camera distance before aim and focus; {kind:'focusFollow',target,offset?,weight?} sets focus.distance to the target's camera depth. Run velora anchors --scene ID --time MS --json for live geometry. Named anchors survive reflow and scroll; use a unique CSS selector when markup is unavailable. Element targets support at:[u,v] and plane:face|base. Resolved by evaluateScene with layout; buildOrbitRig({radius,fromDeg,toDeg,height?,durationMs,ease?,target?}) returns {clip, constraint}.",
+      recipeEditor:"Optional recipe editor block {labels?,colors?,locked?,markers?:[{atMs,label}]} is editor-owned metadata; the renderer ignores it.",
       templates:{list:"velora templates ls --json",show:"velora templates show --id <id> --json",scaffold:"velora new scene --template <id> --id <slug> [--route /path | --component path#Export] [--set key=value] [--aspect 16:9|21:9|1:1|4:5|9:16]",reel:"velora new video --blueprint <id> --id <slug> [--route /path | --component path#Export]",kit:"@adityadeokar/velora/kit exports RouteFrame, ScrollFrame and SlotPlaceholder for bindings."},
       lenses:[24,35,50,85,135].map(mm=>({mm,perspectiveAt1080:perspectiveForFocalLength(mm,1080),perspectiveAt980:perspectiveForFocalLength(mm,980)})),
+      lensPresets:Object.entries(LENS_PRESETS).map(([id,preset])=>({id,...preset,...lensPreset(id as LensPresetId,{frameHeight:1080})})),
       exportFps:SUPPORTED_EXPORT_FPS,
       finishing:{quality:QUALITY_PRESETS,codecs:CODEC_CONTAINERS,alpha:ALPHA_CODECS,motionBlur:"--motion-blur DEG (180 cinematic, 90 crisp UI text, 270-360 dreamy) [--motion-samples 2-64]; averaged in linear light; static frames stay byte-identical",colorimetry:"BT.709 limited range, tagged",posters:"--poster MS writes <out>.poster.png",preview:"velora shot --quality master --motion-blur 180 previews finishing on one frame"},
       prompts:{list:"velora prompts ls --json",show:"velora prompts show --id <id> --json",ids:PROMPT_LIBRARY.map(prompt=>prompt.id)},
       editorial:{beats:"velora audio beats --composition FILE [--write-markers] --json",snap:"velora compose snap --composition FILE --to beats|downbeats [--write] --json",review:"velora review --composition FILE [--platform ID] --json",transitions:"velora transitions ls --json"},
+      editor:{scene:"velora edit --scene ID",composition:"velora edit --composition FILE",sceneOps:"velora edit apply --scene ID --ops FILE --json",compositionOps:"velora compose edit --composition FILE --ops FILE --json",source:"velora edit source outline --scene ID --json",presets:"velora edit preset ls --json"},
+      stages:{presets:STAGE_PRESETS,dprs:STAGE_DPRS,default:DEFAULT_STAGE,custom:"--stage WxH@DPR",edit:"velora edit stage --scene ID --preset laptop-13"},
+      depth:{tiers:DEPTH_TIERS,light:DEFAULT_DEPTH_LIGHT,edit:"velora edit depth --scene ID --surface subject --mode auto",resolve:"velora depth resolve --scene ID [--write]",elevation:[0,4]},
       brandAndLooks:{brand:"velora brand init [--from-css FILE] --json; velora brand check --json",finishPreview:"velora shot --scene ID --time MS --finish --out PNG --json"},
       presets:"velora render --composition FILE --out VIDEO --preset <id>; the delivery list below names each preset.",
       deliver:"velora deliver --composition FILE --targets youtube,x,linkedin,reels,tiktok,shorts,website-hero,readme-gif,og-image,product-hunt [--out DIR] --json: every platform file within its size budget, website-hero embed snippets, stills and deliverables.json.",
@@ -211,28 +282,63 @@ export default function PageSurvey() {
     },
   });
 }
-export const AuthoringReviewInputSchema=z.strictObject({scene:SceneSchema,motion:MotionSchema});
+export const AuthoringReviewInputSchema=z.strictObject({scene:SceneSchema,motion:MotionSchema,depth:DepthMapSchema.optional(),
+ look: LookSchema.optional(), rigGeometry: RigGeometrySchema.optional(), shutterAccumulation: z.boolean().optional(),
+ stage:StageSchema.optional(), width:z.number().positive().optional(), height:z.number().positive().optional(),
+ textReadings:z.array(z.strictObject({id:z.string(),minMs:z.number().finite().positive()})).optional()});
 const ReviewIssueSchema=z.strictObject({code:z.string(),path:z.string(),message:z.string()});
 export const AuthoringReviewSchema=z.strictObject({valid:z.boolean(),issues:z.array(ReviewIssueSchema),advice:z.array(ReviewIssueSchema),requiresVisualReview:z.literal(true)});
 export type AuthoringReview=z.infer<typeof AuthoringReviewSchema>;
 export function reviewAuthoring(input:unknown):AuthoringReview {
  const parsed=AuthoringReviewInputSchema.safeParse(input);
  if(!parsed.success)return {valid:false,issues:parsed.error.issues.map(i=>({code:"invalid-input",path:i.path.join('.'),message:i.message})),advice:[],requiresVisualReview:true};
- const {scene,motion}=parsed.data;
+ const {scene,motion,textReadings}=parsed.data;
  const issues:AuthoringReview['issues']=[],advice:AuthoringReview['advice']=[];
  const ids=new Set(scene.nodes.map(n=>n.id));
- for(const [i,track] of motion.tracks.entries()) {
-  if(track.target.kind==='surface'&&!ids.has(track.target.id))issues.push({code:'unknown-surface',path:`motion.tracks.${i}.target.id`,message:`No supplied surface ${track.target.id}. Compare with actual React registration too.`});
-  if(track.property.startsWith('rotate')&&track.keyframes.some((f,k)=>k>0&&Math.abs(f.value-track.keyframes[k-1].value)>90))advice.push({code:'rotation-sweep',path:`motion.tracks.${i}`,message:'A rotation segment over 90 degrees may show the edge/back or hide the UI. Inspect the path; retain it only when intentional.'});
-  if(track.target.kind==='camera'&&(track.interpolation==='smooth'?track.ease!==undefined&&easingOvershoots(track.ease):track.keyframes.some((f,k)=>k<track.keyframes.length-1&&easingOvershoots(f.easing))))advice.push({code:'camera-overshoot',path:`motion.tracks.${i}`,message:'An overshooting easing (back, elastic, under-damped spring) on a camera track reads as a jolt. Keep it only for an intentional snap; prefer cinematic or an out curve.'});
-  if(track.interpolation==='smooth'&&track.keyframes.slice(0,-1).some(f=>f.easing!=='cinematic'))advice.push({code:'smooth-easing-ignored',path:`motion.tracks.${i}`,message:'Smooth tracks ignore per-keyframe easing; set the track-level ease instead.'});
-  if(track.interpolation!=='smooth'&&track.keyframes.some((f,k)=>k<track.keyframes.length-1&&f.easing==='linear'&&f.value!==track.keyframes[k+1].value))advice.push({code:'linear-motion',path:`motion.tracks.${i}`,message:'Linear movement has no gentle start/finish. Confirm that this override serves the intended shot.'});
+ const expanded=motionTracks(motion);
+ for(const {track,owner} of expanded) {
+  const path=`motion.${owner}`;
+  if((track.target.kind==='surface'||track.target.kind==='style')&&!ids.has(track.target.id))issues.push({code:'unknown-surface',path:`${path}.target.id`,message:`No supplied surface ${track.target.id}. Compare with actual React registration too.`});
+  if(track.property.startsWith('rotate')&&track.keyframes.some((f,k)=>k>0&&Math.abs(Number(f.value)-Number(track.keyframes[k-1].value))>90))advice.push({code:'rotation-sweep',path,message:'A rotation segment over 90 degrees may show the edge/back or hide the UI. Inspect the path; retain it only when intentional.'});
+  if(track.target.kind==='camera'&&(track.interpolation==='smooth'?track.ease!==undefined&&easingOvershoots(track.ease):track.keyframes.some((f,k)=>k<track.keyframes.length-1&&easingOvershoots(f.easing as Parameters<typeof easingOvershoots>[0]))))advice.push({code:'camera-overshoot',path,message:'An overshooting easing (back, elastic, under-damped spring) on a camera track reads as a jolt. Keep it only for an intentional snap; prefer cinematic or an out curve.'});
+  if(track.interpolation==='smooth'&&track.keyframes.slice(0,-1).some(f=>f.easing!=='cinematic'))advice.push({code:'smooth-easing-ignored',path,message:'Smooth tracks ignore per-keyframe easing; set the track-level ease instead.'});
+  if(track.interpolation!=='smooth'&&!("space" in track && track.space === "stage-eye")&&track.keyframes.some((f,k)=>k<track.keyframes.length-1&&f.easing==='linear'&&f.value!==track.keyframes[k+1].value))advice.push({code:'linear-motion',path,message:'Linear movement has no gentle start/finish. Confirm that this override serves the intended shot.'});
  }
- const changes=(track:typeof motion.tracks[number])=>track.keyframes.some(f=>f.value!==track.keyframes[0].value);
- const cameraTravels=motion.tracks.some(t=>t.target.kind==='camera'&&['x','y','z'].includes(t.property)&&changes(t));
+ for(const [i,link] of (motion.links??[]).entries()) for(const ref of [link.to,link.from]) if('target' in ref&&(ref.target.kind==='surface'||ref.target.kind==='style')&&!ids.has(ref.target.id))issues.push({code:'unknown-surface',path:`motion.links.${i}`,message:`No supplied surface ${ref.target.id}.`});
+ for(const {owner,speeds,rove} of pathSpeeds(motion)){const moving=speeds.filter(v=>v>1e-9);if(!rove&&moving.length>1&&Math.max(...moving)/Math.min(...moving)>4)advice.push({code:'path-speed-spike',path:`motion.${owner}`,message:'Path segments change speed more than 4x between keyframes, which reads as a lurch. Even out keyframe times, ease the segments or set rove: true for constant speed.'});}
+ const changes=(track:typeof motion.tracks[number])=>!!track.noise?.amplitude||track.keyframes.some(f=>f.value!==track.keyframes[0].value);
+ const tracks=expanded.map(({track})=>track);
+ for (const clip of motion.clips ?? []) {
+  const source = clip.source && "rig" in clip.source ? clip.source : undefined;
+  const bank = source?.params.bank;
+  const bankLimit = bank === "dramatic" ? 12 : bank === "standard" ? 9 : 6;
+  const bankTrack = clip.clips?.find(child => child.mode === "add" && child.label === "Horizon bank")?.tracks?.find(track => track.property === "rotateZ");
+  if (bankTrack?.keyframes.some(frame => typeof frame.value === "number" && Math.abs(frame.value) > bankLimit + 0.001))
+    advice.push({ code: "bank-excess", path: `motion.clips.${clip.id}`, message: `Horizon bank exceeds ${bankLimit}°.` });
+  if (!source) continue;
+  const parsedMass = RigMassSchema.safeParse(source.params.mass);
+  const definition = { ...parsed.data, motion: { durationMs: motion.durationMs, speed: motion.speed, tracks: [], clips: [clip] } };
+  const smoothness = rigSmoothness(definition, parsedMass.success ? parsedMass.data : undefined);
+  if (!smoothness.pass)
+    advice.push({ code: "rig-jerk", path: `motion.clips.${clip.id}`, message: `Peak jerk is ${smoothness.peakJerk} px/s³ and the largest velocity jump is ${smoothness.maxVelocityDiscontinuity} px/s.` });
+  if (parsed.data.rigGeometry?.length) {
+    const clearance = rigClearance(definition, parsed.data.rigGeometry, { margin: typeof source.params.margin === "number" ? source.params.margin : 40 });
+    if (!clearance.pass) advice.push({ code: "rig-clearance", path: `motion.clips.${clip.id}`, message: `Minimum clearance is ${clearance.minimum.toFixed(1)} px.` });
+  }
+ }
+ if (parsed.data.look?.velocityBlur && parsed.data.shutterAccumulation)
+  advice.push({ code: "double-motion-blur", path: "look.velocityBlur", message: "Shutter accumulation disables the directional velocity filter for this render." });
+ const cameraTravels=tracks.some(t=>t.target.kind==='camera'&&['x','y','z','position'].includes(t.property)&&changes(t));
  const surfacesMove=motion.tracks.some(t=>t.target.kind==='surface'&&['x','y','z','rotateX','rotateY','rotateZ','scale'].includes(t.property)&&changes(t));
  if(surfacesMove&&!cameraTravels)advice.push({code:'camera-travel-missing',path:'motion.tracks',message:'Surfaces move but the camera has no translational travel. Default dramatic shots establish a close oblique camera and a surface-aligned rail. Keep this stationary-camera variation only when intentional; element movement alone does not prove the requested shot.'});
- if(!motion.tracks.some(changes))advice.push({code:'static-scene',path:'motion',message:'There is no changing track. A static composition is valid, but does it meet a request for cinematic motion?'});
+ if(!tracks.some(changes))advice.push({code:'static-scene',path:'motion',message:'There is no changing track. A static composition is valid, but does it meet a request for cinematic motion?'});
+ const duration=motionDuration(motion);
+ if(parsed.data.stage) {
+  const stage = parsed.data.stage, frame = { width: parsed.data.width ?? 1400, height: parsed.data.height ?? 980 };
+  const budget = sceneStageBudget({ stage, frame, scene, motion, effectiveDpr: resolveFinishing({}, frame, stage).supersample });
+  if(budget.undersampled) advice.push({code:"stage-undersampled",path:"definition.stage",message:`Raster content may soften near ${Math.round(budget.timeMs)}ms (${budget.pixelsPerCssPixel.toFixed(2)} output pixels per CSS pixel at ${budget.effectiveDpr}× capture). Use a higher stage DPR, master quality, a longer lens from farther away, or a lower fill.`});
+ }
+ for(const {id,minMs} of textReadings??[])if(duration>0&&duration<minMs)advice.push({code:'reading-time',path:`animatable.${id}`,message:`Text animator ${id} needs about ${minMs} ms of readable time. The full scene is ${Math.round(duration)} ms.`});
  if(motion.loop&&loopSeam(motion)>1e-6)advice.push({code:'loop-seam',path:'motion.loop',message:'This loop does not return to its first frame, so playback will jump at the seam. End every track on its starting value.'});
  if(scene.focus.maxBlur===0)advice.push({code:'sharp-scene',path:'scene.focus.maxBlur',message:'Focus softness is disabled initially. This can be intentional; inspect whether the composition still directs attention.'});
  if(motionDuration(motion)>0&&!CaptureManifestSchema.safeParse({version:1,durationMs:motionDuration(motion),selector:'[data-velora-capture="scene"]'}).success)advice.push({code:'export-duration',path:'motion.durationMs',message:'This timeline exceeds the current MP4 capture duration limit. Shorten it or present it without that export adapter.'});

@@ -1,7 +1,6 @@
 name: CI
-# Fast gates on every OS and supported Node; browser, export and installed-app proof on every OS (1.0).
-# Hardware timing (test:performance), agent-demo replay and any-site mode (they need registry access for
-# disposable hosts) and verify:release remain local maintainer gates.
+# Fast gates on every OS and supported Node; browser, export and installed hosts on every OS.
+# Hardware timing and agent-demo replay remain local maintainer gates.
 on:
   push:
   pull_request:
@@ -42,7 +41,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Playwright 1.58 ships Chromium for Ubuntu 24.04.
+        os: [ubuntu-24.04, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -68,6 +68,19 @@ jobs:
         run: npx playwright install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
       - run: npm run build
       - run: npm run test:browser
+        id: browser-tests
+      - name: Save failed browser test evidence
+        if: failure() && steps.browser-tests.outcome == 'failure'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: browser-failure-${{ matrix.os }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - run: npm run test:launch
       - run: npm run test:export
       - run: npm run test:installed
+      - run: npm run test:portable:app
+      - run: npm run test:portable:pages
+      - run: npm run test:portable:react
+      - run: npm run test:site

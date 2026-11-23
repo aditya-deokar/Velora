@@ -1,7 +1,10 @@
 export * from "./scene";
 export * from "./spatial";
+export * from "./source";
 export * from "./motion";
 export * from "./easing";
+export * from "./color";
+export * from "./animatable";
 export * from "./noise";
 export * from "./lens";
 export * from "./shots";
@@ -41,7 +44,16 @@ export * from "./recipes";
 export * from "./schemas";
 
 export * from "./json";
+export * from "./edit";
+export { planCompositionSnap } from "./composition-edit";
+export * from "./clipboard";
 
 export * from "./branding";
 export * from "./prompts";
 export * from "./deliverables";
+export * from "./behaviors";
+export * from "./presets";
+export * from "./stage";
+export * from "./depth";
+export * from "./targets";
+export * from "./rigs";

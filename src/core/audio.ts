@@ -16,6 +16,7 @@ export const AudioTrackSchema = z.strictObject({
   kind: z.enum(["music", "voice", "sfx"]).optional(),
   startMs: z.number().finite().nonnegative().max(120_000),
   offsetMs: z.number().finite().nonnegative().max(120_000).default(0),
+  durationMs: z.number().finite().positive().max(240_000).optional(),
   gain: z.number().finite().min(0).max(2).default(1),
   fadeInMs: z.number().finite().nonnegative().max(30_000).default(0),
   fadeOutMs: z.number().finite().nonnegative().max(30_000).default(0),
@@ -25,6 +26,7 @@ export const AudioTrackSchema = z.strictObject({
     ctx.addIssue({ code: "custom", path: ["duckUnder", "trackId"], message: "A track cannot duck under itself." });
 });
 export type AudioTrack = z.output<typeof AudioTrackSchema>;
+export type MediaPeaks = { sha256: string; bucketMs: 10; durationMs: number; peaks: string };
 // Sample-accurate placement: the mix starts the track on its frame gridline
 // and reports the snapped time, so manifests state what FFmpeg actually used.
 export function audioPlacement(track: Pick<AudioTrack, "startMs">, fps: number): { startMs: number; frame: number } {

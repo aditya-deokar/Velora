@@ -41,16 +41,27 @@ describe("velora new scene", () => {
     const result = await executeTemplateCommand("new-scene", { template: "hero-push", id: "home-hero", component: "src/components/Dashboard.tsx#Dashboard", set: { intensity: "standard", lens: "35" } }, { root });
     expect(result, JSON.stringify(result)).toMatchObject({ success: true, data: { scene: "home-hero", template: "hero-push", slot: "component", files: ["src/velora/scenes/home-hero.scene.json", "src/velora/scenes/home-hero.tsx"] } });
     const recipe = SceneRecipeSchema.parse(JSON.parse(await readFile(path.join(root, "src/velora/scenes/home-hero.scene.json"), "utf8")));
-    expect(recipe.template).toEqual({ id: "hero-push", version: 1, aspect: "16:9", params: { intensity: "standard", lens: 35, durationMs: 6000 } });
+    expect(recipe.template).toEqual({ id: "hero-push", version: 1, aspect: "16:9", stage: "laptop-14", params: { intensity: "standard", lens: 35, durationMs: 6000 } });
+    expect(recipe.definition.stage).toMatchObject({ width: 1512, height: 982, dpr: 2 });
     expect(recipe.definition.scene.nodes).toEqual([{ id: "subject", transform: { x: 0, y: 0, z: 0, rotateX: 0, rotateY: 0, rotateZ: 0, scale: 1 } }]);
     const binding = await readFile(path.join(root, "src/velora/scenes/home-hero.tsx"), "utf8");
-    expect(binding).toContain(`import { Surface } from '${VELORA_PACKAGE.name}';`);
+    expect(binding).toContain(`import { Surface, AppStage } from '${VELORA_PACKAGE.name}';`);
     expect(binding).toContain("import { Dashboard } from '../../components/Dashboard';");
     expect(binding).toContain('<Surface id="subject"');
     expect(binding).toContain("export default function HomeHero()");
     const catalog = await discoverRecipes(root);
     expect(catalog.issues).toEqual([]);
     expect(catalog.scenes.map(scene => scene.id)).toEqual(["home-hero"]);
+  });
+  it("scaffolds named focus without guessed distances in the motion", async () => {
+    const root = await host();
+    const outcome = await executeTemplateCommand("new-scene", { template: "orbit-reveal", id: "locked-orbit", route: "/pricing", focus: "revenue-card" }, { root });
+    expect(outcome.success, JSON.stringify(outcome)).toBe(true);
+    const { definition } = SceneRecipeSchema.parse(JSON.parse(await readFile(path.join(root, "src/velora/scenes/locked-orbit.scene.json"), "utf8")));
+    const target = { surface: "subject", anchor: "revenue-card" };
+    expect(definition.focusTarget).toEqual(target);
+    expect(definition.scene.constraints).toEqual([{ kind: "lookAt", target }, { kind: "focusFollow", target }]);
+    expect(definition.motion?.tracks.some(track => track.target.kind === "focus" && track.property === "distance")).toBe(false);
   });
   it("slots a default export, a route (with a scroll channel) and a placeholder", async () => {
     const root = await host();
@@ -59,7 +70,8 @@ describe("velora new scene", () => {
     expect((await executeTemplateCommand("new-scene", { template: "scroll-through", id: "landing", route: "/pricing", aspect: "9:16" }, { root })).success).toBe(true);
     const route = await readFile(path.join(root, "src/velora/scenes/landing.tsx"), "utf8");
     expect(route).toContain(`import { RouteFrame } from '${VELORA_PACKAGE.name}/kit';`);
-    expect(route).toContain('<RouteFrame route="/pricing" width={900} height={1600} scrollChannel="subject-scroll" />');
+    expect(route).toContain('<RouteFrame route="/pricing" scrollChannel="subject-scroll" />');
+    expect(route).toContain("<AppStage fit=");
     const placeholder = await executeTemplateCommand("new-scene", { template: "float-loop", id: "hero-loop" }, { root });
     expect(placeholder).toMatchObject({ success: true, data: { slot: "placeholder" }, warnings: [{ code: "WARN_TEMPLATE_PLACEHOLDER" }] });
     expect(await readFile(path.join(root, "src/velora/scenes/hero-loop.tsx"), "utf8")).toContain("<SlotPlaceholder");
@@ -79,6 +91,7 @@ describe("velora new scene", () => {
       [{ template: "hero-push", id: "e", route: "/", set: { lens: "500" } }, "ERR_TEMPLATE_PARAM"],
       [{ template: "website-hero-loop", id: "f", route: "/" }, "ERR_TEMPLATE_NOT_FOUND"],
       [{ template: "hero-push", id: "g", route: "/", aspect: "3:2" }, "ERR_TEMPLATE_ASPECT"],
+      [{ template: "hero-push", id: "native", route: "/", stage: "user-native" }, "invalid-input"],
       [{ template: "hero-push", id: "Bad_Id", route: "/" }, "invalid-input"],
     ];
     for (const [input, code] of cases) {
@@ -154,7 +167,8 @@ describe("Wave 2 scaffolding and brand", () => {
     expect((await executeTemplateCommand("new-scene", { template: "device-showcase", id: "showcase", route: "/", set: { device: "phone" } }, { root })).success).toBe(true);
     const binding = await readFile(path.join(root, "src/velora/scenes/showcase.tsx"), "utf8");
     expect(binding).toContain("<PhoneFrame");
-    expect(binding).toContain('<RouteFrame route="/" width={');
+    expect(binding).toContain('<RouteFrame route="/" />');
+    expect(binding).toContain("<AppStage fit=");
     for (const id of ["backdrop", "shadow", "subject"]) expect(binding).toContain(`<Surface id="${id}"`);
     expect((await executeTemplateCommand("new-scene", { template: "cursor-demo", id: "demo", component: "src/components/Dashboard.tsx#Dashboard" }, { root })).success).toBe(true);
     expect(await readFile(path.join(root, "src/velora/scenes/demo.tsx"), "utf8")).toContain('<Cursor id="cursor" skin="pointer" />');

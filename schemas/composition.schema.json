@@ -86,6 +86,11 @@
             "exclusiveMinimum": 0,
             "maximum": 120000
           },
+          "inMs": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 120000
+          },
           "transition": {
             "type": "object",
             "properties": {
@@ -400,6 +405,11 @@
             "minimum": 0,
             "maximum": 120000
           },
+          "durationMs": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 240000
+          },
           "gain": {
             "default": 1,
             "type": "number",
@@ -662,6 +672,26 @@
           },
           "required": [
             "aspect"
+          ],
+          "additionalProperties": false
+        },
+        "velocityBlur": {
+          "type": "object",
+          "properties": {
+            "shutterMs": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 250
+            },
+            "maxPx": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 128
+            }
+          },
+          "required": [
+            "shutterMs",
+            "maxPx"
           ],
           "additionalProperties": false
         },

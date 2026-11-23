@@ -38,7 +38,35 @@ The default Vite build ships only the product entry. Demo applications, gallerie
 
 ## Current scope
 
-Velora 1.0 joins installation (React hosts, the starter and any-site mode), agent handoff, templates, kit, brand and looks, editorial tools, studio, master rendering and launch delivery. A focus-position editor, visual builder, hosted connection, product accounts and licensing are not implemented. Future adapters must call the existing operation boundaries rather than copy their policy. Previous demo/trial evidence remains in Morphite history; its old routes and application directories are retired.
+Velora 1.0 covers React hosts, the starter, any-site mode, agent handoff, templates, kit, brand and looks, editorial tools, studio, master rendering, and launch delivery. v2.1 adds motion model v3, constraints, typed edit operations, a local edit bridge, and studio tools for editing the timeline, graph, and viewport. Motion design tools compile behavior and camera presets into the same clips and tracks used for preview and capture. The optional `/three` entry uses the same frame clock and registers typed Object3D channels and camera anchors. The editor consumes the registry and invokes its picking and gizmo interface without importing Three.js. The edit bridge and CLI share the project preset file policy. Previous demo and trial evidence remains in Morphite history.
+
+### Motion model v3
+
+`src/core/motion.ts` compiles validated tracks once per source revision and evaluates them by elapsed presentation time. Numeric tracks include monotone auto easing, smooth interpolation and seeded noise. Surface style tracks write explicit CSS variables. Color tracks use premultiplied OKLab. Typed animatables register their channels with the live scene registry.
+
+### Clips, paths and constraints
+
+Clips evaluate in their own timing windows. Trim, speed, easing and stagger map the same clock into those windows, and layers resolve through replace or additive composition. Cubic position paths use arc-length tables. Links resolve in dependency order. Spatial constraints derive aim or focal depth from evaluated points supplied by the scene registry.
+
+### Edit operations and the bridge
+
+`src/core/edit.ts` owns `EditOpSchema` and `applyEdits`. A validated batch produces sparse source JSON, a label and an inverse. Project commands use `formatJsonDocument` to preserve the existing layout, then call scoped filesystem services with the expected revision. The edit bridge accepts a bearer on loopback from the verified dev origin, checks the Host header and bounds requests. Read-only sessions can inspect sources and compute peaks. Bearers stay in the editor tab after the URL fragment is removed.
+
+### Editor
+
+`src/preview/EditMode.tsx` is the dynamic boundary into the scene and composition editors. The preview session owns the cursor and rendering. The editor owns selection, drag drafts, keyboard commands and history. Pointer-up commits one batch. A file change can rebase pending work or open a conflict state. Guide format 4 describes the same commands that **Ask agent** uses to hand off a focused edit.
+
+### Source codemods
+
+JSX outline and edits live in `src/project/source.ts` and `source-edit.ts`. They parse source with TypeScript, resolve the selected JSX node, and show the source and recipe diff before applying a guarded transaction. The journal recovers interrupted writes. Editor links can open source locations in the host's editor. The bridge declines the source-open endpoint.
+
+### Three entry
+
+`src/three/` targets React 19 with R3F 9 and Three.js as optional peers. `ThreeSurface` uses an absolute frame clock and can share the DOM camera. Meshes, lights, materials, camera and glTF animation expose typed channels. Picks and gizmos cross an imperative registry interface. Production React 18 hosts keep the base toolkit without the `/three` entry.
+
+### Composition editing
+
+`src/core/composition-edit.ts` reduces V1, overlay, audio, caption, transition and marker batches. It validates timeline windows through `src/core/timeline.ts`. The composition editor uses `CompositionPlayer` slots and the existing seek, shuttle and boundary transport. Waveform requests resolve declared audio assets in the command layer and cache bounded peaks from FFmpeg. The renderer samples each segment at its source offset. Studio previews an sRGB transition blend, with linear-light compositing in export.
 
 ## Source recipe catalog and library
 
@@ -274,3 +302,23 @@ Local installed-package checks exercise Next App Router on React 19, Pages Route
 ## Terminal onboarding
 
 `src/cli/terminal.ts` owns Amethyst lettering, color capability fallbacks and human setup formatting. It consumes canonical `ProjectResult` and `VELORA_BRAND`; it never discovers hosts or changes installation policy. `cli/main.ts` supplies TTY width/color support and a build-injected version from `package.json`. Interactive init prints a real pending message before the operation, followed by confirmed results; retries say verified rather than added. Unknown React hosts keep their explicit connection step. Pipes and NO_COLOR remain plain, narrow terminals use a compact wordmark, and JSON bypasses all presentation. CLI tests cover these alternate entry points and failed setup/open recovery.
+
+## App stage and output frame
+
+`definition.stage` holds authored CSS dimensions and a DPR. `AppStage` makes a size container inside a Surface. A nested `RouteFrame` can fill that container so its window media queries use the same CSS dimensions in preview and export. In-tree components can use container queries or `useAppStage()`.
+
+Capture uses the recipe or bridge stage DPR as a quality floor. The output frame sets the screenshot viewport and receives the linear-light downscale. A capture cap changes the device scale and is recorded in the stage lineage. When a recipe omits the stage, its existing layout and capture scaling apply.
+
+## Editor and edit bridge
+
+- **One vocabulary.** Every edit is a typed `EditOp` (`src/core/edit.ts`) applied by the pure reducer `applyEdits`, which validates through `SceneRecipeSchema` and `presentPreview` and returns exact inverses. `formatJsonDocument` (`src/core/json.ts`) writes the result while keeping author layout. `velora edit` (`src/project/edit.ts`) applies batches from the CLI; dry runs print diffs, and `--write` is compare-and-swap.
+- **The bridge.** `velora edit` (or `velora studio --site … --edit`) starts a loopback HTTP server (`src/project/services/bridge.ts`) after verifying the dev server. It accepts only the verified origin, a bearer token passed in the URL fragment, matching Host headers, bounded JSON bodies and the scene files the policy allows. A watcher streams file changes to the editor.
+- **The editor layer.** `src/editor/**` is lazy-loaded by `src/preview/EditMode.tsx` (the only allowed preview → editor edge, a dynamic import; the architecture checker enforces it and the editor never imports project, export or Three.js modules). `createEditorStore` holds the base recipe and SHA, pending and transient ops, the derived draft, history and save state with one write in flight. Drafts are ordinary definitions for the one preview session: no second clock, evaluator or validator. `intentToOps` implements the property-change rules once, and `EDITOR_COMMANDS` is the single registry for shortcuts, the palette and menus.
+- **Scene data.** Editor panels read a live Scene through `useSceneInspector` (`src/react/inspector.ts`): plain, frozen snapshots of bindings, measurements, animatables, evaluated nodes and motion state, published through a channel that `ScenePreview` creates in `layout="editor"`.
+- **Capture safety.** Every editor element is chrome-marked (`data-velora-preview-chrome`); the copied export URL strips `velora-edit` and the fragment, so captures never load the editor.
+
+### UI depth
+
+`src/core/depth.ts` owns layer classification and camera-derived lighting. It consumes untransformed layout snapshots and uses the spatial owner's projection and ray intersection. The React depth adapter caches layout and paints each frame from the evaluated camera. Velora-owned side walls, sheen and shadow planes sit alongside the host content. RouteFrame uses a projected transform and prepended paint layers inside its own document.
+
+`createStyleLedger` is the host-style writer. It composes allowlisted properties and restores their original inline values, priorities and attribute bytes. The depth adapters diagnose grouping properties and preserve the host's layout and styling. Capture and Studio use the same ledger, and each cleans it up when the relevant surface or document ends.

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, cp, readFile, readdir, writeFile, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, cp, readFile, readdir, writeFile, rm, mkdir, realpath } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -15,7 +15,8 @@ import { chromium } from 'playwright';
 const root = fileURLToPath(new URL('../', import.meta.url));
 // The installed directory and import specifier follow the name this package publishes.
 const packageName = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).name;
-const scratch = await mkdtemp(path.join(tmpdir(), 'velora-installed-'));
+// Windows runners may supply a DOS short path in TEMP. Use one spelling for Vite's root and allow list.
+const scratch = await mkdtemp(path.join(await realpath(tmpdir()), 'velora-installed-'));
 const host = path.join(scratch, 'host');
 const registryPackage = process.env.VELORA_REGISTRY_PACKAGE;
 const commandEnv = registryPackage ? {...process.env, npm_config_cache:path.join(scratch,'npm-cache'), npm_config_registry:'https://registry.npmjs.org/'} : process.env;
@@ -100,13 +101,22 @@ try {
   assert.notEqual(entryAfter,originalEntry);
   const installedPkg = packageName;
   assert.ok(existsSync(path.join(host,'node_modules',installedPkg,'package.json')),'Setup installs the published package name');
+  if (!registryPackage) {
+    assert.equal(JSON.parse(await readFile(path.join(host,'node_modules/react/package.json'),'utf8')).version,originalPackage.dependencies.react);
+    assert.ok(!existsSync(path.join(host,'node_modules/three')) && !existsSync(path.join(host,'node_modules/@react-three/fiber')));
+  }
   const cli=path.join(host,'node_modules',installedPkg,'dist/cli/velora.js');
   const installedGuide=JSON.parse(await ok(process.execPath,[cli,'guide','--json']));
   const publicGuide=JSON.parse(await ok(process.execPath,['--input-type=module','-e',`import {getAuthoringGuide} from '${installedPkg}'; console.log(JSON.stringify(getAuthoringGuide()))`]));
   const {cliVersion: _installedCliVersion, command: _installedCommand, ...installedCanonical}=installedGuide;
   const {cliVersion: _publicCliVersion, ...publicCanonical}=publicGuide;
   assert.deepEqual(installedCanonical,publicCanonical,'Installed CLI and browser-compatible package share the exact guide');
-  assert.equal(installedGuide.version,3);
+  if(registryPackage)assert.ok(installedGuide.version>=3);
+  else{
+    assert.equal(installedGuide.version,4);
+    assert.ok(installedGuide.concepts.some(c=>c.id==='editor'));
+    assert.ok(installedGuide.capabilities.prompts.ids.includes('edit-with-agent'));
+  }
   assert.ok(installedGuide.concepts.some(c=>c.id==='focus'));
   assert.ok(installedGuide.concepts.some(c=>c.id==='editing-rhythm'),'Guide v3 ships the director concepts');
   assert.ok(installedGuide.capabilities.prompts.ids.includes('launch-film'),'Guide v3 points at the prompt library');
@@ -165,6 +175,9 @@ try {
   const assets=path.join(host,'dist/assets');
   const productionCode=(await Promise.all((await readdir(assets)).filter(name=>name.endsWith('.js')).map(name=>readFile(path.join(assets,name),'utf8')))).join('\n');
   assert.ok(!productionCode.includes('velora-library-scroll')&&!productionCode.includes('data-velora-capture'),'Production host must not ship the unused studio renderer');
+  // v2.1 S5: the Edit-mode editor is a lazy chunk the production host never ships.
+  assert.ok(!/WebGLRenderer|TransformControls|react-three-fiber/.test(productionCode),'Production host must not ship optional Three.js code');
+  assert.ok(!/data-velora-(editor-timeline|composition-editor)|velora-editor-grid/.test(productionCode),'Production host must not ship the studio editor chunk');
   const previewPort=await port();const productionOrigin=`http://127.0.0.1:${previewPort}`;
   const production=logged(spawn(process.execPath,['node_modules/vite/bin/vite.js','preview','--host','127.0.0.1','--port',String(previewPort),'--strictPort'],{cwd:host,stdio:['ignore','pipe','pipe']}));processes.push(production);
   await waitFor(productionOrigin,production);
@@ -175,7 +188,7 @@ try {
 } finally {
   await browser?.close();
   if(unrelated)await new Promise(r=>unrelated.close(r));
-  await Promise.all(processes.map(p=>new Promise(r=>{if(p.exitCode!==null)return r();p.once('exit',r);p.kill('SIGTERM')})));
+  await Promise.all(processes.map(p=>new Promise(r=>{if(p.exitCode!==null || p.signalCode!==null)return r();p.once('exit',r);p.kill('SIGTERM')})));
   // Windows releases a killed process's directory handles late (EBUSY); retry instead of failing a passed run.
   await rm(scratch,{recursive:true,force:true,maxRetries:20,retryDelay:250});
 }

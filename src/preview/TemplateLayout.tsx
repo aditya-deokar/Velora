@@ -1,7 +1,7 @@
 import { createElement, Fragment, useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { projectFileUrl } from "./projectFiles";
 import { BrandSchema, type Brand, type LayoutElement, type LayoutNode } from "../core";
-import { Surface } from "../react";
+import { AppStage, Surface } from "../react";
 import * as kit from "../kit";
 
 /** SOURCE OF TRUTH: TemplateLayout, useProjectBrand.
@@ -10,7 +10,7 @@ import * as kit from "../kit";
  * WHY: the studio previews exactly the layout `velora new scene` would write as source, from the same data.
  * WHERE: QuickShot and the template gallery. Unknown element types render nothing (never host code).
  */
-const KIT = kit as unknown as Record<string, ComponentType<Record<string, unknown>>>;
+const KIT = { ...kit, AppStage } as unknown as Record<string, ComponentType<Record<string, unknown>>>;
 const ELEMENTS = new Set(["div", "span", "strong", "p"]);
 function renderElement(element: LayoutElement | string, slot: (props: Record<string, unknown>) => ReactNode, key: number | string): ReactNode {
   if (typeof element === "string") return element;

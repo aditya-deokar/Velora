@@ -49,7 +49,7 @@ it("writes param edits into the URL once per frame without remounting the app", 
 
 it("shows diagnostics for invalid params and disables copy actions", () => {
   open("?velora-preview=1&velora-quick=hero-push&velora-params=" + Buffer.from('{"lens":999}').toString("base64url"));
-  expect(screen.getByRole("alert").textContent).toContain("lens must be a number from 24 to 135");
+  expect(screen.getByRole("alert").textContent).toContain("lens must be a number from 24 to 200");
   for (const name of ["Copy export command", "Copy scaffold command", "Copy agent prompt"])
     expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
   expect((window as { __VELORA_CAPTURE__?: unknown }).__VELORA_CAPTURE__).toBeUndefined();

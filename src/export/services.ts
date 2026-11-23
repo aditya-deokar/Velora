@@ -7,7 +7,8 @@ import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
 import { parsePng, pngChunk } from "./compositor";
 import type { Browser, Page } from "playwright";
-import type { CaptureBridge, CaptureManifest, ExportVideo, ResolvedFinishing, VideoCodec } from "../core/export";
+import type { ElementTarget } from "../core/targets";
+import { CaptureManifestSchema, type CaptureBridge, type CaptureManifest, type ExportVideo, type ResolvedFinishing, type VideoCodec } from "../core/export";
 import { AUDIO_DRIFT_BUDGET_MS, SUPPORTED_AUDIO_CODECS } from "../core/audio";
 import { DEFAULT_LOUDNESS, SFX_PRESETS, sfxGraph, type Loudness, type SfxEntry } from "../core/sound";
 import { formatSrt, parseCaptions } from "../core/captions";
@@ -33,7 +34,11 @@ export const TRANSPARENT_CAPTURE_CSS = "html,body,[data-velora-preview],.velora-
 export type CaptureOptions = Pick<ExportVideo, "url" | "width" | "height"> & {
   /** Device scale factor: 2 supersamples (downscaled later in linear light), 0.5 drafts. */
   scale?: number;
+  stageScale?: (stage: NonNullable<CaptureManifest["stage"]>) => number;
   transparent?: boolean;
+  measureTargets?: boolean;
+  accumulateMotion?: boolean;
+  targetQueries?: readonly ElementTarget[];
 };
 // Frame finishing applied before encoding: sub-frame capture and compositing for one output frame.
 export type FrameProducer = (index: number, timeMs: number, shoot: (timeMs: number) => Promise<Buffer>) => Promise<Buffer>;
@@ -58,6 +63,8 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
       browser = await chromium.launch({ headless: true, channel: "chromium" });
     } catch { throw fault("missing-chromium", "Install Playwright and its browser: npm install playwright && npx playwright install chromium."); }
     page = await browser.newPage({ viewport: { width: input.width, height: input.height }, deviceScaleFactor: input.scale ?? 1 });
+    await page.addInitScript(() => { (window as Window & { __VELORA_CAPTURING__?: boolean }).__VELORA_CAPTURING__ = true; });
+    if (input.measureTargets) await page.addInitScript(targets => Object.assign(window, { __VELORA_MEASURE_TARGETS__: true, __VELORA_TARGET_QUERIES__: targets }), input.targetQueries ?? []);
     const transparent = !!input.transparent;
     page.setDefaultTimeout(10_000);
     await page.route("**/*", route => {
@@ -66,42 +73,77 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
       if (request.isNavigationRequest() && (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.protocol !== 'http:')) return route.abort();
       return route.continue();
     });
-    await page.goto(input.url, { waitUntil: "load", timeout: 30_000 });
-    // Product chrome can visually overlap the capture rectangle. Hide its semantic
-    // marker and host development-tools portal only in this private export page; the user's preview stays untouched.
-    await page.addStyleTag({content:'[data-velora-preview-chrome],nextjs-portal{visibility:hidden!important}'});
-    if (transparent) await page.addStyleTag({ content: TRANSPARENT_CAPTURE_CSS });
     // Parallel renders load several copies of the app at once, so a Velora page that is still loading
     // gets the same 30 s window as the page load; a page with no Velora markup at all fails after 5 s.
-    const bridged = await page.waitForFunction((started) => {
+    const waitForBridge = () => page.waitForFunction((started) => {
       if (typeof (window as unknown as { __VELORA_CAPTURE__?: CaptureBridge }).__VELORA_CAPTURE__?.seek === "function") return "ready";
       const velora = document.querySelector("[data-velora-project],[data-velora-preview],[data-velora-library]") || /Loading your scenes/.test(document.body?.textContent ?? "");
       return !velora && Date.now() - started > 5000 ? "absent" : false;
     }, Date.now(), { timeout: 30_000, polling: 100 }).then(handle => handle.jsonValue(), () => "timeout");
-    if (bridged !== "ready") throw fault("missing-capture", "This page has no ready Velora capture bridge. Open a scene with capture enabled and retry.");
+    const manifest = () => page.evaluate(() => {
+      const bridge = (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__;
+      const depth = bridge.depth;
+      const anchors = bridge.anchors;
+      return { version: bridge.version, durationMs: bridge.durationMs, selector: bridge.selector,
+        ...(bridge.look ? { look: bridge.look } : {}), ...(bridge.blurMode ? { blurMode: bridge.blurMode } : {}), ...(bridge.stage ? { stage: bridge.stage } : {}), ...(depth?.length ? { depth } : {}), ...(anchors?.length ? { anchors } : {}) };
+    });
+    const assertBridge = async () => {
+      if (await waitForBridge() !== "ready") throw fault("missing-capture", "This page has no ready Velora capture bridge. Open a scene with capture enabled and retry.");
+    };
+    await page.goto(input.url, { waitUntil: "load", timeout: 30_000 });
+    await assertBridge();
+    if (input.stageScale) {
+      const initial = CaptureManifestSchema.safeParse(await manifest());
+      if (initial.success && initial.data.stage) {
+        const scale = input.stageScale(initial.data.stage);
+        if (scale !== (input.scale ?? 1)) {
+          const cdp = await page.context().newCDPSession(page);
+          await cdp.send("Emulation.setDeviceMetricsOverride", { width: input.width, height: input.height, deviceScaleFactor: scale, mobile: false });
+          await page.reload({ waitUntil: "load", timeout: 30_000 });
+          await assertBridge();
+          const reloaded = CaptureManifestSchema.safeParse(await manifest());
+          if (reloaded.success && (!reloaded.data.stage || input.stageScale(reloaded.data.stage) !== scale))
+            throw fault("invalid-capture", "The scene stage changed while capture was opening. Retry after the scene finishes reloading.");
+        }
+      }
+    }
+    if (input.accumulateMotion) await page.evaluate(() => {
+      const bridge = (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__;
+      bridge.configure?.({ velocityBlur: false });
+    });
+    // Hide product chrome only in this private export page.
+    await page.addStyleTag({content:'[data-velora-preview-chrome],nextjs-portal{visibility:hidden!important}'});
+    if (transparent) await page.addStyleTag({ content: TRANSPARENT_CAPTURE_CSS });
     await page.evaluate(async () => {
       await Promise.race([
         Promise.all([document.fonts.ready, ...Array.from(document.images).map(image => image.decode().catch(() => {}))]),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Scene assets did not become ready.")), 10_000)),
       ]);
     });
+    let networkSettle: Promise<void> | undefined;
+    const seek = async (timeMs: number, inventory?: boolean) => {
+      try { await page.evaluate(({ timeMs, inventory }) => (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__.seek(timeMs, inventory ? { inventory } : undefined), { timeMs, inventory }); }
+      catch (error) {
+        const target = error instanceof Error && /ERR_TARGET_MISSING: ([^\r\n]+)/.exec(error.message);
+        if (target) throw fault("ERR_TARGET_MISSING", target[1]);
+        throw error;
+      }
+    };
     return {
       close,
-      manifest: () => page.evaluate(() => {
-        const bridge = (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__;
-        return { version: bridge.version, durationMs: bridge.durationMs, selector: bridge.selector, ...(bridge.look ? { look: bridge.look } : {}) };
-      }),
+      async manifest(timeMs?: number, inventory?: boolean) {
+        if (timeMs !== undefined) await seek(timeMs, inventory);
+        return manifest();
+      },
       async snapshot(timeMs:number, manifest:CaptureManifest){
         check();
-        // Route frames load the dev app again inside the page; under parallel renders that can take a while.
-        // networkidle is a best-effort settle: a busy dev server (HMR, dependency optimizing, sibling workers)
-        // may never go quiet for 500 ms. Readiness is owned by the bridge: seek awaits every capture-settle
-        // hook (RouteFrame load, fonts, decoded images, video seeks), so a timeout here must not fail the render.
-        await page.waitForLoadState("networkidle",{timeout:15_000}).catch(()=>undefined);
+        // A busy dev server can keep the network active throughout capture. Try once at startup.
+        // Every seek still waits for RouteFrame load, fonts, decoded images and video timestamps.
+        await (networkSettle ??= page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined));
         await page.evaluate(()=>document.fonts.ready.then(()=>{}));
         const locator=page.locator(manifest.selector);
         if(await locator.count()!==1)throw fault("invalid-capture","Capture must identify exactly one scene viewport.");
-        await page.evaluate(elapsed=>(window as unknown as {__VELORA_CAPTURE__:CaptureBridge}).__VELORA_CAPTURE__.seek(elapsed),timeMs);
+        await seek(timeMs);
         const rect=await locator.boundingBox();
         if(!rect||rect.width<1||rect.height<1||rect.width>3840||rect.height>3840)throw fault("invalid-capture","Scene viewport must be visible and bounded.");
         const png=await page.screenshot({clip:rect,type:"png",animations:"disabled",omitBackground:transparent,timeout:30_000});check();
@@ -109,6 +151,8 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
       },
       async encode(scope: { root: string; output: string }, options: ExportVideo & Partial<ResolvedFinishing>, manifest: CaptureManifest, frames: number, produce?: FrameProducer, onFrame?: (index: number, png: Buffer) => Promise<void> | void) {
         let temporary: string | undefined;
+        let activeEncoder: ReturnType<typeof spawn> | undefined;
+        let closed: Promise<void> | undefined;
         try {
           check();
           const locator = page.locator(manifest.selector);
@@ -121,20 +165,21 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
           await scopedPath(scope.root, scope.output);
           temporary = await mkdtemp(path.join(path.dirname(target), ".velora-export-"));
           const video = path.join(temporary, "video" + path.extname(scope.output).toLowerCase());
-          encoder = spawn("ffmpeg", videoEncodeArgs({ fps: options.fps, width: options.width, height: options.height, frames,
+          const child = encoder = activeEncoder = spawn("ffmpeg", videoEncodeArgs({ fps: options.fps, width: options.width, height: options.height, frames,
             codec: options.codec, quality: options.quality, transparent: options.transparent, gifFps: options.gifFps, x264: options.x264, crf: options.crf }, video), { cwd: scope.root, shell: false, stdio: ["pipe", "ignore", "pipe"] });
-          const timeout = setTimeout(() => encoder?.kill("SIGKILL"), 15 * 60_000);
+          closed = new Promise(resolve => child.once("close", () => resolve()));
+          const timeout = setTimeout(() => child.kill("SIGKILL"), 15 * 60_000);
           let stderr = "";
-          encoder.stderr?.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-4096); });
+          child.stderr.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-4096); });
           const finished = new Promise<void>((resolve, reject) => {
-            encoder!.once("error", () => { clearTimeout(timeout); reject(fault("missing-ffmpeg", "Install FFmpeg and ensure ffmpeg is available on PATH.")); });
-            encoder!.once("close", code => { clearTimeout(timeout); code === 0 ? resolve() : reject(fault("encoding-failed", `FFmpeg failed. ${stderr.slice(-1000)}`)); });
+            child.once("error", () => { clearTimeout(timeout); reject(fault("missing-ffmpeg", "Install FFmpeg and ensure ffmpeg is available on PATH.")); });
+            child.once("close", code => { clearTimeout(timeout); code === 0 ? resolve() : reject(fault("encoding-failed", `FFmpeg failed. ${stderr.slice(-1000)}`)); });
           });
           void finished.catch(() => {});
-          encoder.stdin!.on("error", () => {});
+          child.stdin.on("error", () => {});
           const shoot = async (elapsed: number) => {
             check();
-            await page.evaluate(time => (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__.seek(time), elapsed);
+            await seek(elapsed);
             return page.screenshot({ clip: rect, type: "png", animations: "disabled", omitBackground: transparent, timeout: 30_000 });
           };
           for (let i = 0; i < frames; i++) {
@@ -142,15 +187,21 @@ export async function openCapture(input: CaptureOptions, signal?: AbortSignal) {
             const png = produce ? await produce(i, i * 1000 / options.fps, shoot) : await shoot(i * 1000 / options.fps);
             await onFrame?.(i, png);
             if(i>0 && i % (options.fps*2)===0) process.stderr.write(`Captured ${i}/${frames} frames\n`);
-            await Promise.race([new Promise<void>((resolve, reject) => encoder!.stdin!.write(png, error => error ? reject(error) : resolve())), finished.then(() => { throw fault("encoding-failed", "Encoder stopped before all scene frames were written."); })]);
+            await Promise.race([new Promise<void>((resolve, reject) => child.stdin.write(png, error => error ? reject(error) : resolve())), finished.then(() => { throw fault("encoding-failed", "Encoder stopped before all scene frames were written."); })]);
           }
-          encoder.stdin!.end();
+          child.stdin.end();
           await finished; check();
           await scopedPath(scope.root, scope.output);
           try { await link(video, target); }
           catch (error) { if ((error as NodeJS.ErrnoException).code === "EEXIST") throw fault("output-exists", "Output appeared during export. Choose another filename."); throw error; }
         } catch (error) { check(); throw error; }
-        finally { encoder?.kill("SIGKILL"); if (temporary) await rm(temporary, { recursive: true, force: true }); }
+        finally {
+          activeEncoder?.kill("SIGKILL");
+          // Windows keeps the temporary video locked until FFmpeg has closed its handles.
+          await closed;
+          if (encoder === activeEncoder) encoder = undefined;
+          if (temporary) await rm(temporary, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+        }
       },
     };
   } catch (error) { await close(); check(); throw error; }
@@ -617,7 +668,7 @@ export async function probeChromium(): Promise<{ available: boolean; detail: str
 // belongs to shared services so project validation can use it too.
 export { probeAudioFile };
 export type { AudioProbe };
-export type MuxTrack = { id: string; file: string; startMs: number; offsetMs: number; gain: number; fadeInMs: number; fadeOutMs: number; duckUnderTrackId?: string; audioMs: number };
+export type MuxTrack = { id: string; file: string; startMs: number; offsetMs: number; gain: number; fadeInMs: number; fadeOutMs: number; duckUnderTrackId?: string; audioMs: number; durationMs?: number };
 export type MuxRequest = { video: string; tracks: MuxTrack[]; captionsFile?: string; fontsDir?: string; output: string };
 // Escape a file path for the subtitles filter: forward slashes, escaped
 // metacharacters, wrapped in single quotes. The quotes are required: without
@@ -635,6 +686,14 @@ export function escapeSubtitlesPath(absolutePath: string): string {
 // Ducking beyond one declarer is rejected at validation, never silently dropped.
 export function buildMuxFilter(tracks: MuxTrack[], captionsFile?: string, fontsDir?: string): { audioFilter: string | null; videoFilter: string | null } {
   const chainOf = (t: MuxTrack): string => {
+    if (t.durationMs !== undefined) {
+      const seconds = (ms: number) => (ms / 1000).toFixed(6);
+      const chain = [`atrim=duration=${seconds(t.durationMs)}`, "asetpts=PTS-STARTPTS", `volume=${t.gain}`];
+      if (t.fadeInMs > 0) chain.push(`afade=t=in:st=0:d=${seconds(t.fadeInMs)}`);
+      if (t.fadeOutMs > 0) chain.push(`afade=t=out:st=${seconds(Math.max(0, t.durationMs - t.fadeOutMs))}:d=${seconds(t.fadeOutMs)}`);
+      chain.push(`adelay=${Math.round(t.startMs)}:all=1`);
+      return chain.join(",");
+    }
     const chain = [`adelay=${Math.round(t.startMs)}|${Math.round(t.startMs)}`, `volume=${t.gain}`];
     if (t.fadeInMs > 0) chain.push(`afade=t=in:st=0:d=${(t.fadeInMs / 1000).toFixed(3)}`);
     if (t.fadeOutMs > 0) chain.push(`afade=t=out:st=${Math.max(0, (t.audioMs - t.fadeOutMs) / 1000).toFixed(3)}:d=${(t.fadeOutMs / 1000).toFixed(3)}`);

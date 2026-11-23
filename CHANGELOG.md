@@ -6,6 +6,93 @@ All notable changes to `@adityadeokar/velora` are documented here. The format fo
 
 ## [Unreleased]
 
+### Added — Cinema optics and rack focus (v2.1 Phase 14)
+
+- Apply physical 24, 50, 85 and 200 mm lens presets with framing or position hold. Animate camera zoom at a fixed viewpoint.
+- Rack focus between depth layers or explicit targets with synchronized lens breathing. Studio and the CLI expose signed focus distance, per-layer blur, and exact edit undo.
+
+### Added — UI depth and light (v2.1 Phase 13)
+
+- Opt into automatic or rule-based depth tiers with camera-reactive parallax, edges, contact shadows and sheen. The shared style ledger restores host styles when depth ends.
+- Edit depth mode, intensity, light and animated elevation in Studio. Freeze a scene's layer assignments with `velora depth resolve` and compare their hashes in capture and render evidence.
+
+### Added — App stage (v2.1 Phase 12)
+
+- New scene and blueprint scaffolds use a 1512×982 laptop viewport at 2×. Studio can save the current window or screen as the stage, and `velora edit stage` previews or writes the same edit.
+- `AppStage` gives the UI a named size container and lets a nested route inherit its logical viewport. HiDPI capture keeps the requested video dimensions and records the effective DPR and cap.
+
+### Added — Composition editing and agent handoff (v2.1)
+
+- Cut whole compositions in Studio with ripples, rolls, slips, razor splits, overlap transitions, markers, overlays, styled captions and waveform lanes. `velora compose edit` and its helpers use the same validated batches and SHA-guarded writes.
+- Preview beat snap as one undoable edit. Open a shot's scene on its local source time and return to its position in the cut.
+- Copy a Studio selection and intent with **Ask agent**. The version 4 guide and generated project handoff cover scene, source and composition editing. `velora init` upgrades intact format 2 and 3 handoffs in place.
+
+### Added — Three.js controls (v2.1 Phase 09)
+
+- The optional `@adityadeokar/velora/three` entry adds deterministic React Three Fiber surfaces, Object3D channels, glTF clip scrubbing, and a shared DOM and 3D camera.
+- Studio Layers shows registered 3D objects. Raycast picking and an in-canvas transform gizmo write the same channel keyframes as the inspector.
+- `velora doctor` reports the optional peers, and validation flags scene code that uses a competing 3D clock.
+
+### Added — Motion design (v2.1 Phase 07)
+
+- Group animation into clips and edit clip easing, speed, play count, and blend mode. Ungrouping previews the sampled deviation when baking is required.
+- Stagger selected layers, drag the spacing handle, and sequence, align, distribute, reverse, or stretch keyframes.
+- Apply editable behavior and camera clips, review camera framing, and save project presets through the studio or `velora edit preset`.
+- Keyframe `TextAnimator`, `DrawPath`, and `Shape` inside Surface leaves on the scene clock.
+
+### Added — Motion Model v3 (v2.1 Phase 01, additive; recipes using it need Velora ≥ 1.1)
+- **Auto-bezier keyframes:** keyframe `easing: "auto"` evaluates the outgoing segment as a monotone cubic
+  Hermite through its neighbors (continuous velocity, no overshoot). Smooth tracks and auto segments share
+  one tangent rule (`monotoneTangents`).
+- **Transform additions:** optional `scaleX/Y/Z`, `skewX/Y` and pivot `originX/Y` on Surfaces and surface
+  tracks. Absent fields keep today's CSS strings and matrices exactly.
+- **Leaf grade:** surface `brightness`, `contrast`, `saturate`, `hueRotate` and `grayscale` tracks on content leaves.
+- **Style and color tracks:** `{ kind: "style", id }` tracks animate CSS custom properties (numeric with a unit,
+  or colors); channel tracks accept color keyframes. Colors blend in OKLab with premultiplied alpha and print
+  canonical `rgb(R G B / A)` (`parseCssColor`, `mixColors`).
+- **Animatables:** `useAnimatable(id, spec)` gives any component typed, keyframeable props (number, color,
+  boolean, enum) from channels `<id>.<prop>`. Kit `Cursor`, `ScrollFrame`, `RouteFrame` and `LightSweep`
+  declare theirs with their existing channel names. `Title`, `Counter`, `Typewriter` and `Callout` accept `id`
+  for an `<id>.reveal` override.
+- **Recipe `editor` block:** optional labels, colors, locks and markers that the renderer ignores.
+
+### Added — Studio editor (v2.1 Phases 04–05)
+- **Edit mode** (`velora-edit=1`, the scene's Edit button or `npx velora edit --scene <id>`): layers, an inspector
+  with stopwatches and drag-scrub fields, history, advisories and a command palette around the live scene,
+  saving each gesture through the edit bridge (read-only with copyable commands when no bridge runs).
+- **Timeline:** dope sheet with snapping to frames, playhead, markers and keys; Alt-drag retime; clip bars;
+  markers and an editor-only work area; keyboard grid; copy and paste (`velora edit paste`).
+- **Graph editor** with exact cubicBezier handles, continuous/auto/hold modes, spring and steps panels, and an
+  easing library (F9 Easy Ease).
+- `ScenePreview` `layout="editor"` slots, `useSceneInspector` and `createSceneInspector` for editor-grade consumers.
+
+### Added — Edit operations and the edit bridge (v2.1 Phase 03)
+- **`velora edit ls|apply|key|ease`:** surgical recipe edits through one typed `EditOp` vocabulary
+  (`EditOpSchema`, `applyEdits`): dry run by default with a diff, labels and the exact inverse batch;
+  `--write` is compare-and-swap guarded, and `--expect-sha` fails fast on a concurrent save.
+- **Formatting-preserving writer:** `formatJsonDocument` keeps author layout, key order, line endings and BOM,
+  so a one-keyframe edit changes one line and undo restores the file.
+- **Edit bridge:** `velora edit` (and `velora studio --site … --edit`) serves the studio editor over loopback
+  with a per-session token, an exact Origin allowlist, Host checks, bounded bodies, read-only mode, an audit
+  log and file-change events.
+- **Skill:** `velora-editor`.
+
+### Added — Structure and cinematic constraints (v2.1 Phase 02, additive)
+- **Clips:** `motion.clips` group tracks in time (speed, trim, loop count, group ease, nesting up to 4) with
+  replace or additive mode. One replace owner per property is enforced. Additive offsets without an owner
+  are reported in `MotionState.additive` and applied with `withAdditive`.
+- **Staggers:** clip `members` plus `stagger` (forward, reverse, center-out, edges-in, seeded random, eased)
+  over `$member` tracks; `createCascadeClip`.
+- **Position paths:** `property: "position"` with `[x, y, z]` keyframes, automatic or explicit Bézier handles,
+  arc-length timing, `rove` and `orient`.
+- **Links:** `motion.links` declarative drivers (`scale`, `offset`, `delayMs`, add mode); acyclic, no expressions.
+- **Constraints:** `scene.constraints` `lookAt` (pan/tilt about the camera eye) and `focusFollow`, resolved
+  by `evaluateScene` from layout. `Scene` takes a `constraints` prop. `buildOrbitRig` returns a clip plus a lookAt.
+
+### Changed
+- `evaluateMotion` compiles once per immutable motion object (WeakMap cache). At 300 tracks a cached call
+  is about 1,700x faster than before, and cold parsing is about 40x faster. Outputs are byte-identical.
+
 ### Added — Motion Engine v2
 - **Easing library:** sine, quad, cubic, quart, quint, expo, circ, back, elastic and bounce families
   (`.in`, `.out`, `.inOut`), CSS-parity `{ cubicBezier: [x1, y1, x2, y2] }`, damped `{ spring: { stiffness, damping, mass } }`,

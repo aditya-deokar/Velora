@@ -99,7 +99,7 @@ describe("CompositionPlayer", () => {
   it("lists compositions, then plays one cursor through segments, gaps, captions and keyboard steps", async () => {
     window.history.replaceState({}, "", "/app?velora-preview=1&velora-tab=compositions");
     render(<SceneLibrary sources={sources} bindings={bindings} compositions={{ "/reel.composition.json": composition }} assetUrls={{ "/captions/reel.srt": "/captions/reel.srt" }}/>);
-    await act(async () => { fireEvent.click(screen.getByRole("link", { name: /The reel/ })); });
+    await act(async () => { fireEvent.click(screen.getByRole("link", { name: /^The reel/ })); });
     expect(location.search).toContain("velora-composition=%2Freel.composition.json");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("The reel");
     // Segment one is active; segment two is preloaded but hidden.

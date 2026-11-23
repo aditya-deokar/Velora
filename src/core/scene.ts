@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ElementTargetSchema } from "./targets";
 
 // SOURCE OF TRUTH: the spatial viewport is a black void; host surface paint remains unchanged.
 export const SCENE_BACKGROUND = "#000000" as const;
@@ -22,17 +23,29 @@ export const TransformSchema = z.strictObject({
   rotateY: finite.default(0),
   rotateZ: finite.default(0),
   scale: finite.positive().max(100).default(1),
+  // v2.1 optional, default-less additions: absent fields keep today's CSS and matrices exactly.
+  // Per-axis scale multiplies the uniform scale; skew shears in the surface plane; origin is the
+  // pivot for rotation, scale and skew in percent of the element (absent = 50% 50%).
+  scaleX: finite.positive().max(100).optional(),
+  scaleY: finite.positive().max(100).optional(),
+  scaleZ: finite.positive().max(100).optional(),
+  skewX: finite.min(-89).max(89).optional(),
+  skewY: finite.min(-89).max(89).optional(),
+  originX: finite.min(-100).max(200).optional(),
+  originY: finite.min(-100).max(200).optional(),
 });
 export const NodeSchema = z.strictObject({
   id,
   parentId: id.optional(),
   transform: TransformSchema.prefault({}),
 });
+export const PERSPECTIVE_MAX = 40_000;
 export const CameraSchema = z.strictObject({
   x: finite.default(0),
   y: finite.default(0),
   z: finite.default(0),
-  perspective: finite.min(100).max(10000).default(1400),
+  perspective: finite.min(100).max(PERSPECTIVE_MAX).default(1400),
+  zoom: finite.min(0.25).max(8).optional(),
   rotateX: finite.default(0),
   rotateY: finite.default(0),
   rotateZ: finite.default(0),
@@ -42,15 +55,36 @@ export const CameraSchema = z.strictObject({
 export const FocusSchema = z.strictObject({
   distance: finite.positive().default(1400),
   fStop: finite.min(0.7).max(128).default(8),
-  focalLength: finite.min(1).max(300).default(50),
+  focalLength: finite.min(1).max(4000).default(50),
   maxBlur: finite.min(0).max(32).default(6),
 });
+/** A live element, Surface point, registered 3D anchor, or stage-space point. */
+const unit = finite.min(0).max(1);
+export const ConstraintTargetSchema = z.union([
+  ElementTargetSchema,
+  z.strictObject({ surface: id, anchor: z.tuple([unit, unit]).optional() }),
+  z.strictObject({ three: id }),
+  z.strictObject({ point: z.tuple([finite, finite, finite]) }),
+]);
+// A constant 0..1 or a channel track (the TrackRef shape) whose value is clamped to 0..1.
+const weight = z.union([unit, z.strictObject({ target: z.strictObject({ kind: z.literal("channel"), id: z.string().min(1).max(128) }), property: z.literal("value"), fallback: z.literal(0).optional() })]);
+export const SceneConstraintSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("frame"), target: ConstraintTargetSchema, fill: finite.gt(0).max(1), axis: z.enum(["width", "height", "fit"]).optional(), weight: weight.optional() }),
+  // Pan/tilt about the camera's eye so the target projects to frame center (derives rotateX/rotateY; camera x/y/z follow so the eye stays fixed).
+  z.strictObject({ kind: z.literal("lookAt"), subject: z.literal("camera").optional(), target: ConstraintTargetSchema, weight: weight.optional(), up: z.literal("y").optional(), compose: z.tuple([finite.min(0).max(100), finite.min(0).max(100)]).optional() }),
+  // Hold focus.distance on the target's camera-space depth (plus offset).
+  z.strictObject({ kind: z.literal("focusFollow"), target: ConstraintTargetSchema, offset: finite.optional(), weight: weight.optional() }),
+]);
+export type SceneConstraint = z.output<typeof SceneConstraintSchema>;
+export type SceneConstraintInput = z.input<typeof SceneConstraintSchema>;
 export const SceneSchema = z
   .strictObject({
     version: z.literal(3).default(3),
     camera: CameraSchema.prefault({}),
     focus: FocusSchema.prefault({}),
     nodes: z.array(NodeSchema).max(1000),
+    // Resolved by evaluateScene with layout measurements, so preview and export agree.
+    constraints: z.array(SceneConstraintSchema).max(16).optional(),
   })
   .superRefine((scene, ctx) => {
     if (scene.focus.distance > 0 && scene.focus.distance <= scene.focus.focalLength)
@@ -65,6 +99,9 @@ export const SceneSchema = z
         });
       nodes.set(node.id, node);
     }
+    for (const [index, constraint] of (scene.constraints ?? []).entries())
+      if ("surface" in constraint.target && !nodes.has(constraint.target.surface))
+        ctx.addIssue({ code: "custom", path: ["constraints", index, "target", "surface"], message: "Constraint target is not a scene node: " + constraint.target.surface });
     for (const [index, node] of scene.nodes.entries()) {
       if (node.parentId && !nodes.has(node.parentId))
         ctx.addIssue({
@@ -94,8 +131,10 @@ export type NodeDefinition = z.output<typeof NodeSchema>;
 export type Transform = z.output<typeof TransformSchema>;
 export type TransformInput = z.input<typeof TransformSchema>;
 export type CameraInput = z.input<typeof CameraSchema>;
+export type CameraDefinition = z.output<typeof CameraSchema>;
+export type FocusDefinition = z.output<typeof FocusSchema>;
 export type FocusInput = z.input<typeof FocusSchema>;
-export type SceneIssue = { path: string; message: string };
+export type SceneIssue = { path: string; message: string; code?: string };
 export function validateScene(
   input: unknown,
 ):

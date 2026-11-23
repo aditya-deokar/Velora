@@ -143,12 +143,12 @@ export function snapToBeats(scenes: readonly { id: string; startMs: number; dura
     const beat = nearest(cut);
     const snapped = Number.isFinite(beat) && Math.abs(beat - cut) <= toleranceMs;
     if (!snapped) unsnapped.push(scene.id);
-    const delta = snapped ? Math.round((beat - cut) * 10) / 10 : 0;
-    if (delta !== 0) changes.push({ id: previous.id, field: "durationMs", from: previous.durationMs, to: Math.round((previous.durationMs + delta) * 10) / 10, beatMs: beat });
+    const delta = snapped && Math.abs(beat - cut) > 1e-9 ? beat - cut : 0;
+    if (delta !== 0) changes.push({ id: previous.id, field: "durationMs", from: previous.durationMs, to: previous.durationMs + delta, beatMs: beat });
     // Every later segment carries the accumulated shift, so the edit stays joined.
-    const start = Math.round((scene.startMs + shift + delta) * 10) / 10;
-    if (start !== scene.startMs) changes.push({ id: scene.id, field: "startMs", from: scene.startMs, to: start, beatMs: snapped ? beat : cut });
     shift += delta;
+    const start = scene.startMs + shift;
+    if (Math.abs(start - scene.startMs) > 1e-9) changes.push({ id: scene.id, field: "startMs", from: scene.startMs, to: start, beatMs: snapped ? beat : cut });
   }
   return { changes, unsnapped };
 }

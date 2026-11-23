@@ -95,6 +95,44 @@ export const PROMPT_LIBRARY: readonly Prompt[] = Object.freeze([
       "intentional perspective, focal depth and motion. Save the recipe and matching component in src/velora/scenes/ so they appear in the scene library. Keep the app's original design and data flow.",
     templates: [], skills: ["velora", "velora-scenes", "velora-cinematography"],
   },
+  {
+    id: "promote-layer", title: "Promote a JSX element", intent: "Prepare a minimal source edit when the studio cannot safely refactor JSX.", featured: false,
+    text: `${BASE} Review the requested source edit in <file> at JSX node <node> for scene <scene>. The intended layer or animatable ID is <id>. Operation: <operation>. The studio reported: <reason>. Inspect the component and recipe, preserve layout and existing IDs, then show me the minimal source and recipe diff before applying it. Verify the result in the live scene.`,
+    templates: [], skills: ["velora-editor", "velora-scenes"],
+  },
+  {
+    id: "edit-with-agent", title: "Continue a Studio edit", intent: "Hand off the live selection and timing from the Studio to a coding agent.", featured: false,
+    text: `${BASE} Continue the edit in <target>. My intent: <intent>\n` +
+      "At the playhead: <playhead>. Selection: <selection>. Range: <range>. Recent edits: <history>. Revision: <revision>.\n" +
+      "Inspect the current source and honor the selection. <workflow> Review the dry-run diff before writing with the current --expect-sha. If the revision changed, re-read and review the edit again. Check the affected frames in Studio.",
+    templates: [], skills: ["velora-editor", "velora-editing"],
+  },
+  {
+    id: "polish-easing", title: "Polish timing and easing", intent: "Refine an animation's timing while keeping its blocking and endpoints.", featured: false,
+    text: `${BASE} Polish the easing of <track refs> in <scene>, within <time range>. Read velora edit ls --scene <scene> --json for the existing keys and source SHA. ` +
+      "Keep the endpoints and holds. Use Easy Ease for a quiet UI move or a restrained spring for an intentional settle. Review a diff with velora edit apply --scene <scene> --ops <ops file>, then inspect the start, peak and landing in the graph and viewport.",
+    templates: [], skills: ["velora-editor", "velora-motion-design"],
+  },
+  {
+    id: "stagger-entrances", title: "Stagger an entrance", intent: "Group selected layers into an entrance with readable timing.", featured: false,
+    text: `${BASE} Stagger the entrances of <layer ids> in <scene> at <presentation time>. Read velora edit ls --scene <scene> --json first. ` +
+      "Keep their settled poses and text readable. Build one clip with clip.create and stagger.set or apply a suitable preset. Use velora edit apply --scene <scene> --ops <ops file> and check the overlap before saving.",
+    templates: [], skills: ["velora-editor", "velora-motion-design"],
+  },
+  {
+    id: "rack-focus", title: "Rack focus between two layers", intent: "Shift attention between two registered layers at specified times.", featured: false,
+    text: `${BASE} Rack focus from <near layer> to <far layer> in <scene> between <start ms> and <end ms>. ` +
+      "Inspect the current scene and both focal depths in the viewport. Use the Focus tool or focus.distance keys through velora edit apply --scene <scene> --ops <ops file>. " +
+      "Keep the camera path intact and compare both landing frames using velora shot --scene <scene> --time <ms> --out <image>.",
+    templates: ["rack-focus"], skills: ["velora-editor", "velora-cinematography"],
+  },
+  {
+    id: "recut-to-beats", title: "Recut to beats", intent: "Preview a beat-aligned cut before writing a composition change.", featured: false,
+    text: `${BASE} Recut <composition file> around <story beats> using the existing music bed. Check which marks are available; if needed, ask to refresh them with ` +
+      "velora audio beats --composition <composition file> --write-markers. Preview velora compose snap --composition <composition file> --to beats and assess each delta. " +
+      "Use velora compose edit --composition <composition file> --ops <ops file> for any exceptions, review sound and caption timing, and check the new cut in Studio.",
+    templates: [], skills: ["velora-editor", "velora-editing", "velora-audio"],
+  },
 ].map(prompt => Object.freeze(PromptSchema.parse(prompt))));
 
 export function findPrompt(id: string): Prompt | undefined {

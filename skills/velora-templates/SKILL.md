@@ -75,6 +75,8 @@ The Compositions tab plays a `*.composition.json` with its audio and captions. U
 
 ## Workflow
 
+New app shots use `laptop-14` (1512×982 at 2×). Choose `laptop-13` (1440×900 at 2×) or use a detected stage saved in Studio. Pass an explicit viewport with `velora new scene --template hero-push --id home-hero --route / --stage 1536x730@1.25 --json`. Choose `desktop-1080` at 1× only when requested. The aspect flag selects the video frame independently of the app viewport.
+
 1. Map the request to a template with the table above, or with `velora templates ls --json`.
 2. Choose the slot:
    - `--route` for zero code (works in every host, including Next.js);
@@ -128,6 +130,8 @@ The generated binding imports `Revenue` and wraps it in `Surface id="subject"`. 
 
 ## Craft Notes
 
+Use `--set lens=200` for a telephoto framing pass, including 4:5 and 9:16. Lens presets applied through Edit mode also set the physical focus focal length and aperture.
+
 Template IDs name techniques, not people. Each one packages a camera convention described in `velora-cinematography` (push-in, survey, orbit, crane, rack focus, dolly zoom, whip) or a motion-graphics convention described in `velora-motion-design`, with restrained defaults. They are starting points: the brief and the person's direction override them.
 
 ## Related Skills
@@ -146,3 +150,7 @@ Template IDs name techniques, not people. Each one packages a camera convention 
 - Do not force a template onto a request for a unique shot; author it with `velora-scenes`.
 - Do not use templates for titles, logos or end cards. Motion-graphics templates arrive in a later release, and until then that work belongs in `velora-typography`.
 - Do not use `--route` for a page that needs logged-in state the dev server cannot reproduce. Use `--component` with fixture providers instead.
+
+## Add a physical camera rig to a scaffold
+
+Scaffold the scene around a component or route and add stable target anchors to its markup. Bake a physical rig after the preview is running so its dimensions and elevation come from the authored stage. Rig parameters appear in the `capabilities.rigs` section of the guide. Existing template outputs keep their original camera moves.

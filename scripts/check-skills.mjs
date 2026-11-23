@@ -12,7 +12,7 @@ const VELORA_SKILLS = [
   'velora-gsap', 'velora-threejs', 'velora-ewmotion', 'velora-typography',
   'velora-transitions', 'velora-audio', 'velora-export', 'velora-debug',
   'velora-performance', 'velora-verify', 'velora-templates', 'velora-cinematography',
-  'velora-brand', 'velora-looks', 'velora-motion-design', 'velora-editing', 'velora-launch',
+  'velora-brand', 'velora-looks', 'velora-motion-design', 'velora-editing', 'velora-launch', 'velora-editor',
 ];
 const REQUIRED_SECTIONS = [
   '## When to Use This Skill',
@@ -124,7 +124,7 @@ for (const name of VELORA_SKILLS) {
       const segment = line.slice(start, end);
       const allowed = commandFlags.get(cmd);
       for (const f of segment.matchAll(/(--[a-z-]+)/g)) {
-        if (!allowed.has(f[1])) fail(`${name}/SKILL.md:${i + 1} "velora ${cmd} ${f[1]}" unknown flag (see velora ${cmd} --help)`);
+        if (f[1] !== '--help' && !allowed.has(f[1])) fail(`${name}/SKILL.md:${i + 1} "velora ${cmd} ${f[1]}" unknown flag (see velora ${cmd} --help)`);
       }
     }
   }

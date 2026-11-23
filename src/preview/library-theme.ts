@@ -34,5 +34,6 @@ ${studioTheme}
 .velora-compositions{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 .velora-compositions a{display:flex;justify-content:space-between;gap:20px;padding:22px 26px;border-radius:22px;background:#19191c}.velora-compositions a:hover{background:#232326}.velora-compositions a:focus-visible{outline:3px solid #ddd}
 .velora-compositions strong{font-size:20px;font-weight:500}.velora-compositions span{color:#9a9aa0}
+.velora-composition-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:8px}
 @media(max-width:600px){.velora-library-top{top:20px;left:24px;right:24px}.velora-library-heading{padding:20px;gap:12px}.velora-library-heading h1{font-size:24px}.velora-library-heading>span{font-size:11px}.velora-scene-row{padding:20px;gap:14px}.velora-scene-number{width:56px;height:56px;border-radius:12px;font-size:20px}.velora-scene-copy strong{font-size:20px}.velora-scene-copy>span{font-size:12px;max-width:160px}.velora-scene-duration{font-size:12px}.velora-scene-duration>span{display:none}}
 `;

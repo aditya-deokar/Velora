@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { chromium, expect } from "@playwright/test";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const cli = path.join(root, "dist", "cli", "velora.js");
@@ -40,6 +41,7 @@ function velora(args, cwd) {
 const ok = (result, label) => { assert.equal(result.code, 0, `${label} failed:\n${result.stdout.slice(-1500)}\n${result.stderr.slice(-1500)}`); console.log(`PASS ${label}`); return result.json; };
 
 const project = await mkdtemp(path.join(tmpdir(), "velora-site-project-"));
+let browser;
 try {
   const sitePort = await freePort(), studioPort = await freePort();
   await start([path.join(root, "tests/fixtures/sites/static-multipage/server.mjs"), String(sitePort)], root, (out) => out.includes(`ready ${sitePort}`));
@@ -47,6 +49,8 @@ try {
   ok(await velora(["studio", "init", "--site", site, "--json"], project), "studio init");
   for (const [template, id, route, duration] of [["hero-push", "home", "/", "2000"], ["scroll-through", "tour", "/", "4000"], ["tilt-up-reveal", "pricing", "/pricing", "2000"]])
     ok(await velora(["new", "scene", "--template", template, "--id", id, "--route", route, "--duration", duration, "--json"], project), `new scene ${id} (${template} ${route})`);
+  ok(await velora(["new", "scene", "--template", "hero-push", "--id", "depth-demo", "--route", "/pricing", "--json"], project), "new proxied depth scene");
+  ok(await velora(["edit", "depth", "--scene", "depth-demo", "--surface", "subject", "--mode", "auto", "--write", "--json"], project), "enable depth on a proxied route");
   await writeFile(path.join(project, "tour.composition.json"), JSON.stringify({
     version: 1, id: "tour", title: "Orbit site tour", width: 960, height: 540, fps: 30,
     scenes: [
@@ -65,6 +69,28 @@ try {
   assert.ok(proxied.includes("Pricing"), "proxy serves the site's /pricing");
   assert.equal((await fetch(`${studio}/assets/site.css`)).headers.get("content-type"), "text/css");
   console.log("PASS proxy serves routes and absolute assets");
+  const resolved = ok(await velora(["depth", "resolve", "--scene", "depth-demo", "--url", studio, "--write", "--json"], project), "resolve depth through the proxy");
+  const frozen = resolved.data.ops.find(op => op.op === "depth.resolve" && op.surface === "subject").resolved;
+  assert.ok(frozen.layers.some(layer => layer.tier === "card"), "the proxied pricing cards receive depth");
+  const depthShot = ok(await velora(["shot", "--scene", "depth-demo", "--time", "0", "--out", "depth.png", "--url", studio, "--json"], project), "capture the proxied depth scene");
+  assert.deepEqual(depthShot.data.depth, [{ surface: "subject", hash: frozen.hash }]);
+  const bridgeOutput = await start([cli, "edit", "--scene", "home", "--url", studio, "--no-open", "--json"], project,
+    out => out.split("\n").some(line => line.includes('"command":"edit"') && line.includes('"url"')));
+  const bridge = JSON.parse(bridgeOutput.trim().split("\n").find(line => line.includes('"command":"edit"')));
+  assert.equal(bridge.success, true, bridgeOutput);
+  browser = await chromium.launch();
+  const page = await browser.newPage({ permissions: ["clipboard-read", "clipboard-write"] });
+  await page.goto(bridge.data.url);
+  await expect(page.getByRole("button", { name: "Ask agent", exact: true })).toBeVisible({ timeout: 30_000 });
+  assert.ok(!page.url().includes("velora-bridge"));
+  await page.getByRole("button", { name: "Ask agent", exact: true }).click();
+  await page.getByLabel("What should the agent change?").fill("Ease the camera move on the home page.");
+  await page.getByRole("button", { name: "Copy agent prompt" }).click();
+  await expect(page.getByRole("dialog", { name: "Ask agent" }).getByRole("status")).toHaveText("Prompt copied.");
+  assert.match(await page.evaluate(() => navigator.clipboard.readText()), /scene "home"/);
+  await browser.close();
+  browser = undefined;
+  console.log("PASS any-site Studio edit bridge and clipboard handoff");
   ok(await velora(["shot", "--scene", "tour", "--time", "2000", "--out", "tour.png", "--url", studio, "--json"], project), "shot through the studio");
   const render = ok(await velora(["render", "--composition", "tour.composition.json", "--out", "tour.mp4", "--url", studio, "--no-stream", "--json"], project), "render three route shots");
   assert.equal(render.data.frames, 228);
@@ -78,6 +104,7 @@ try {
   assert.ok(!(await readdir(project)).includes("node_modules") && !(await readdir(project)).includes("package.json"), "the site project stays free of React, Vite and npm files");
   console.log("check-site-mode: any-site studio, route render, video check and deliverables all passed.");
 } finally {
+  await browser?.close();
   for (const child of children) if (child.exitCode === null) child.kill();
   await new Promise((resolve) => setTimeout(resolve, 500));
   await rm(project, { recursive: true, force: true }).catch(() => {});

@@ -9,6 +9,7 @@ import {libraryTheme} from './library-theme';
 import {TemplateGallery} from './TemplateGallery';
 import {QuickShot} from './QuickShot';
 import {CompositionPlayer} from './CompositionPlayer';
+import {CompositionEditMode,EditMode,editModeRequested} from './EditMode';
 
 /** SOURCE OF TRUTH: SceneLibrary.
  * WHAT: list and navigate the host's validated source recipes through one catalog.
@@ -26,7 +27,9 @@ const TABS:[Tab,string][]=[['scenes','Scenes'],['templates','Templates'],['compo
 function studioView(){
  const query=typeof location==='undefined'?new URLSearchParams():new URL(location.href).searchParams;
  const tab=query.get('velora-tab');
- return {tab:(tab==='templates'||tab==='compositions'?tab:'scenes') as Tab,quick:query.get('velora-quick')??undefined,composition:query.get('velora-composition')??undefined};
+ const time=(key:string)=>{const value=Number(query.get(key)??NaN);return Number.isFinite(value)?Math.max(0,value):undefined;};
+ return {tab:(tab==='templates'||tab==='compositions'?tab:'scenes') as Tab,quick:query.get('velora-quick')??undefined,composition:query.get('velora-composition')??undefined,
+  editComposition:query.get('velora-edit')==='composition',fromComposition:query.get('velora-from-composition')??undefined,cutTime:time('velora-cut-time'),localTime:time('velora-local-time')};
 }
 const EMPTY_COMPOSITIONS:Record<string,unknown>={};
 const EMPTY_SOURCES:Record<string,unknown>={};
@@ -71,20 +74,33 @@ export function SceneLibrary({sources=EMPTY_SOURCES,bindings=EMPTY_BINDINGS,hot,
  const content=useMemo(()=>Component?<Component/>:null,[Component]);
  useEffect(()=>{const pop=()=>{setSceneId(selection());setRoute(studioView())};window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop)},[]);
  useEffect(()=>{if(selected&&Component)return;const element=scroller.current;if(!element)return;const measure=()=>setSize({width:element.clientWidth,height:element.clientHeight});const observer=new ResizeObserver(measure);observer.observe(element);measure();element.scrollTop=savedScroll.current;return()=>observer.disconnect()},[selected?.id,Component]);
- const destination=(id?:string)=>{const url=new URL(location.href);if(id)url.searchParams.set('velora-scene',id);else url.searchParams.delete('velora-scene');return url.pathname+url.search+url.hash;};
+ const destination=(id?:string)=>{const url=new URL(location.href);for(const key of ['velora-edit','velora-from-composition','velora-cut-time','velora-local-time'])url.searchParams.delete(key);if(id)url.searchParams.set('velora-scene',id);else url.searchParams.delete('velora-scene');return url.pathname+url.search+url.hash;};
+ const editing=typeof location!=='undefined'&&editModeRequested(location.href);
+ const editHref=(id:string)=>{const url=new URL(location.href);url.searchParams.set('velora-scene',id);url.searchParams.set('velora-edit','1');url.hash='';return url.pathname+url.search;};
  const navigate=(event:MouseEvent<HTMLAnchorElement>,id?:string)=>{if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;event.preventDefault();history.pushState({},'',destination(id));setSceneId(id);setRoute(studioView());};
  // One URL builder for tabs, quick shots and compositions; unrelated host params are preserved.
- const studioHref=(next:{tab?:Tab;composition?:string})=>{const url=new URL(location.href);for(const key of ['velora-scene','velora-quick','velora-route','velora-params','velora-composition','velora-tab'])url.searchParams.delete(key);
-  if(next.tab&&next.tab!=='scenes')url.searchParams.set('velora-tab',next.tab);if(next.composition){url.searchParams.set('velora-tab','compositions');url.searchParams.set('velora-composition',next.composition);}return url.pathname+url.search+url.hash;};
+ const studioHref=(next:{tab?:Tab;composition?:string;edit?:boolean;time?:number})=>{const url=new URL(location.href);for(const key of ['velora-scene','velora-quick','velora-route','velora-params','velora-composition','velora-tab','velora-edit','velora-from-composition','velora-cut-time','velora-local-time'])url.searchParams.delete(key);
+  if(next.tab&&next.tab!=='scenes')url.searchParams.set('velora-tab',next.tab);
+  if(next.composition){url.searchParams.set('velora-tab','compositions');url.searchParams.set('velora-composition',next.composition);}
+  if(next.edit)url.searchParams.set('velora-edit','composition');if(next.time!==undefined)url.searchParams.set('velora-cut-time',String(next.time));return url.pathname+url.search+url.hash;};
  const go=(href:string)=>{history.pushState({},'',href);setSceneId(selection());setRoute(studioView());};
  const follow=(event:MouseEvent<HTMLAnchorElement>,href:string)=>{if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;event.preventDefault();go(href);};
  const compositionList=useMemo(()=>Object.entries(compositions).map(([path,document])=>{const value=document as {id?:unknown;title?:unknown;scenes?:unknown};
   const scenes=Array.isArray(value?.scenes)?value.scenes as {startMs?:number;durationMs?:number}[]:[];
   return {path,id:typeof value?.id==='string'?value.id:path,title:typeof value?.title==='string'?value.title:path,durationMs:scenes.reduce((end,scene)=>Math.max(end,(scene.startMs??0)+(scene.durationMs??0)),0),document};}),[compositions]);
  if(route.quick)return <QuickShot hot={hot} backHref={studioHref({tab:'templates'})} onBack={()=>go(studioHref({tab:'templates'}))}>{children}</QuickShot>;
- const playing=route.composition?compositionList.find(entry=>entry.path===route.composition||entry.id===route.composition):undefined;
+ const playing=route.composition?compositionList.find(entry=>entry.path.replace(/^\//,'')===route.composition?.replace(/^\//,'')||entry.id===route.composition):undefined;
+ if(route.editComposition&&route.composition){
+  const path=(playing?.path??route.composition).replace(/^\//,'');
+  return <CompositionEditMode key={path} path={path} document={playing?.document} scenes={catalog.scenes} bindings={bindings} assetUrls={assetUrls} initialTimeMs={route.cutTime}
+   backHref={studioHref({tab:'compositions'})} onBack={()=>go(studioHref({tab:'compositions'}))} onOpenScene={(recipe,localMs,globalMs)=>{
+    const url=new URL(studioHref({tab:'scenes'}),location.origin);
+    for(const [key,value] of Object.entries({'velora-edit':'1','velora-scene':recipe,'velora-from-composition':path,'velora-cut-time':String(globalMs),'velora-local-time':String(localMs)}))url.searchParams.set(key,value);
+    go(url.pathname+url.search);
+   }}/>;
+ }
  if(playing)return <CompositionPlayer key={playing.path} path={playing.path} document={playing.document} scenes={catalog.scenes} bindings={bindings} assetUrls={assetUrls}
-  backHref={studioHref({tab:'compositions'})} onBack={()=>go(studioHref({tab:'compositions'}))}/>;
+  editHref={studioHref({composition:playing.path,edit:true})} backHref={studioHref({tab:'compositions'})} onBack={()=>go(studioHref({tab:'compositions'}))}/>;
  const tabs=<nav className="velora-library-tabs" aria-label="Studio">{TABS.map(([tab,label])=>{const href=studioHref({tab});return <a key={tab} href={href} aria-current={route.tab===tab&&!sceneId?'page':undefined} onClick={event=>follow(event,href)}>{label}</a>;})}</nav>;
  const top=<div className="velora-library-top"><div className="velora-library-identity"><a href={destination()} onClick={event=>navigate(event)} className="velora-library-brand">{VELORA_BRAND.name.toLowerCase()}</a><BrandAttribution showName={false}/></div>{backHref&&<a href={backHref}>Back to app</a>}</div>;
  if(route.tab==='templates'&&!sceneId)return <main data-velora-library="" data-velora-tab="templates"><style>{libraryTheme}</style>{top}{tabs}
@@ -93,9 +109,15 @@ export function SceneLibrary({sources=EMPTY_SOURCES,bindings=EMPTY_BINDINGS,hot,
   <section className="velora-gallery" aria-label="Compositions">
    {route.composition&&<div className="velora-library-notice" role="alert" style={{position:'static',margin:'0 auto 16px',maxWidth:900}}>Composition “{route.composition}” was not found.</div>}
    {compositionList.length===0?<div className="velora-compositions"><p style={{color:'#aaa'}}>No compositions yet. Create one with <code>npx velora new video --blueprint product-reel-20s --id reel --route / --json</code>. Files named <code>*.composition.json</code> at the project root appear here.</p></div>:
-   <div className="velora-compositions">{compositionList.map(entry=>{const href=studioHref({composition:entry.path});return <a key={entry.path} href={href} data-composition={entry.id} onClick={event=>follow(event,href)}><strong>{entry.title}</strong><span>{(entry.durationMs/1000).toFixed(1)}s · {entry.path.replace(/^\//,'')}</span></a>;})}</div>}
+   <div className="velora-compositions">{compositionList.map(entry=>{const href=studioHref({composition:entry.path}), edit=studioHref({composition:entry.path,edit:true});return <div key={entry.path} className="velora-composition-row"><a href={href} data-composition={entry.id} onClick={event=>follow(event,href)}><strong>{entry.title}</strong><span>{(entry.durationMs/1000).toFixed(1)}s · {entry.path.replace(/^\//,'')}</span></a><a href={edit} aria-label={`Edit ${entry.title}`} onClick={event=>follow(event,edit)}>Edit</a></div>;})}</div>}
   </section></main>;
- if(selected&&Component)return <ScenePreview key={selected.id} definition={selected.definition} title={selected.title} backHref={destination()} onBack={()=>{history.pushState({},'',destination());setSceneId(undefined)}} hot={hot}>{content}</ScenePreview>;
+ // Edit mode receives the recipe exactly as authored, so edits keep the file minimal.
+ if(selected&&Component&&editing){
+  const back=route.fromComposition?studioHref({composition:route.fromComposition,edit:true,time:route.cutTime}):destination();
+  return <EditMode key={selected.id} sceneId={selected.id} title={selected.title} recipe={sources[selected.source]??selected} hot={hot} backHref={back} onBack={()=>go(back)}
+   backLabel={route.fromComposition?'Back to composition':undefined} initialTimeMs={route.localTime}>{content}</EditMode>;
+ }
+ if(selected&&Component)return <ScenePreview key={selected.id} sceneId={selected.id} definition={selected.definition} title={selected.title} backHref={destination()} onBack={()=>{history.pushState({},'',destination());setSceneId(undefined)}} hot={hot} editHref={editHref(selected.id)}>{content}</ScenePreview>;
  const planeWidth=Math.min(940,Math.max(320,width-64));
  const {start,end}=visibleRows(scroll,height,catalog.scenes.length);
  return <main data-velora-library=""><style>{libraryTheme}</style>

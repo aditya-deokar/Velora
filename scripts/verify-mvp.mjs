@@ -4,8 +4,8 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const manifest=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));
-// Reuse the existing gate's exact leaf checks. Only scheduling changes: independent
-// temporary hosts may run together, but hardware frame budgets run alone.
+// Reuse the existing gate's leaf checks. Run suites individually so worker pools
+// and disposable framework installations fit on the qualification machine.
 function leaves(name){
  if(!name.startsWith('verify:'))return [name];
  return manifest.scripts[name].split(' && ').flatMap(command=>{
@@ -15,14 +15,14 @@ function leaves(name){
  });
 }
 const ci=process.argv.includes('--ci');
-const pending=new Set([...leaves('verify:reuse'),'test:agent','test:agent-demos','test:portable:app','test:portable:pages','test:portable:react']);
+const pending=new Set([...leaves('verify:reuse'),'test:skills','test:agent','test:agent-demos','test:portable:app','test:portable:pages','test:portable:react','test:site']);
 // Hosted CI has no qualified hardware GPU. Keep all behavior checks there;
 // maintainers run the unmodified hardware budgets with verify:release locally.
 if(ci)pending.delete('test:performance');
 await mkdir(new URL('../.release/logs/',import.meta.url),{recursive:true});
 async function run(name,prebuilt=false){
  const result=await new Promise(resolve=>{
-   const child=spawn(NPM,['run',name],{cwd:root,env:{...process.env,VELORA_VERIFY_HARDWARE:ci?'0':'1',...(prebuilt?{VELORA_VERIFY_PREBUILT:'1'}:{})},stdio:['ignore','pipe','pipe'],...NPM_SHELL});
+   const child=spawn(NPM,['run',name],{cwd:root,env:{...process.env,VITEST_MAX_WORKERS:process.env.VITEST_MAX_WORKERS??'2',VELORA_VERIFY_HARDWARE:ci?'0':'1',...(prebuilt?{VELORA_VERIFY_PREBUILT:'1'}:{})},stdio:['ignore','pipe','pipe'],...NPM_SHELL});
   let output='';child.stdout.on('data',value=>output+=value);child.stderr.on('data',value=>output+=value);
   child.on('error',error=>resolve({code:1,output:output+error.message}));child.on('close',code=>resolve({code,output}));
  });
@@ -34,12 +34,15 @@ try{
  // This tests prepack as well as the same canonical build used by verify:reuse.
  await run('release:local');pending.delete('build');
  const exclusive=['test:browser','test:performance','test:library'];
-  const installed=['test:installed','test:iterate','test:agent','test:agent-demos','test:portable:app','test:portable:pages','test:portable:react'];
+ const installed=['test:installed','test:iterate','test:agent','test:agent-demos','test:portable:app','test:portable:pages','test:portable:react','test:site'];
  const independent=[...pending].filter(name=>!exclusive.includes(name)&&!installed.includes(name));
- const checkGroup=async names=>{const results=await Promise.allSettled(names.map(name=>run(name,true)));const failures=results.filter(result=>result.status==='rejected');if(failures.length)throw new AggregateError(failures.map(result=>result.reason),'Verification failed');};
- await checkGroup(independent);
- for(const name of exclusive)if(pending.has(name))await run(name,true);
- await checkGroup(installed.filter(name=>pending.has(name)));
+ const failures=[];
+ const check=async name=>{try{await run(name,true);}catch(error){failures.push(error);}};
+ for(const name of independent)await check(name);
+ for(const name of exclusive)if(pending.has(name))await check(name);
+ // Framework installations and platform-native builds each need disposable disk space.
+ for(const name of installed)if(pending.has(name))await check(name);
+ if(failures.length)throw new AggregateError(failures,'Verification failed');
  if(pending.size)throw Error(`Unrun checks: ${[...pending]}`);
  console.log((ci?'CI behavior gate passed; hardware qualification is separate.':'Complete MVP gate passed.')+' Full logs: .release/logs/gate-*.log');
 }catch(error){console.error(error);process.exitCode=1;}

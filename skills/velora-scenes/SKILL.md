@@ -44,6 +44,10 @@ Preview and capture run through the app dev server; rendering proofs use `velora
 
 ## Workflow
 
+### Size the app viewport
+
+Render new app UI inside a laptop stage. Use `laptop-14` (1512×982 at 2×), `laptop-13` (1440×900 at 2×), or the user's detected viewport. Use `desktop-1080` at 1× only when requested. Keep the concrete size in `definition.stage` and use `AppStage` inside the app's Surface. Components in that tree can use `@container velora-app-stage` or `useAppStage()`. Use `RouteFrame` inside `AppStage` for apps that depend on window media queries.
+
 1. Run `velora guide --json` and read the workflow plus `capabilities.api`.
 2. Choose a shot family and state the near edge, subject, camera distance, one travel axis, focus region, and depth references.
 3. Approve the opening still visually: near and far size difference, intentional crop, identifiable detail, black void.
@@ -55,7 +59,7 @@ Preview and capture run through the app dev server; rendering proofs use `velora
 Motion vocabulary (details in `velora guide --json` capabilities):
 
 - **Smooth camera rails:** a multi-waypoint camera track with `"interpolation": "smooth"` and `"ease": "cinematic"` passes every waypoint without stopping, then accelerates and settles once. Segment tracks stop at each cinematic keyframe.
-- **Lens language:** `lensFor(mm, frameHeight)` maps 24/35/50/85/135 mm to `camera.perspective` (frameHeight × mm / 24) plus the matching `focus.focalLength`. Wide lenses exaggerate depth; long lenses compress it. `perspective` is animatable: hold the subject on the projection plane and widen the lens for a dolly zoom.
+- **Lens language:** `lensPreset` maps 24, 50, 85 and 200 mm to `camera.perspective` and a focus focal length scaled by the authored stage. `camera.zoom` scales the projected frame around its center at a fixed viewpoint. `buildRackFocus` puts breathing on the focus clock.
 - **Easing:** keyframes accept named families (`expo.out`, `back.out`), `{ cubicBezier: [...] }`, `{ spring: {...} }`, `{ steps: n }` and `hold`. Keep overshoot off camera tracks.
 - **Handheld texture:** `"noise": { "amplitude": 6, "frequency": 0.6, "seed": 1 }` on camera position or rotation tracks adds seeded, replayable shake. Use it sparingly, never on loops or text-heavy close-ups.
 - **Leaf visuals:** surface `blur` composes with depth of field; `clipTop/Right/Bottom/Left` (percent insets) and `clipRadius` (iris) are true masks on the visual leaf.
@@ -147,6 +151,13 @@ Frame math: `frame = round(timeMs * fps / 1000)`; one cursor owns elapsed time; 
 - `velora shot --scene <id> --time <ms> --out <png> --json` produces a readable still at output size.
 - Preview scrub of beginning, middle, and end shows no inversion or disappearance.
 
+## Pivot, Skew, Grade and Style Variables (Velora 1.1)
+
+- Transforms (Surface `transform` and surface tracks) accept optional `scaleX`/`scaleY`/`scaleZ` ((0, 100], multiplying `scale`), `skewX`/`skewY` (-89..89 deg) and `originX`/`originY` (-100..200 %, the pivot for rotation, scale and skew; default 50/50). Rotate a card about its corner with `originX: 0, originY: 0`. Absent fields keep the previous CSS and matrices exactly.
+- Per-element grade tracks on surfaces: `brightness`, `contrast`, `saturate` (0..4), `hueRotate` (-360..360 deg) and `grayscale` (0..1). Like opacity and blur they style the content leaf only, so they never flatten 3D. A slow `grayscale` 1 to 0 on the hero card pulls the eye to it.
+- Style tracks write CSS custom properties on a Surface's outer element: `{ "target": { "kind": "style", "id": "card" }, "property": "--accent", "keyframes": [{ "timeMs": 0, "value": "#3b82f6" }, { "timeMs": 1200, "value": "#f97316" }] }`. Host components read `var(--accent)` with no Velora code; descendants inherit it. Numeric style tracks take an optional `unit` (`px`, `%`, `deg`, `em`, `rem`, `vw`, `vh`). The style target must be a registered Surface id.
+- Recipes may carry an optional `editor` block (`labels`, `colors`, `locked`, `markers`). It is editor-owned metadata that the renderer ignores; keep it accurate if you edit it.
+
 ## Related Skills
 
 - `velora`: root index and execution loop.
@@ -160,3 +171,23 @@ Frame math: `frame = round(timeMs * fps / 1000)`; one cursor owns elapsed time; 
 - Do not use this skill for composition timelines or asset management; load `velora-composition`.
 - Do not use this skill for audio, captions, or transitions; load `velora-audio` or `velora-transitions`.
 - Do not use this skill to judge export readiness; load `velora-verify` and inspect real frames.
+## Promoting JSX to spatial layers
+
+Use `useAnimatable` when an existing component prop needs a clocked value. Choose the smallest meaningful typed prop and verify it in the Studio Inspector. Keep data fetching, layout and providers in the host component.
+
+Use the studio's **Pick source element** or `velora edit source outline --scene <id> --json` to find authored JSX. The source diff can wrap an element in a Surface and update its scene recipe in one transaction. **Group spatial layers** gives contiguous Surface siblings a common parent while retaining their IDs and tracks. Use a motion clip to group tracks in time.
+
+Choose a stable, unique layer ID and verify the new wrapper's layout in Edit mode after applying. For JSX rendered in loops, conditions, or props, review the refusal and use **Ask agent** to request a manual change.
+## Lift app layers
+
+Set `definition.depth` by Surface ID or run `velora edit depth --scene home-hero --surface subject --mode auto --intensity subtle --write`. Scene props are a fallback. In rule mode, match `data-velora-anchor`, a CSS selector, or a detected tier. The first rule wins after explicit `data-velora-tier` markup. Use `flat` for a subtree or `none` to exclude one node. Use the `elevation` surface track to animate the tier multiplier from 0 to 1.
+
+Run `velora depth resolve --scene home-hero --url http://127.0.0.1:5173 --write` after checking the shot. This freezes stable anchor or selector matches at the opening frame. Re-enable live depth before freezing a changed layout.
+
+## Give an element a stable target
+
+Add `data-velora-anchor="revenue-card"` to the real DOM element inside a Surface or a same-origin RouteFrame. Choose a name that appears once on visible elements within the Surface, starts with a lowercase letter or digit and contains up to 64 lowercase letters, digits and hyphens.
+
+Inventory live anchors and depth layers with `velora anchors --scene home-hero --time 1200 --json`. The full target ref is `subject:revenue-card`. Where you cannot edit the markup, use a unique selector such as `subject:css(#revenue-card)`. Append `@0.5,0.25` to lock onto a point inside the element. In Studio's Focus tool, Shift-click follows an element and Alt-click offers a source edit for an unnamed JSX element.
+
+To lock the subject when creating a scene, run `velora new scene --template orbit-reveal --id pricing-orbit --route /pricing --focus revenue-card --json`.

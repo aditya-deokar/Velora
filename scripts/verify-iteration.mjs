@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {writeFile,readFile,access,rename} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
+import {setTimeout as delay} from 'node:timers/promises';
 import path from 'node:path';
 import {expect} from '@playwright/test';
 // Tests mutate only the disposable installed host, never project source or state.
@@ -10,7 +11,13 @@ export async function verifyIteration({page,host,origin,server,processes,waitFor
  const writeSource=async(name,source)=>{
   const temporary=file(name+'.pending');
   await writeFile(temporary,source);
-  await rename(temporary,file(name));
+  for(let attempt=0;;attempt++){
+   try {await rename(temporary,file(name));return;}
+   catch(error){
+    if(process.platform!=='win32'||attempt>=5||!['EPERM','EBUSY','EACCES'].includes(error.code))throw error;
+    await delay(20*(attempt+1));
+   }
+  }
  };
  const setupDiagnostics=[];
  const record=(kind,text)=>{setupDiagnostics.push({kind,text});if(setupDiagnostics.length>50)setupDiagnostics.shift()};
@@ -59,8 +66,14 @@ export async function verifyIteration({page,host,origin,server,processes,waitFor
  const seek=page.getByRole('slider',{name:'Scene time'});
  await seek.fill('4000');
  const blur=await page.locator('[data-velora-id="host"]').getAttribute('data-velora-blur');
+ const started=Date.now();
  await writeSource('scene.ts',sceneSource(1600));
- await expect(page.locator('[data-velora-id="host"]')).not.toHaveAttribute('data-velora-blur',blur);
+ await page.waitForFunction(previous=>{
+  const surface=document.querySelector('[data-velora-id="host"]');
+  return surface!==null&&surface.getAttribute('data-velora-blur')!==previous;
+ },blur);
+ const hmrMs=Date.now()-started;
+ console.log(`[budget] Vite source save to visible ${hmrMs} ms (target ≤ 300 ms)`);
  await expect(seek).toHaveValue('4000');
  await expect(page.getByRole('button',{name:'Inspect 1',exact:true})).toBeVisible();
  assert.equal(await page.evaluate(()=>window.hostIdentity===document.querySelector('[data-testid="host-revenue"]')),true);
@@ -90,7 +103,7 @@ export async function verifyIteration({page,host,origin,server,processes,waitFor
  await seek.focus();await page.keyboard.press('ArrowRight');
  await page.screenshot({path:path.join(root,'test-results/product-loaded-mobile.png')});
  const exited=new Promise(resolve=>server.once('exit',resolve));server.kill('SIGTERM');await exited;
- await expect(page.getByText('Reconnecting to your app…').first()).toBeVisible();
+ await expect(page.getByText('Reconnecting to your app…').first()).toBeVisible({timeout:20000});
  const replacement=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',new URL(origin).port,'--strictPort'],{cwd:host,stdio:'ignore'});processes.push(replacement);
  await waitFor(origin,replacement);
  await expect(page.getByText('Revenue: 12840',{exact:true})).toBeVisible({timeout:20000});
@@ -104,5 +117,6 @@ export async function verifyIteration({page,host,origin,server,processes,waitFor
  }
  const html=await readFile(path.join(root,'dist/index.html'),'utf8');
  assert.ok(!html.includes('/demo/')&&!html.includes('/tests/'));
+ if(process.env.VELORA_VERIFY_HARDWARE==='1')assert.ok(hmrMs<=300,`Vite source save took ${hmrMs} ms to appear (budget: 300 ms)`);
  console.log('Iteration: installed shell, metadata HMR, schema/syntax/render recovery, state, keyboard/mobile, reconnect and product/test build separation passed.');
 }

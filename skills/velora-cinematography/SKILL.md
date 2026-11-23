@@ -64,7 +64,7 @@ For the starting point itself, load `velora-templates` first.
    - low or steep oblique adds monumentality;
    - Dutch (`rotateZ` 3–8) adds unease or energy, sparingly;
    - symmetric, face-on framing reads as calm and precise.
-4. **Lens.** `lensFor(mm, frameHeight)` sets `perspective` and the matching focus focal length.
+4. **Lens.** `lensPreset(id, { frameHeight, stage })` derives the perspective and physical focus focal length from the lens and stage. Use framing hold when changing lenses for compression. Use position hold to keep the camera transform and compensate with `camera.zoom`.
    - 24–35 mm exaggerates depth and suits surveys.
    - 50 mm is natural.
    - 85–135 mm compresses depth, flatters, and gives shallow focus for racks and macro.
@@ -153,6 +153,25 @@ These techniques are named after where they are commonly taught and recognized; 
 - **The dolly zoom.** Moving the camera while zooming the opposite way, first popularized in 1950s and 1970s suspense films (`dolly-zoom`).
 - **Macro inserts and light sweeps.** Product-film close-ups that isolate one detail before showing context (`macro-detail`, `LightSweep`).
 
+## Look-At, Follow Focus and the Orbit Rig (Velora 1.1)
+
+- **Look-at.** `scene.constraints: [{ "kind": "lookAt", "target": { "surface": "hero", "anchor": [0.5, 0.4] } }]` pans and tilts the camera about its eye so the anchor (u, v in 0..1 of the Surface) sits at frame center. Camera x/y/z tracks still move the eye; rotateX/rotateY become derived, and the camera's x/y/z values are adjusted so the eye stays fixed. A `{ "point": [x, y, z] }` target aims at a stage point.
+- **Follow focus.** `{ "kind": "focusFollow", "target": { "surface": "hero" }, "offset": 0 }` holds `focus.distance` on the target's camera depth, so a dolly never loses the subject. Pair it with lookAt for subject-locked moves.
+- **Settling with weight.** `weight` (0..1, or a channel track `{ "target": { "kind": "channel", "id": "settle" }, "property": "value" }`) blends from the authored rotation to the aimed one. Ramp a `settle` channel from 0 to 1 over the last second for a camera that drifts, then locks on.
+- **Orbit rig.** `buildOrbitRig({ radius, fromDeg, toDeg, height, durationMs, ease })` returns `{ clip, constraint }`: a constant-speed camera position path, eased as a group, plus a lookAt. Add the clip to `motion.clips` and the constraint to `scene.constraints`. Keep arcs within about 60 degrees for UI subjects, and pair the rig with focusFollow at long lenses.
+- **Studio camera tools.** Select the subject and use Camera moves to preview a dolly zoom against the subject's framing. Use the Focus tool to set the near and far landings for a rack. The director view shows the layout and camera relationship. Review the landing in the camera view before capture.
+- Constraints resolve in the spatial owner from live layout, so preview and export agree. A constraint target must be a node in `scene.nodes`.
+
+## Directing in the Studio Viewport (Edit mode)
+
+People editing in the studio (`velora edit --scene <id>`) direct the camera in the frame. Every gesture is an `EditOp` you could also write with `velora edit`:
+- **Camera tool (C).** Drag orbits around the selected layer or the focus point; Shift+drag trucks and pedestals (x/y); the wheel or Alt+vertical drag dollies (z); Ctrl/⌘+drag pans and tilts in place (the eye stays fixed); the ring rolls (rotateZ). Alt+wheel changes the lens (focal length to `perspective` through `lens.ts`), and Alt+Shift+wheel is a **dolly-zoom** that keeps the selected subject's projected size while the background warps. A layer at z = 0 projects 1:1 under every lens, so dolly-zoom only moves the camera when the subject has depth.
+- **Writes.** Animated camera properties (or Auto-key) key at the playhead; otherwise the change is a `camera.set` static override.
+- **Director view (Tab).** An editor-only viewpoint that shows the real camera (eye, frustum to the frame plane and the focus plane) in the set; dragging the camera gizmo moves the real camera. Depth of field is off there, and exports refuse it with "Return to camera view before exporting.".
+- **Focus tool (F).** Click a layer to set `focus.distance` to that point's depth for the real camera; Shift+click adds `focusFollow` on it. Focus peaking turns on while the tool is active. The **Rack focus** command (two layers selected) writes two `focus.distance` keyframes with a cinematic ease over the work area (or 1.5 s from the playhead) that land sharp on each layer.
+
+Select one layer and open **Camera moves** to apply a shot as an editable clip. Check the frame coverage, depth margin, and focus blur in the inline verdict. Adjust the intensity or lens when the measured subject misses the framing limits.
+
 ## Related Skills
 
 - `velora-templates`: certified starting points that encode these moves.
@@ -168,3 +187,31 @@ These techniques are named after where they are commonly taught and recognized; 
 - Not for wiring files, discovery or providers; use `velora-scenes` or `velora-init`.
 - Not for editing several shots into a film; timing between shots belongs to `velora-editing` and `velora-composition`.
 - Not for claims about artistic quality from checks. Automated checks are technical; taste needs human review.
+## Camera-reactive UI depth
+
+Use `velora edit lens --scene hero --preset 200mm-telephoto --hold framing` to preview a telephoto change. `velora edit rack --scene hero --from layer:modal --to layer:chart --at 500 --duration 1200 --breathing 0.018` pulls focus through the local preview. A rack can also use explicit `depth:<px>` or surface coordinates such as `subject@0.5,0.5`. `--write` saves the edit.
+
+Chromium uses depth-sorted blur veils behind the focal plane and reversible filters for front layers. RouteFrame applies an SVG blur map to the iframe. A `dof-approximate` advisory reports when the renderer uses terminal-layer filters to preserve lifted children. Studio and `velora inspect --scene hero --at 1200 --json` expose signed focus distance and blur.
+
+Start at subtle intensity and orbit the app enough to see the difference between a card and its controls. Use **Depth view** to inspect tiers. Keep sheen restrained, and angle the light so the contact shadows make the layers legible. Examine the beginning and end of the move before freezing depth. Whole-leaf focus blur is deferred on volumetric surfaces, and projected RouteFrames retain the surface focus blur.
+
+## Lock onto a live element
+
+Run `velora anchors --scene home-hero --time 1200 --json` to see the elements in the running scene. Use a named anchor for an orbit, a scrolling route or a reflowing layout.
+
+```sh
+velora edit lock --scene home-hero --look-at subject:revenue-card --focus-follow subject:revenue-card --json
+velora edit lock --scene home-hero --frame subject:revenue-card --fill 0.6 --json
+```
+
+Review the diff and repeat with `--write` to save. Framing solves camera distance before aim and focus. Set `compose: [33.3, 50]` on a `lookAt` constraint to aim at the left third. Use the same scoped target refs for both ends of a live rack. Review the projected rect and blur at the beginning, middle and end.
+
+## Bake a physical camera rig
+
+Inspect the running scene first with `velora anchors --scene home-hero --time 0 --json`. A telephoto orbit keeps a named element framed while the camera moves. Backdrops placed thousands of scene pixels behind the target produce more separation. The rig report lists measured parallax and the required coverage of measured backdrops.
+
+```sh
+velora edit rig --scene home-hero --kind telephoto-parallax-orbit --target subject:revenue-card --arc 36 --mass heavy --json
+```
+
+A drone accepts ordered waypoints as named targets or stage-space points in `--params`. Check the minimum clearance report before using a through-flight. Keep the whip arrival visible for at least 300 ms before a cut.

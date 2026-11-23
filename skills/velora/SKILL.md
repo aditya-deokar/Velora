@@ -20,6 +20,7 @@ related-skills:
 - velora-brand
 - velora-looks
 - velora-editing
+- velora-editor
 - velora-init
 - velora-composition
 - velora-scenes
@@ -49,6 +50,11 @@ Load this skill first for every Velora request. Routing is progressive: read the
 | Website hero loop, landing-page background video | `velora-launch` → `velora-templates` → `velora-export` | `velora prompts show --id website-hero-loop --json` |
 | Vertical or social teaser (Reels, TikTok, Shorts) | `velora-launch` → `velora-templates` → `velora-editing` → `velora-looks` | `velora prompts show --id vertical-teaser --json` |
 | A bespoke shot no template makes | `velora-scenes` → `velora-cinematography` | `velora guide --json` |
+| Edit visually, continue an existing Studio draft | `velora-editor` | `velora edit --scene <id>` |
+| Polish timing or easing | `velora-editor` → `velora-motion-design` | `velora prompts show --id polish-easing --json` |
+| Group tracks or stagger an entrance | `velora-editor` → `velora-motion-design` | `velora prompts show --id stagger-entrances --json` |
+| Animate a 3D model | `velora-threejs` → `velora-editor` | `velora doctor --json` |
+| Recut to the beat | `velora-editing` → `velora-editor` → `velora-audio` | `velora prompts show --id recut-to-beats --json` |
 | Titles, stats, end cards, brand colors and fonts, motion feel | `velora-brand` → `velora-typography` → `velora-motion-design` | `velora brand check --json` |
 | Grade, grain, film look, flash or banding warnings | `velora-looks` | `velora shot --scene <id> --time 0 --finish --out look.png --json` |
 | New project, adapter, `VELORA.md`, `velora sync` | `velora-init` | `velora init --json` |
@@ -98,6 +104,7 @@ Every CLI command supports `--help` and `--json`. Exit 0 on success, 1 on operat
 | `velora new scene --template hero-push --id home-hero --route / --json` | `velora-templates` | `velora new scene --template hero-push --id home-hero --route / --json` |
 | `velora prompts ls --json` | `velora-launch` | `velora prompts show --id launch-film --json` |
 | `velora new video --blueprint launch-film-30s --id launch --route / --json` | `velora-templates` | `velora new video --blueprint launch-film-30s --id launch --route / --json` |
+| `velora edit key --scene home-hero --track camera.z --at 1200 --value 400 --json` | `velora-editor` | `velora edit apply --scene home-hero --ops ops.json --expect-sha <sha> --write --json` |
 | `velora review --composition launch.composition.json --json` | `velora-editing` | `velora review --composition launch.composition.json --platform youtube-1080p --json` |
 | `velora compose snap --composition launch.composition.json --to beats --json` | `velora-editing` | `velora compose snap --composition launch.composition.json --to beats --write --json` |
 | `velora audio beats --composition launch.composition.json --json` | `velora-audio` | `velora audio beats --composition launch.composition.json --write-markers --json` |

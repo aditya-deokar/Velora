@@ -299,6 +299,19 @@ export function readingTimeMs(copy: readonly string[]): number {
 }
 /** The recipe definition part (what presentPreview and recipe JSON hold), without layout metadata. */
 export function compositePreview(definition: ShotDefinition | CompositeDefinition): ShotDefinition {
-  const { width, height, scene, motion } = definition;
-  return { width, height, scene, motion };
+  const { width, height, scene, motion, focusTarget, look } = definition;
+  return { width, height, scene, motion, ...(focusTarget ? { focusTarget } : {}), ...(look ? { look } : {}) };
+}
+
+/** Keep authored layout boxes and resize the hosted route inside each box. */
+export function stageCompositeLayout(layout: readonly LayoutNode[]): LayoutNode[] {
+  const place = (element: LayoutElement | string): LayoutElement | string => {
+    if (typeof element === "string") return element;
+    if (element.type === "RouteFrame" && element.props) {
+      const { width, height, ...props } = element.props;
+      return el("AppStage", { fit: { width: Number(width), height: Number(height) } }, [el("RouteFrame", props)]);
+    }
+    return element.children ? { ...element, children: element.children.map(place) } : element;
+  };
+  return layout.map(node => ({ ...node, element: place(node.element) as LayoutElement }));
 }

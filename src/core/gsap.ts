@@ -77,7 +77,35 @@ export function gsapToVelora(tweens: unknown): { tracks: MotionTrack[] } | { iss
   });
   return issues.length ? { issues } : { tracks };
 }
-export type ForbiddenClock = "scrolltrigger" | "ticker" | "raf-loop";
+export type ThreeClock = "three-clock" | "three-delta";
+export type ForbiddenClock = "scrolltrigger" | "ticker" | "raf-loop" | ThreeClock;
+export const THREE_CLOCK_HINT = "Read seconds from useSceneClock() and assign the state directly at that time.";
+export function detectThreeClocks(source: string): { kind: ThreeClock; line: number }[] {
+  const hits = new Map<number, ThreeClock>();
+  const lineAt = (offset: number) => source.slice(0, offset).split("\n").length;
+  for (const match of source.matchAll(/\b(?:state\s*(?:\?\.|\.)\s*clock\b|clock\s*(?:\?\.|\.)\s*(?:getElapsedTime|getDelta)\s*\()/g)) {
+    hits.set(lineAt(match.index), "three-clock");
+  }
+  for (const callback of source.matchAll(/\buseFrame\s*\(\s*\([^,)]*,\s*([\w$]+)(?:\s*:\s*[^,)]+)?\s*\)\s*=>\s*/g)) {
+    const start = callback.index + callback[0].length;
+    let end = start;
+    if (source[start] === "{") {
+      let nesting = 0;
+      do {
+        if (source[end] === "{") nesting++;
+        if (source[end] === "}") nesting--;
+        end++;
+      } while (end < source.length && nesting > 0);
+    } else {
+      const boundary = source.slice(start).search(/[\n;,]/);
+      end = boundary < 0 ? source.length : start + boundary;
+    }
+    const parameter = callback[1].replace(/\$/g, "\\$");
+    const pattern = new RegExp(`[+-]=[^;\n}]*?(?<![\\w$])${parameter}(?![\\w$])`, "g");
+    for (const match of source.slice(start, end).matchAll(pattern)) hits.set(lineAt(start + match.index), "three-delta");
+  }
+  return [...hits].map(([line, kind]) => ({ kind, line })).sort((a, b) => a.line - b.line);
+}
 // Static detection of render-path clocks in scene/component source. Pure text
 // scan: ScrollTrigger, gsap.ticker (or any .ticker.), and requestAnimationFrame
 // loops all own a competing clock. Matches are evidence, returned with kind.
@@ -90,5 +118,5 @@ export function detectForbiddenClock(source: string): { kind: ForbiddenClock; li
     else if (/\.ticker\s*\./.test(text) || /gsap\s*\.\s*ticker/i.test(text)) found.push({ kind: "ticker", line });
     else if (/requestAnimationFrame\s*\(/.test(text)) found.push({ kind: "raf-loop", line });
   });
-  return found;
+  return [...found, ...detectThreeClocks(source)].sort((a, b) => a.line - b.line);
 }

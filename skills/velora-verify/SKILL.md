@@ -91,3 +91,7 @@ Expected: failures carry `ERR_VISUAL_MANIFEST`, `ERR_VISUAL_BLANK`, `ERR_VISUAL_
 - Do not use this skill to tune motion or budgets; load `velora-scenes` or `velora-performance`.
 - Do not use this skill to bypass frame inspection.
 - Do not present technical passes as artistic approval.
+
+## Verify live target locks
+
+Inspect the element with `velora anchors --scene home-hero --time 1200 --json`. Check projected position, visibility and blur across the shot, including after a scroll or layout change. On `ERR_TARGET_MISSING`, inventory the failing time and make the referenced anchor or selector resolve to a single visible element. Retry capture after the markup or recipe is corrected.

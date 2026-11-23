@@ -24,7 +24,7 @@ export function StudioOverlays({ width, height, state, root, timeMs }: { width: 
     if (!scope) return;
     const leaves = Array.from(scope.querySelectorAll<HTMLElement>("[data-velora-blur]"));
     for (const leaf of leaves) {
-      const sharp = state.peaking && Number(leaf.dataset.veloraBlur) < PEAKING_THRESHOLD;
+      const sharp = state.peaking && Number(leaf.dataset.veloraBlur) < PEAKING_THRESHOLD && !leaf.querySelector("[data-velora-depth-focus]");
       if (sharp) leaf.setAttribute("data-velora-peak", ""); else leaf.removeAttribute("data-velora-peak");
     }
     return () => { for (const leaf of leaves) leaf.removeAttribute("data-velora-peak"); };

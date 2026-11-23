@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { MotionTrackSchema, type MotionTrack } from "./motion";
 import { createCascadeTracks } from "./choreography";
+import { applyEasing, EasingSchema, type EasingInput } from "./easing";
 
-/** SOURCE OF TRUTH: TextStyleSchema, kinetic preset builders.
+/** SOURCE OF TRUTH: TextStyleSchema, kinetic preset builders, textAnimatorAt.
  * WHAT: text styling contracts plus pure builders that compile kinetic presets to motion tracks.
  * WHY: agents animate titles without hand-rolling keyframes or splitting the whole DOM.
  * WHERE: scene authors paste builder output into recipe motion; KineticText renders matching markup.
@@ -92,4 +93,53 @@ export function buildKineticTracks(
     ] }));
   }
   return { tracks, warnings };
+}
+
+/** After Effects-style text animator range selector (07.7). start/end/offset are percentages of the
+ * units (0–100); `shape` weights each unit by its position in the selected range; `ease` remaps weights. */
+export const SELECTOR_SHAPES = Object.freeze(["square", "ramp-up", "ramp-down", "triangle", "round", "smooth"] as const);
+export type SelectorShape = (typeof SELECTOR_SHAPES)[number];
+export type RangeSelector = { start: number; end: number; offset?: number; shape?: SelectorShape; ease?: EasingInput; wrap?: boolean };
+/** Amounts at full selection: opacity/scale are values the unit reaches; x, y, z, rotate, blur and
+ * tracking (em) are offsets; color is mixed in by the weight. */
+export type TextAnimatorAmounts = { opacity?: number; x?: number; y?: number; z?: number; rotate?: number; scale?: number; blur?: number; tracking?: number; color?: string };
+export type TextUnitState = { weight: number; opacity: number; x: number; y: number; z: number; rotate: number; scale: number; blur: number; tracking: number; color?: string; colorMix: number };
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+/** Weight of one unit [a, b] (percent) for a selector range [s, e] and shape. */
+function shapeWeight(shape: SelectorShape, a: number, b: number, s: number, e: number): number {
+  if (e <= s) return 0;
+  if (shape === "square") return b > a ? clamp01((Math.min(b, e) - Math.max(a, s)) / (b - a)) : 0;
+  const c = (a + b) / 2;
+  if (c < s || c > e) return shape === "ramp-up" && c > e ? 1 : shape === "ramp-down" && c < s ? 1 : 0;
+  const t = (c - s) / (e - s);
+  switch (shape) {
+    case "ramp-up": return t;
+    case "ramp-down": return 1 - t;
+    case "triangle": return 1 - Math.abs(2 * t - 1);
+    case "round": return Math.sqrt(Math.max(0, 1 - (2 * t - 1) ** 2));
+    case "smooth": return (1 - Math.cos(2 * Math.PI * t)) / 2;
+  }
+  return 0;
+}
+/** Per-unit animator state for `count` units (chars, words or lines). Pure: kit TextAnimator renders it. */
+export function textAnimatorAt(count: number, selector: RangeSelector, amounts: TextAnimatorAmounts): TextUnitState[] {
+  const n = Math.max(0, Math.floor(count));
+  const shape = selector.shape ?? "square";
+  const offset = selector.wrap ? (selector.offset ?? 0) % 100 : selector.offset ?? 0;
+  const s = Math.min(selector.start, selector.end) + offset, e = Math.max(selector.start, selector.end) + offset;
+  const ease = selector.ease === undefined ? undefined : EasingSchema.parse(selector.ease);
+  return Array.from({ length: n }, (_, index) => {
+    const a = (index / n) * 100, b = ((index + 1) / n) * 100;
+    let raw = shapeWeight(shape, a, b, s, e);
+    // Wrap: a range pushed past either end continues from the other end.
+    if (selector.wrap) raw = Math.max(raw, shapeWeight(shape, a + 100, b + 100, s, e), shapeWeight(shape, a - 100, b - 100, s, e));
+    const weight = ease !== undefined && raw > 0 && raw < 1 ? clamp01(applyEasing(ease, raw)) : raw;
+    const blend = (to: number | undefined, rest: number) => (to === undefined ? rest : rest + (to - rest) * weight);
+    return {
+      weight,
+      opacity: blend(amounts.opacity, 1), scale: blend(amounts.scale, 1),
+      x: blend(amounts.x, 0), y: blend(amounts.y, 0), z: blend(amounts.z, 0), rotate: blend(amounts.rotate, 0), blur: blend(amounts.blur, 0), tracking: blend(amounts.tracking, 0),
+      ...(amounts.color ? { color: amounts.color } : {}), colorMix: amounts.color ? weight : 0,
+    };
+  });
 }

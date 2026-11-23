@@ -17,7 +17,8 @@
     "src/core",
     "src/react",
     "src/kit",
-    "src/preview"
+    "src/preview",
+    "src/three"
   ],
   "exclude": [
     "demo",

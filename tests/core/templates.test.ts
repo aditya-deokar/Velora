@@ -4,6 +4,7 @@ import { ASPECT_FRAMES, buildShot, framingReport } from "../../src/core/shots";
 import { presentPreview } from "../../src/core/preview";
 import { compositePreview } from "../../src/core/composites";
 import { evaluateMotion, loopSeam } from "../../src/core/motion";
+import { stageFromSpec } from "../../src/core/stage";
 
 // Craft certification: every template x every declared aspect x every intensity yields a valid,
 // deterministic scene that keeps its subject framed, clear of the camera plane, and in focus at the end.
@@ -34,6 +35,12 @@ describe("template catalog", () => {
     expect(preview.valid, JSON.stringify(!preview.valid && preview.issues)).toBe(true);
     expect(certifyTemplate(manifest, resolved.params, aspect)).toEqual([]);
     expect(JSON.stringify(templateDefinition(manifest, resolved.params, aspect))).toBe(JSON.stringify(definition));
+  });
+  it("keeps the dramatic survey clear of the camera plane on a 16:9 stage", () => {
+    const manifest = findTemplate("monumental-survey")!;
+    const { params } = resolveTemplateParams(manifest, { intensity: "dramatic" });
+    expect(certifyTemplate(manifest, params, "16:9", stageFromSpec("desktop-1080"))).toEqual([]);
+    expect(certifyTemplate(manifest, params, "21:9", stageFromSpec("desktop-1080"))).toEqual([]);
   });
   it("blueprints reference real templates and supported aspects", () => {
     for (const blueprint of BLUEPRINT_CATALOG)

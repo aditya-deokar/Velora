@@ -86,7 +86,7 @@ describe("portable host connections",()=>{
   const wrapper=await read("src/velora/ProjectPreview.jsx");const handoff=await read("VELORA.md");const record=await read(".velora/integration.json");
   const legacyWrapper=wrapper.replace(`from "${VELORA_PACKAGE.preview}"`,'from "velora/preview"');
   // Earlier installers wrote the guide-v2 handoff (no prompt library section).
-  const v2Handoff=handoff.slice(0,handoff.indexOf("\n## Starting prompts")).replace("Authoring guide format: 3.","Authoring guide format: 2.");
+  const v2Handoff=handoff.slice(0,handoff.indexOf("\n## Starting prompts")).replace("Authoring guide format: 4.","Authoring guide format: 2.");
   const legacyHandoff=v2Handoff.replace("`"+TOOLKIT+"` and `"+VELORA_PACKAGE.preview+"`","`velora` and `velora/preview`");
   expect(legacyWrapper).not.toBe(wrapper);expect(legacyHandoff).not.toBe(handoff);
   const managed=JSON.parse(record);managed.files["src/velora/ProjectPreview.jsx"]=legacyWrapper;managed.files["VELORA.md"]=legacyHandoff;
@@ -99,13 +99,17 @@ describe("portable host connections",()=>{
   expect(await read(".velora/integration.json")).toBe(record);
   expect(success(await run(root)).changed).toBe(false);success(await run(root,"validate-project"));
  });
- it("upgrades a guide-v2 handoff written under the published package name",async()=>{
+ it.each([[2,TOOLKIT],[3,TOOLKIT],[3,"@example/studio"]])("upgrades format %d written under %s",async(format,packageName)=>{
   const root=await host();success(await run(root));
   const read=(file:string)=>readFile(path.join(root,file),"utf8");
   const handoff=await read("VELORA.md");const record=await read(".velora/integration.json");
-  const v2Handoff=handoff.slice(0,handoff.indexOf("\n## Starting prompts")).replace("Authoring guide format: 3.","Authoring guide format: 2.");
-  const managed=JSON.parse(record);managed.files["VELORA.md"]=v2Handoff;
-  await put(root,".velora/integration.json",JSON.stringify(managed,null,2)+"\n");await put(root,"VELORA.md",v2Handoff);
+  const previous=handoff.slice(0,handoff.indexOf(format===2?"\n## Starting prompts":"\n## Work with Studio")).replace("Authoring guide format: 4.",`Authoring guide format: ${format}.`)
+   .replace("`"+TOOLKIT+"` and `"+VELORA_PACKAGE.preview+"`","`"+packageName+"` and `"+packageName+"/preview`");
+  const managed=JSON.parse(record);managed.files["VELORA.md"]=previous;
+  const wrapper="src/velora/ProjectPreview.jsx";
+  managed.files[wrapper]=managed.files[wrapper].replace(VELORA_PACKAGE.preview,packageName+"/preview");
+  await put(root,wrapper,managed.files[wrapper]);
+  await put(root,".velora/integration.json",JSON.stringify(managed,null,2)+"\n");await put(root,"VELORA.md",previous);
   expect(await run(root,"validate-project")).toMatchObject({success:false,issues:[{code:"incomplete-setup"}]});
   expect(success(await run(root)).changed).toBe(true);
   expect(await read("VELORA.md")).toBe(handoff);

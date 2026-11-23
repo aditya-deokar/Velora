@@ -147,9 +147,9 @@ anything, so every frame is still a pure function of time.
   - preview and export match for every rig.
 
 ## Validation criteria
-- [ ] Each rig, applied by CLI, produces plain recipe data (paths, clips, constraints) that renders identically twice and identically in preview and export.
-- [ ] The drone path shows no visible keyframes: no velocity discontinuity at waypoints, and jerk under the threshold.
-- [ ] The telephoto orbit's measured peak parallax per layer matches the builder's report within 5%.
+- [x] Each rig, applied by CLI, produces plain recipe data (paths, clips, constraints) that renders identically twice and identically in preview and export.
+- [x] The drone path shows no visible keyframes: no velocity discontinuity at waypoints, and jerk under the threshold.
+- [x] The telephoto orbit's measured peak parallax per layer matches the builder's report within 5%.
 
 ## Anti-patterns
 - Runtime physics: integrators in React or in evaluation, `requestAnimationFrame` loops, or wall clocks.

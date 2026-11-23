@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import site from "./generated/site.json";
 
-type Page = "start" | "templates" | "cookbook" | "craft" | "deliver" | "cli" | "schemas";
+type Page = "start" | "studio" | "templates" | "cookbook" | "craft" | "deliver" | "cli" | "schemas";
 const PAGES: { id: Page; label: string }[] = [
-  { id: "start", label: "Start" }, { id: "templates", label: "Templates" }, { id: "cookbook", label: "Cookbook" },
+  { id: "start", label: "Start" }, { id: "studio", label: "Studio" }, { id: "templates", label: "Templates" }, { id: "cookbook", label: "Cookbook" },
   { id: "craft", label: "Craft" }, { id: "deliver", label: "Deliver" }, { id: "cli", label: "CLI" }, { id: "schemas", label: "Schemas" },
 ];
 const media = (file: string) => import.meta.env.BASE_URL + file;
@@ -123,6 +123,29 @@ function Templates() {
   );
 }
 
+function Studio() {
+  const video = site.hero?.files.find(file => file.path.endsWith(".mp4"));
+  const poster = site.hero?.files.find(file => file.role === "poster");
+  const local = (file?: { path: string }) => file ? media("media/hero/" + file.path.split("/").pop()) : undefined;
+  return <>
+    <Section title="Edit the scene and the cut" lede="Set keyframes on your live app, review the timing, and hand a focused edit to your coding agent.">
+      <Code>{`npx velora edit --scene home-hero
+npx velora edit --composition launch.composition.json`}</Code>
+      <div className="cards">
+        <article className="card"><h3>Shape a shot</h3><p>Set keyframes in the Inspector, refine easing in the graph, and group tracks into a timed clip.</p></article>
+        <article className="card"><h3>Cut the film</h3><p>Trim and reorder scenes, blend cuts, and align picture to audio and beat markers.</p></article>
+        <article className="card"><h3>Hand off the next edit</h3><p>Copy your selected tracks or shot, playhead, and intent to your coding agent. Changes land in the same recipe or composition file.</p></article>
+      </div>
+    </Section>
+    {video && <Section title="A render from the live website">
+      <figure className="hero-media">
+        <video controls playsInline preload="metadata" poster={local(poster)} src={local(video)} width={1280} height={720} aria-label="Velora camera move over the documentation website"/>
+        <figcaption className="evidence">Velora rendered this silent camera move from the live documentation site.</figcaption>
+      </figure>
+    </Section>}
+  </>;
+}
+
 function Cookbook() {
   const titles: Record<string, string> = { "demo-c": "Launch film (30 s)", "demo-d": "Website hero loop", "demo-e": "Vertical teaser with captions" };
   return (
@@ -220,7 +243,7 @@ export function App() {
       <nav className="nav"><a className="brand" href="#/start">Velora</a>{PAGES.map((item) => <a key={item.id} href={`#/${item.id}`} className={item.id === page ? "active" : ""}>{item.label}</a>)}
         <a className="external" href="https://github.com/aditya-deokar/Velora">GitHub</a></nav>
       <main>
-        {page === "start" && <Start />}{page === "templates" && <Templates />}{page === "cookbook" && <Cookbook />}
+        {page === "start" && <Start />}{page === "studio" && <Studio />}{page === "templates" && <Templates />}{page === "cookbook" && <Cookbook />}
         {page === "craft" && <Craft />}{page === "deliver" && <Deliver />}{page === "cli" && <Cli />}{page === "schemas" && <Schemas />}
       </main>
       <footer>MIT · <a href="https://github.com/aditya-deokar">Aditya Deokar</a> · this site is built with React and its hero is rendered by Velora.</footer>

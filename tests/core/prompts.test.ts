@@ -15,6 +15,8 @@ describe("prompt library", () => {
     for (const prompt of PROMPT_LIBRARY) expect(PromptSchema.safeParse(prompt).success).toBe(true);
     for (const id of ["launch-film", "feature-announcement", "website-hero-loop", "vertical-teaser", "dashboard-cinematic", "changelog-video", "product-hunt-assets"])
       expect(findPrompt(id), id).toBeDefined();
+    for (const id of ["edit-with-agent", "polish-easing", "stagger-entrances", "rack-focus", "promote-layer", "recut-to-beats"])
+      expect(findPrompt(id), id).toBeDefined();
     expect(PROMPT_LIBRARY.filter(prompt => prompt.featured).length).toBeGreaterThanOrEqual(3);
     expect(Object.isFrozen(PROMPT_LIBRARY)).toBe(true);
   });

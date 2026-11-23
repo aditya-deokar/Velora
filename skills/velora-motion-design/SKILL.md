@@ -114,6 +114,36 @@ Expected: three branded scenes that share fonts, colors and motion personality, 
 - **The guided cursor.** Screen-recording tools popularized a smooth cursor with an automatic zoom on each click (`cursor-demo`, `Cursor`).
 - **Springs.** Interface motion in modern design systems favors spring physics over fixed curves; the motion personalities map to spring and easing tables.
 
+## Motion Model v3 (Velora 1.1)
+
+- **Auto-bezier keyframes.** Set a keyframe's `easing` to `"auto"` and its outgoing segment becomes a monotone cubic Hermite through the neighboring keyframes: continuous velocity, never an overshoot. Use it for multi-point moves that should flow through waypoints while other segments keep their own curves. `"auto"` is valid only on numeric keyframes, not on a track `ease`.
+- **Color in OKLab.** Style tracks (`{ kind: "style", id }` with a `--name` property) and channel tracks accept color keyframes (`#rrggbb`, `rgb()`, `hsl()`, `oklab()`, `oklch()`, `transparent`). They blend in OKLab with premultiplied alpha and print canonical `rgb(R G B / A)`, so midpoints never go muddy and frames are deterministic. Named colors are rejected; use hex. Color tracks are segments only (no smooth, unit or noise).
+- **Animatables.** A component declares typed props with `useAnimatable(id, spec)` (number, color, boolean, enum). Each prop reads the channel `<id>.<prop>`: numbers clamp to min/max, booleans switch at 0.5, enums hold the rounded option index, and colors take color keyframes. Without a track the prop shows its spec default.
+- Restraint still applies: animate a color or a grade to support the story (an accent that warms on the reveal), not as decoration on every layer.
+
+## Clips, Staggers, Additive Layers and Links (Velora 1.1)
+
+- **Clips (groups in time).** `motion.clips: [{ "id": "intro", "startMs": 400, "speed": 1, "ease": "cubic.out", "tracks": [...] }]` moves, retimes and eases a group of tracks as one unit (track times are clip-local). `inMs`/`durationMs` trim, `loop` is a play count, and clips nest up to 4 deep. Each property has one replace owner across root tracks and replace clips; validation names both owners when two collide.
+- **Additive layers.** `"mode": "add"` sums a clip's values onto the owner (or onto the static base without one). Keyframe offsets around 0, for example a handheld `noise` on camera x over a push-in, or a bank on camera rotateZ.
+- **Staggers.** A clip with `"members": ["card-1", "card-2", "card-3"]` and `"stagger": { "eachMs": 120, "order": "center-out", "ease": "quad.out" }` repeats its `{ "kind": "surface", "id": "$member" }` tracks per member, offset by `ease(position) × eachMs × (n − 1)`. Orders: forward, reverse, center-out, edges-in, or `{ "random": seed }`. `createCascadeClip` builds the depth cascade as a clip.
+- **Paths.** A `"property": "position"` track with `[x, y, z]` keyframes moves along a curve (automatic handles, or `inTangent`/`outTangent` offsets); easing maps time to distance along each segment. `rove: true` gives constant speed, and `orient` turns the layer along the path. A path replaces x/y/z tracks on that target.
+- **Links (no expressions).** `motion.links: [{ "to": { "target": { "kind": "surface", "id": "bg" }, "property": "x" }, "from": { "target": { "kind": "camera" }, "property": "x" }, "scale": -0.2 }]` creates parallax; `delayMs` makes echoes and trails; `{ "channel": "scroll" }` drives counters. Links are acyclic, at most 8 deep.
+
+## Shaping Easing in the Graph Editor (Velora 1.1)
+
+In the studio's Edit mode (`velora edit --scene <id>`), press G for the graph editor: value and speed graphs
+drawn by the real evaluator. Dragging a segment's handles writes `{ "cubicBezier": [x1, y1, x2, y2] }` on the
+segment's start keyframe (out-handle = x1, y1; in-handle = x2, y2, in segment-normalized space; x stays in 0..1,
+y in −5..5). Handle modes: linear, ease (Easy Ease `[0.333, 0, 0.667, 1]`), continuous (matches velocity on both
+sides of a keyframe), auto (`"auto"`) and hold. Springs and steps get a parameter panel with settle time and
+overshoot. The easing library (E) offers Velora, After Effects, CSS, Penner, spring and steps presets. Start quiet UI motion with Easy Ease. Use overshoot for an intentional pop, with damping to control the settle and mass to set its weight. Keep camera arrivals restrained and check the camera-overshoot advisory. When animating color, review the intermediate OKLab blend in the real component alongside its endpoints.
+
+## Behaviors, project presets and graphics
+
+- `buildBehavior(id, params, { surface })` compiles ordinary clip tracks with behavior provenance. Start at subtle intensity. To regenerate a behavior clip in the studio, select it and choose **Edit behavior parameters**. Editing a generated track directly clears its source.
+- Save and reuse project motion from **Presets** or `velora edit preset ls|show|save|apply`. Presets live under `src/velora/presets/`. Use `$target` for a layer, and choose relative values to apply numeric or position offsets to the destination pose.
+- `DrawPath` keys normalized `start`, `end`, `offset`, `strokeWidth`, and `color`. `Shape` provides rect, ellipse, line, and polygon geometry with animatable size, radius, sides, fill, and stroke. Place each component inside a Surface leaf so it shares camera, focus, and capture.
+
 ## Related Skills
 
 - `velora-brand`: tokens and motion personality.
@@ -128,3 +158,9 @@ Expected: three branded scenes that share fonts, colors and motion personality, 
 
 - Do not use graphics where the real product can speak; prefer a layered real-UI shot.
 - Do not use it for timeline or audio work (`velora-composition`, `velora-audio`).
+
+## Regenerate physical camera moves
+
+Studio's Camera moves panel can bake a drone flyover, telephoto orbit, or macro whip from live targets. A rig stores a timed Bézier path, channels, constraints, and its parameter provenance. Horizon banking adds to any authored camera roll.
+
+To regenerate from the command line, use `velora edit rig --scene home-hero --clip camera-rig --arc 36 --json`. Pass the running preview origin if it uses a non-default port. Review the diff before applying. A waypoint drag in Director view rebakes the flight in one undo step.

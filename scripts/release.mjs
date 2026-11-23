@@ -35,9 +35,12 @@ export function validateIdentity(manifest, {repository, tag, publishing = false}
 export const PACKAGE_BUDGET = Object.freeze({ unpackedBytes: 6 * 1024 * 1024, fileBytes: 2 * 1024 * 1024 });
 export function validateRelease(manifest, files, options = {}) {
   validateIdentity(manifest, options);
+  for (const field of ['dependencies','optionalDependencies','peerDependencies'])
+    assert.ok(!manifest[field]?.['axe-core'], 'axe-core must remain a test-only dependency');
   const names = files.map(file => file.path);
   assert.equal(new Set(names).size, names.length, 'Duplicate packed paths');
   for (const name of names) {
+    assert.ok(!name.includes('axe-core'), 'Accessibility audit code must stay out of the package');
     assert.ok(!name.split('/').some(part => part === '..' || part.startsWith('.')), 'Hidden/traversal packed file: ' + name);
     assert.ok(/^(package\.json|README\.md|LICENSE|dist\/(library|cli)\/.+\.(js|map|ts)|schemas\/[a-z-]+\.schema\.json|skills\/velora\/SKILL\.md|skills\/velora\/(REFERENCE|COMPATIBILITY)\.md|skills\/velora\/templates\/[^/]+\/[^/]+\.(json|tsx|jsx|md|srt|txt)|skills\/velora\/scripts\/[A-Za-z0-9-]+\.mjs|skills\/velora-[a-z0-9-]+\/SKILL\.md)$/.test(name),
       'Unexpected packed file: ' + name);
@@ -47,6 +50,12 @@ export function validateRelease(manifest, files, options = {}) {
   for (const file of sized) assert.ok(file.size <= PACKAGE_BUDGET.fileBytes, `Packed file over the ${PACKAGE_BUDGET.fileBytes} byte budget: ${file.path} (${file.size})`);
   const total = sized.reduce((sum, file) => sum + file.size, 0);
   assert.ok(total <= PACKAGE_BUDGET.unpackedBytes, `Unpacked package ${total} bytes exceeds the ${PACKAGE_BUDGET.unpackedBytes} byte budget`);
+  if (manifest.exports["./three"]) {
+    for (const peer of ["three", "@react-three/fiber"]) {
+      assert.equal(typeof manifest.peerDependencies?.[peer], "string", `Missing ${peer} peer dependency`);
+      assert.equal(manifest.peerDependenciesMeta?.[peer]?.optional, true, `${peer} must remain optional`);
+    }
+  }
   const required = ['package.json','README.md','LICENSE',manifest.bin.velora.slice(2)];
   for (const entry of Object.values(manifest.exports)) {
     assert.equal(typeof entry.types, 'string');

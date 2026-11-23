@@ -12,7 +12,7 @@ export { TemplateGallery } from "./TemplateGallery";
 export { QuickShot, quickShotSearch } from "./QuickShot";
 export { CompositionPlayer } from "./CompositionPlayer";
 import type { PreviewHot } from "./connection";
-export { ScenePreview } from "./ScenePreview";
+export { ScenePreview, usePreviewHost, exportUrl, type PreviewHost } from "./ScenePreview";
 export type { ScenePreviewProps } from "./ScenePreview";
 export type { PreviewHot } from "./connection";
 
@@ -38,7 +38,8 @@ export function ProjectPreview({children, projectId, enabled, active, hot, scene
     url.searchParams.delete("velora-preview");
     const quick = url.searchParams.has("velora-quick");
     const captions = readCaptionsRequest(url.search);
-    for (const key of ["velora-scene", "velora-tab", "velora-quick", "velora-route", "velora-params", "velora-composition"]) url.searchParams.delete(key);
+    for (const key of ["velora-scene", "velora-tab", "velora-quick", "velora-route", "velora-params", "velora-composition", "velora-edit", "velora-from-composition", "velora-cut-time", "velora-local-time"]) url.searchParams.delete(key);
+    url.hash = url.hash.startsWith("#velora-bridge=") ? "" : url.hash;
     return {requested, quick, captions, back: url.pathname + url.search + url.hash};
   }, [location]);
   const content = useMemo(() => <Surface id="velora-application" style={{width:"100%",minHeight:980}}>{children}</Surface>, [children]);

@@ -66,6 +66,8 @@ For a whole launch, `velora deliver --composition launch.composition.json --targ
 
 ## Workflow
 
+The app stage fixes the UI's logical width and height. Export dimensions set the video size. Standard and master capture honor the recipe's stage DPR, subject to a 3840-pixel capture-side limit. Draft captures at 0.5×. Use `velora shot --scene home-hero --time 1200 --stage-dpr 1.5 --out close.png --json` to compare a raster close-up. Read `effectiveDpr` and `dprCapped` in the stage lineage. A 2× capture has four times as many pixels as 1× before the linear-light downscale.
+
 1. Run `velora validate --composition teaser.composition.json --json`.
 2. Prove one frame: `velora render --composition teaser.composition.json --frame 0 --out proof.png --json`.
 3. Encode: `velora render --composition teaser.composition.json --out teaser.mp4 --json` with `--fps`, `--width`, `--height`, and `--parallel` as needed.
@@ -119,3 +121,9 @@ FPS and size choice: 24 for a cinematic cadence, 25/50 for PAL deliverables, 30 
 - Do not use this skill for composition authoring; load `velora-composition`.
 - Do not use this skill for still-only tasks; load `velora-render`.
 - Do not claim artistic quality from manifests; they prove reproducibility.
+
+## Directional blur and shutter accumulation
+
+Whips use a directional velocity filter stored in `look.velocityBlur` with a shutter duration in milliseconds. Preview and capture use that same duration at every export frame rate.
+
+Master quality or explicit shutter accumulation disables the velocity filter before the first capture seek. The render manifest records the chosen blur mode. Inspect the whip during peak motion and at the arrival frame.

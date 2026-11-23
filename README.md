@@ -168,7 +168,7 @@ The development proxy strips `X-Frame-Options` and `frame-ancestors` so pages ca
 
 ## Scenes and studio
 
-The agent creates `src/velora/scenes/my-shot.scene.json` and matching `my-shot.tsx` or `my-shot.jsx` (one component per recipe). JSON owns the scene definition; the component imports actual host UI and returns stable `Surface` elements. The shared studio supplies the camera renderer, playback and capture—no separate scene editor or duplicated renderer.
+The agent creates `src/velora/scenes/my-shot.scene.json` and matching `my-shot.tsx` or `my-shot.jsx` (one component per recipe). JSON owns the scene definition; the component imports actual host UI and returns stable `Surface` elements. The shared studio supplies the camera renderer, playback and capture, with no duplicated renderer.
 
 Outside Vite, run `npx velora sync` after adding/removing scene pairs. Existing file edits use your host’s hot reload. Open the scene library, select a scene, play or seek, and revise its source through your running dev server.
 
@@ -179,6 +179,30 @@ npx velora snapshot --scene my-shot --url http://127.0.0.1:5173
 ```
 
 Snapshots cache rendered local pixels in the recipe. Refresh them after visual changes; they may include visible app data.
+
+New scaffolds use `laptop-14`, a 1512×982 CSS viewport at 2×. Choose a preset or pass the viewport as `--stage 1536x730@1.25`. **Use as stage** in Studio can save your current window or screen size. Set the video dimensions independently when you export.
+
+Enable UI depth on a surface with `velora edit depth --scene home-hero --surface subject --mode auto --write`. Depth tiers give cards and controls parallax, edges, shadows and camera-reactive sheen. Use `velora depth resolve --scene home-hero --write` to freeze the classified layers before delivery.
+
+### Edit mode: keyframes by hand
+
+```sh
+npx velora edit --scene my-shot
+npx velora edit key --scene my-shot --track camera.z --at 1200 --value 400 --ease cubic.out
+```
+
+The first command verifies your dev server, starts the local edit bridge and opens the editor. The second is the headless equivalent for one keyframe (a dry run until you add `--write`).
+
+Edit mode puts layers, the Inspector, a dope sheet and a graph around the live scene. Click a stopwatch to animate a property, set another value at the playhead, and use F9 for Easy Ease. Ctrl/⌘+G groups selected tracks into a clip. **Ask agent** copies the selection and edit intent for your coding agent. The local bridge saves gestures to the scene JSON. Without a bridge, **Copy as command** gives you the equivalent CLI batch.
+
+Open **Compositions → Edit** to cut a film with audio waveforms, captions, overlays and beat markers. Use the local bridge to save, or preview a JSON batch with the CLI.
+
+```sh
+npx velora edit --composition launch.composition.json
+npx velora compose edit --composition launch.composition.json --ops ops.json --json
+```
+
+[Watch a video rendered by Velora](website/public/media/hero/hero.mp4) · [Studio walkthrough](USER_GUIDE.md#editing-scenes-by-hand-edit-mode)
 
 ## Export video
 

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { SceneRecipeSchema } from "../../src/core/recipes";
 import { CompositionSchema } from "../../src/core/composition";
+import { CLI_COMMANDS } from "../../src/core/cli-schema";
 
 // Copy-pasted documentation is executable input: every JSON block shaped like a scene
 // recipe or composition must parse against the canonical schema. Leading `// path`
@@ -14,7 +15,8 @@ function jsonBlocks(file: string) {
     return { label: `${file} json block ${index + 1}`, value: JSON.parse(body) as Record<string, unknown> };
   });
 }
-const blocks = ["README.md", "USER_GUIDE.md"].flatMap(jsonBlocks);
+const docs = ["README.md", "USER_GUIDE.md"];
+const blocks = docs.flatMap(jsonBlocks);
 
 describe("documentation examples", () => {
   it("documents at least one recipe and one composition", () => {
@@ -26,5 +28,16 @@ describe("documentation examples", () => {
     if (!schema) return;
     const parsed = schema.safeParse(value);
     expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+  });
+  it.each(docs)("%s uses registered commands and flags in shell examples", file => {
+    const text = readFileSync(new URL(`../../${file}`, import.meta.url), "utf8");
+    const examples = [...text.matchAll(/^\s*(?:npx\s+)?velora\s+([a-z][a-z-]*)([^\r\n]*)/gm)];
+    expect(examples.length).toBeGreaterThan(0);
+    for (const [line, name, args] of examples) {
+      const command = CLI_COMMANDS.find(item => item.name === name);
+      expect(command, line).toBeDefined();
+      const flags = [...args.matchAll(/\s(--[a-z][a-z-]*)\b/g)].map(flag => flag[1]).filter(flag => flag !== "--help");
+      expect(command?.flags, line).toEqual(expect.arrayContaining(flags));
+    }
   });
 });

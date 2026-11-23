@@ -288,6 +288,68 @@ You can string multiple scenes together into a complete product launch video:
 
 ---
 
+### Editing scenes by hand (Edit mode)
+
+Run `npx velora edit --scene <id>` while your dev server is running. It opens the studio in **Edit mode**:
+- **Layers** (left): camera, focus, your Surfaces, typed component props and clips. Rename, color-tag, lock, solo or hide (solo and hide are editor-only).
+- **Inspector** (right): click ⏱ to animate a property, then type values or drag-scrub fields; the value at the playhead shows in italics while interpolating. ◀ ◆ ▶ jump between and toggle keyframes.
+- **Timeline** (bottom): drag keyframes (snapping to frames, the playhead, markers and other keys; Shift suspends), Alt-drag to retime a selection, drag clip bars, press G for the graph editor and E for the easing library.
+- **Saving**: every gesture saves to `src/velora/scenes/<id>.scene.json`; Ctrl/⌘+Z undoes exactly. If an agent or your IDE changes the file, the editor rebases or shows **Changed on disk**.
+
+1. Select a layer, click **Animate** beside a property, and move the playhead. Enter a new value to add a second keyframe. Select the first key, then press F9 to ease the outgoing segment.
+2. Press G to open the Graph Editor. Drag the outgoing and incoming handles to shape the timing. Use the value graph to check the endpoints and the speed graph to inspect how the move settles.
+3. Select related layer tracks and press Ctrl/⌘+G. In **Stagger layers**, order the members and adjust the spacing between their entrances. Play through the overlap and settle.
+4. Use the camera tool to frame the shot, or the focus tool to select where sharpness lands. Choose **Toggle director view** in the command palette to inspect the spatial setup, and return to camera view to judge the frame.
+5. Open **Source** in a connected React project. Pick an element or select one in the JSX outline. Choose **Promote to layer**, review its JSX and recipe changes, then confirm. Recheck the original app layout.
+6. In a React 19 project using `/three`, select a registered model part in Layers or the canvas. Animate one of its registered channels in the Inspector and scrub backwards to check the same pose returns at the same time.
+
+**Ask agent** sends your coding agent a copyable prompt with the current selection, playhead, work area and recent edits. An agent can read tracks with `npx velora edit ls --scene <id> --json`, preview with `npx velora edit apply --scene <id> --ops ops.json --json`, and write the reviewed batch with `--expect-sha <sha> --write`.
+
+### Set the app stage
+
+Choose **Use as stage** in the scene header to save the current browser viewport or screen size. With a connected edit bridge, the change is one undoable edit. In read-only preview, the button copies the matching CLI command.
+
+```sh
+npx velora new scene --template hero-push --id home-hero --route / --stage laptop-14 --json
+npx velora edit stage --scene home-hero --preset laptop-13 --json
+npx velora inspect --scene home-hero --json
+```
+
+The stage sets the CSS viewport for the app. The aspect and export dimensions set the output frame. `RouteFrame` uses the stage for viewport breakpoints, while in-tree components can read the stage through `useAppStage()` or a named container query. Export at standard quality uses the stage DPR within the 3840-pixel capture limit. Read `effectiveDpr` and `dprCapped` in the render lineage.
+
+### Add depth to app surfaces
+
+Select a surface in Edit mode and open **Depth** in the Inspector. Choose **auto** to classify containers, cards, controls and floating UI, or use **rules** with anchors and selectors. Set the light direction and sheen, then animate **elevation** from 0 to 1 to raise the layers during a shot. **Depth view** shows the tiers, and **Explode** is available from the director viewpoint.
+
+```sh
+npx velora edit depth --scene home-hero --surface subject --mode auto --intensity subtle --write
+npx velora depth resolve --scene home-hero --url http://127.0.0.1:5173 --json
+npx velora depth resolve --scene home-hero --url http://127.0.0.1:5173 --write
+```
+
+Use `data-velora-tier` on your own components for explicit tiers, pixel heights, or `flat` regions. In-tree depth uses CSS 3D where the host allows it. RouteFrame projects each layer onto the iframe plane and retains the surface's focus blur. Volumetric depth defers the whole-leaf focus blur to keep its layers in 3D. The depth hashes in export results and render manifests identify the classified layers.
+
+### Recut a composition
+
+Run `npx velora edit --composition launch.composition.json` against your running app. Select or reorder shots with V, ripple with B, roll with N, slip with Y and split with C. M adds a cue at the playhead. Drag an overlap transition onto an incoming cut and adjust its handle. Choose an audio clip to change gain and fades in the Inspector, or drag its lane handles.
+
+Run `npx velora audio beats --composition launch.composition.json --write-markers --json` to store a music bed's beat grid. In Studio, open **Snap all cuts to beats**, review the deltas, and apply them as one undoable edit. Review pins select their shot or overlay. Double-click a shot to open its recipe and use **Back to composition** to return to the same global time.
+
+---
+
+### Cinema lenses and rack focus
+
+Studio offers four lens presets from 24 mm drone to 200 mm telephoto. Leave **Hold framing** selected to keep the subject's size while changing the camera distance. Clear it to keep the camera transform and compensate with image zoom. `camera.zoom` can also be animated directly.
+
+In the Focus inspector, choose the two layers and use **Add rack**. A work area defines the pull's timing when set. The inspector shows signed distance from focus and blur in pixels. Named depth layers can also be measured from a running preview with `velora inspect --scene hero --at 1200 --json`.
+
+```sh
+velora edit lens --scene hero --preset 200mm-telephoto --hold framing --write
+velora edit rack --scene hero --from layer:modal --to layer:chart --at 500 --duration 1200 --breathing 0.018 --write
+```
+
+Run the commands without `--write` to review the diff first. `--url` selects the preview origin for live layer targets. A rack can also use `subject@0.5,0.5` or an explicit `depth:11000` target.
+
 ## 5. Helpful CLI Diagnostic Commands
 
 Velora comes with a complete suite of verification and diagnostics:

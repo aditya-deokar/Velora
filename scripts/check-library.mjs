@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mkdtemp,cp,mkdir,readFile,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,cp,mkdir,readFile,readdir,writeFile,rm} from 'node:fs/promises';
 import path from 'node:path';import {tmpdir} from 'node:os';import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';import {npmCmd, NPM_SHELL} from './npm-cmd.mjs';import {createServer} from 'node:net';import {chromium} from 'playwright';import {expect} from '@playwright/test';
 const root=fileURLToPath(new URL('../',import.meta.url));const scratch=await mkdtemp(path.join(tmpdir(),'velora-library-'));const host=path.join(scratch,'local-project');
@@ -25,10 +25,12 @@ try{
  assert.notEqual(firstImage,secondImage,'Snapshot reflects the canonical seek time');
  const staticPath=path.join(host,'src/velora/scenes/customer-focus.scene.json');const savedStatic=await readFile(staticPath,'utf8');const still=JSON.parse(savedStatic);delete still.definition.motion;await writeFile(staticPath,JSON.stringify(still));
  assert.equal((await snap('customer-focus')).data.timeMs,0,'Static scenes support snapshots');await writeFile(staticPath,savedStatic);
- const cliList=JSON.parse(await run([process.execPath,cli,'scenes','--json']));assert.equal(cliList.success,true);assert.equal(cliList.data.scenes.length,10);
+ const recipeIds=(await readdir(path.join(host,'src/velora/scenes'))).filter(name=>name.endsWith('.scene.json')).map(name=>name.slice(0,-'.scene.json'.length)).sort();
+ const cliList=JSON.parse(await run([process.execPath,cli,'scenes','--json']));assert.equal(cliList.success,true);
+ assert.deepEqual(cliList.data.scenes.map(scene=>scene.id).sort(),recipeIds);
  browser=await chromium.launch({channel:'chromium',headless:true});const page=await browser.newPage({viewport:{width:1440,height:1000}});
  await page.goto(origin+'/?velora-preview=1');await expect(page.getByRole('heading',{name:'Your scenes',exact:true})).toBeVisible();
- await expect(page.getByText('10 perspectives',{exact:true})).toBeVisible();
+ await expect(page.getByText(recipeIds.length+' perspectives',{exact:true})).toBeVisible();
  // Real projected edges must widen toward the viewer at the bottom.
  const upper=await page.locator('[data-scene-id]').nth(0).boundingBox();
  const lower=await page.locator('[data-scene-id]').nth(3).boundingBox();
@@ -109,9 +111,9 @@ try{
  const added=JSON.parse(original);added.id='added';added.title='Added from source';
  const addedJson=path.join(host,'src/velora/scenes/added.scene.json');const addedComponent=path.join(host,'src/velora/scenes/added.tsx');
  await writeFile(addedComponent,await readFile(path.join(host,'src/velora/scenes/plating.tsx'),'utf8'));await writeFile(addedJson,JSON.stringify(added));
- await expect(page.locator('[data-scene-id="added"]')).toHaveCount(1);await expect(page.getByText('11 perspectives',{exact:true})).toBeVisible();
- await rm(addedJson);await rm(addedComponent);await expect(page.getByText('10 perspectives',{exact:true})).toBeVisible();await page.waitForLoadState('networkidle');
+ await expect(page.locator('[data-scene-id="added"]')).toHaveCount(1);await expect(page.getByText(`${recipeIds.length+1} perspectives`,{exact:true})).toBeVisible();
+ await rm(addedJson);await rm(addedComponent);await expect(page.getByText(`${recipeIds.length} perspectives`,{exact:true})).toBeVisible();await page.waitForLoadState('networkidle');
  await page.goto(origin+'/?velora-preview=1&velora-scene=deleted');await expect(page.getByRole('alert')).toContainText('cannot be opened');
  await page.goto(origin);await expect(page.getByRole('link',{name:'Open scene library ↗'})).toBeVisible();
- console.log('Installed catalog: 10 scenes, native plane scroll, selection/reload/CLI parity, recovery, mobile and real MP4 export passed.');
+ console.log(`Installed catalog: ${recipeIds.length} scenes, native plane scroll, selection/reload/CLI parity, recovery, mobile and real MP4 export passed.`);
 }finally{await browser?.close();server?.kill('SIGTERM');if(process.platform==='win32')await new Promise(r=>setTimeout(r,500));await rm(scratch,{recursive:true,force:true,maxRetries:5,retryDelay:500}).catch(()=>{})}

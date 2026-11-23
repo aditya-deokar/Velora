@@ -1,4 +1,5 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useSurfaceDepthActive } from "../react/depth";
 
 /** SOURCE OF TRUTH: BrowserFrame, WindowFrame, PhoneFrame, LaptopFrame, TabletFrame.
  * WHAT: CSS-only device and window chrome around real UI: generic shapes (no bitmaps, no
@@ -14,6 +15,7 @@ const palette = (theme: FrameTheme) => theme === "dark"
   ? { chrome: "#1e1e23", edge: "#34343c", text: "#c9c9d1", dot: "#4a4a54", screen: "#0b0b0f" }
   : { chrome: "#ececf0", edge: "#d2d2d9", text: "#55555f", dot: "#c4c4cc", screen: "#ffffff" };
 const dropShadow = "0 50px 120px rgba(0,0,0,.45), 0 18px 40px rgba(0,0,0,.28)";
+const useLayout = typeof window === "undefined" ? useEffect : useLayoutEffect;
 const screen = (width: number, height: number, background: string, radius = 0): CSSProperties =>
   ({ position: "relative", width, height, overflow: "hidden", background, borderRadius: radius });
 
@@ -56,10 +58,24 @@ export function TabletFrame({ width, height, children, theme = "dark", shadow = 
 }
 /** A generic laptop: screen bezel over a tapered base. */
 export function LaptopFrame({ width, height, children, theme = "dark", shadow = true, style }: FrameProps) {
+  const containingDepth = useSurfaceDepthActive();
+  const [nestedDepth, setNestedDepth] = useState(false);
+  const frame = useRef<HTMLDivElement>(null);
+  useLayout(() => {
+    const element = frame.current;
+    if (containingDepth || !element) return;
+    const check = () => setNestedDepth(!!element.querySelector("[data-velora-depth-proxies]"));
+    check();
+    if (typeof MutationObserver === "undefined") return;
+    const observer = new MutationObserver(check);
+    observer.observe(element, { subtree: true, childList: true });
+    return () => observer.disconnect();
+  }, [containingDepth]);
+  const depth = containingDepth || nestedDepth;
   const c = palette(theme), bezel = Math.round(width * 0.025), baseHeight = Math.round(width * 0.035);
-  return <div data-velora-frame="laptop" style={{ width: width + bezel * 2 + width * 0.12, display: "flex", flexDirection: "column", alignItems: "center", filter: shadow ? "drop-shadow(0 40px 60px rgba(0,0,0,.4))" : "none", ...style }}>
+  return <div ref={frame} data-velora-frame="laptop" style={{ width: width + bezel * 2 + width * 0.12, display: "flex", flexDirection: "column", alignItems: "center", filter: shadow && !depth ? "drop-shadow(0 40px 60px rgba(0,0,0,.4))" : "none", ...(shadow && depth ? { boxShadow: "0 40px 60px rgba(0,0,0,.4)" } : {}), ...style }}>
     <div style={{ width: width + bezel * 2, height: height + bezel * 2, padding: bezel, boxSizing: "border-box", borderRadius: `${bezel * 1.4}px ${bezel * 1.4}px 0 0`, background: "#0d0d10", border: `2px solid ${c.edge}`, borderBottom: "none" }}>
-      <div style={screen(width, height, c.screen)}>{children}</div>
+      <div style={{ ...screen(width, height, c.screen), ...(depth ? { overflow: "clip" } : {}) }}>{children}</div>
     </div>
     <div style={{ width: "100%", height: baseHeight, borderRadius: `0 0 ${baseHeight}px ${baseHeight}px`, background: theme === "dark" ? "linear-gradient(#3a3a42,#1c1c21)" : "linear-gradient(#e6e6ec,#b9b9c2)", position: "relative" }}>
       <span style={{ position: "absolute", left: "50%", top: 0, width: "16%", height: baseHeight * 0.35, transform: "translateX(-50%)", borderRadius: `0 0 ${baseHeight}px ${baseHeight}px`, background: "rgba(0,0,0,.25)" }}/>

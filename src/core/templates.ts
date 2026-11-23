@@ -1,6 +1,9 @@
 import { z } from "zod";
+import { DEFAULT_DEPTH_LIGHT, type DepthMap } from "./depth";
 import { SceneRecipeIdSchema } from "./recipes";
-import { AspectSchema, IntensitySchema, ShotKindSchema, buildShot, framingReport, projectPoints, ASPECT_FRAMES, type Aspect, type ShotDefinition, type ShotInput } from "./shots";
+import type { ElementTarget } from "./targets";
+import { AspectSchema, IntensitySchema, ShotKindSchema, buildShot, lockShotFocus, framingReport, projectPoints, ASPECT_FRAMES, type Aspect, type ShotDefinition, type ShotInput } from "./shots";
+import { fitStage, type Stage } from "./stage";
 import { SegmentTransitionSchema } from "./transitions";
 import { COMPOSITE_IDS, buildComposite, readingTimeMs, type CompositeDefinition } from "./composites";
 
@@ -61,7 +64,7 @@ export const BlueprintSchema = z.strictObject({
 export type Blueprint = z.output<typeof BlueprintSchema>;
 
 const intensity: TemplateParam = { name: "intensity", type: "enum", options: [...IntensitySchema.options], default: "subtle", description: "How far the move travels: subtle (restraint by default), standard or dramatic." };
-const lens = (fallback: number): TemplateParam => ({ name: "lens", type: "number", min: 24, max: 135, default: fallback, unit: "mm", description: "Full-frame lens: wide (24-35 mm) exaggerates depth, long (85-135 mm) compresses it." });
+const lens = (fallback: number): TemplateParam => ({ name: "lens", type: "number", min: 24, max: 200, default: fallback, unit: "mm", description: "Wide lenses emphasize perspective. Long lenses up to 200 mm compress depth." });
 const duration = (fallback: number, min = 2000, max = 15000): TemplateParam => ({ name: "durationMs", type: "number", min, max, default: fallback, unit: "ms", description: "Shot length in milliseconds." });
 const region: TemplateParam = { name: "focusRegion", type: "region", description: "Subject pixels x,y,width,height (top-left origin) the shot frames and keeps sharp; defaults to the center third." };
 const allAspects: Aspect[] = ["16:9", "21:9", "1:1", "4:5", "9:16"];
@@ -314,9 +317,10 @@ export function resolveTemplateParams(manifest: TemplateManifest, overrides: Rea
   const params: Record<string, ParamValue> = {};
   const issues: TemplateIssue[] = [];
   for (const name of Object.keys(overrides))
-    if (!manifest.params.some(param => param.name === name))
+    if (name !== "lens" && !manifest.params.some(param => param.name === name))
       issues.push({ code: "ERR_TEMPLATE_PARAM", path: `params.${name}`, message: `Template ${manifest.id} has no param "${name}". Available: ${manifest.params.map(param => param.name).join(", ")}.` });
-  for (const param of manifest.params) {
+  const parameters = overrides.lens !== undefined && !manifest.params.some(param => param.name === "lens") ? [...manifest.params, lens(50)] : manifest.params;
+  for (const param of parameters) {
     const raw = overrides[param.name];
     if (param.type === "region") {
       if (raw === undefined) continue;
@@ -348,39 +352,50 @@ export function findBlueprint(id: string): Blueprint | undefined {
   return BLUEPRINT_CATALOG.find(entry => entry.id === id);
 }
 /** The shot input a resolved template compiles to. */
-export function templateShotInput(manifest: TemplateManifest, params: Record<string, ParamValue>, aspect: Aspect, subject?: { width: number; height: number }): ShotInput {
+export function templateShotInput(manifest: TemplateManifest, params: Record<string, ParamValue>, aspect: Aspect, subject?: { width: number; height: number }, focusTarget?: ElementTarget): ShotInput {
   if (!manifest.shot) throw new Error(`Template ${manifest.id} compiles a composite layout, not a camera shot.`);
   return {
     kind: manifest.shot, aspect, ...(subject ? { subject } : {}),
     ...(typeof params.intensity === "string" ? { intensity: params.intensity as ShotInput["intensity"] } : {}),
     ...(typeof params.lens === "number" ? { lens: params.lens } : {}),
     ...(typeof params.durationMs === "number" ? { durationMs: params.durationMs } : {}),
-    ...(typeof params.focusRegion === "object" ? { focusRegion: params.focusRegion } : {}),
+    ...(focusTarget ? { focusTarget } : typeof params.focusRegion === "object" ? { focusRegion: params.focusRegion } : {}),
     ...(typeof params.scrollDistance === "number" ? { scrollDistance: params.scrollDistance } : {}),
     ...(typeof params.seed === "number" ? { seed: params.seed } : {}),
   };
 }
-export function templateDefinition(manifest: TemplateManifest, params: Record<string, ParamValue>, aspect: Aspect, subject?: { width: number; height: number }): ShotDefinition | CompositeDefinition {
-  if (manifest.composite) return buildComposite(manifest.composite, aspect, params);
-  return buildShot(templateShotInput(manifest, params, aspect, subject));
+export function templateDefinition(manifest: TemplateManifest, params: Record<string, ParamValue>, aspect: Aspect, subject?: { width: number; height: number }, focusTarget?: ElementTarget): ShotDefinition | CompositeDefinition {
+  if (manifest.composite) {
+    const definition = buildComposite(manifest.composite, aspect, params);
+    return focusTarget ? lockShotFocus(definition, focusTarget) : definition;
+  }
+  return buildShot(templateShotInput(manifest, params, aspect, subject, focusTarget), { stageFit: !!subject });
+}
+export function templateDepth(manifest: TemplateManifest): DepthMap | undefined {
+  return manifest.id === "parallax-planes" ? { subject: { mode: "auto", intensity: "subtle", light: DEFAULT_DEPTH_LIGHT } } : undefined;
 }
 /** Framing, title-safe placement and reading time for a layered or motion-graphics template. */
-function certifyComposite(manifest: TemplateManifest, definition: CompositeDefinition, aspect: Aspect): TemplateIssue[] {
+function certifyComposite(manifest: TemplateManifest, definition: CompositeDefinition, aspect: Aspect, stage?: Stage): TemplateIssue[] {
   const issues: TemplateIssue[] = [];
   const at = `${manifest.id}@${aspect}`;
   const node = definition.layout.find(entry => entry.id === definition.primary);
   if (!node) return [{ code: "ERR_TEMPLATE_FRAMING", path: at, message: `Primary node ${definition.primary} is missing from the layout.` }];
   const W = definition.width, H = definition.height;
   const cx = node.left + node.width / 2 - W / 2, cy = node.top + node.height / 2 - H / 2, z = node.transform?.z ?? 0;
-  const grid = Array.from({ length: 49 }, (_, i) => [cx + node.width * ((i % 7) / 6 - 0.5), cy + node.height * (Math.floor(i / 7) / 6 - 0.5), z] as const);
+  const subject = stage && node.element.type === "Slot" ? fitStage(stage, node) : node;
+  // A staged parallax template lifts its tallest tray by 60 CSS px at subtle strength.
+  const elevations = stage && templateDepth(manifest) ? [z, z + 60] : [z];
+  const grids = elevations.map(elevation => Array.from({ length: 49 }, (_, i) => [cx + subject.width * ((i % 7) / 6 - 0.5), cy + subject.height * (Math.floor(i / 7) / 6 - 0.5), elevation] as const));
   const duration = definition.motion.durationMs;
   const { minSubjectVisible, checkFrom } = manifest.certification;
   const safe = manifest.category === "motion-graphics" ? 0.9 : 1;
   for (let k = 0; k <= 12; k++) {
     const timeMs = (duration * k) / 12;
     if (timeMs < checkFrom * duration) continue;
-    const points = projectPoints(definition, grid, timeMs);
-    const inside = points.filter(point => point && Math.abs(point.x - W / 2) <= (W * safe) / 2 + 0.5 && Math.abs(point.y - H / 2) <= (H * safe) / 2 + 0.5).length / points.length;
+    const inside = Math.min(...grids.map(grid => {
+      const points = projectPoints(definition, grid, timeMs);
+      return points.filter(point => point && Math.abs(point.x - W / 2) <= (W * safe) / 2 + 0.5 && Math.abs(point.y - H / 2) <= (H * safe) / 2 + 0.5).length / points.length;
+    }));
     if (inside < minSubjectVisible)
       issues.push({ code: "ERR_TEMPLATE_FRAMING", path: at, message: `Only ${(inside * 100).toFixed(0)}% of ${definition.primary} is ${safe < 1 ? "title-safe" : "in frame"} at ${Math.round(timeMs)}ms (needs ${minSubjectVisible * 100}%).` });
   }
@@ -390,12 +405,18 @@ function certifyComposite(manifest: TemplateManifest, definition: CompositeDefin
   return issues;
 }
 /** Framing certification for one template configuration; failures name the gate and the time. */
-export function certifyTemplate(manifest: TemplateManifest, params: Record<string, ParamValue>, aspect: Aspect): TemplateIssue[] {
-  const subject = ASPECT_FRAMES[aspect].subject;
-  if (manifest.composite) return certifyComposite(manifest, buildComposite(manifest.composite, aspect, params), aspect);
-  const definition = templateDefinition(manifest, params, aspect);
+export function templateSubject(aspect: Aspect, stage?: Stage) {
+  const frame = ASPECT_FRAMES[aspect].subject;
+  if (!stage) return frame;
+  const { width, height } = fitStage(stage, frame);
+  return { width: Math.round(width), height: Math.round(height) };
+}
+export function certifyTemplate(manifest: TemplateManifest, params: Record<string, ParamValue>, aspect: Aspect, stage?: Stage, focusTarget?: ElementTarget): TemplateIssue[] {
+  const subject = templateSubject(aspect, stage);
+  if (manifest.composite) return certifyComposite(manifest, buildComposite(manifest.composite, aspect, params), aspect, stage);
+  const definition = templateDefinition(manifest, params, aspect, subject, focusTarget);
   // Without a chosen region, a rack pull lands on the far edge (centered 30% above the subject center).
-  const focusRegion = typeof params.focusRegion === "object" ? params.focusRegion
+  const focusRegion = focusTarget ? undefined : typeof params.focusRegion === "object" ? params.focusRegion
     : manifest.shot === "rack-focus" ? { x: subject.width * 0.4, y: subject.height * 0.15, width: subject.width * 0.2, height: subject.height * 0.1 } : undefined;
   const report = framingReport(definition, subject, focusRegion ? { focusRegion } : {});
   const { minSubjectVisible, minDepthMargin, checkFrom, maxEndBlur } = manifest.certification;
@@ -409,7 +430,7 @@ export function certifyTemplate(manifest: TemplateManifest, params: Record<strin
       issues.push({ code: "ERR_TEMPLATE_FRAMING", path: `${manifest.id}@${aspect}`, message: `The subject comes within ${(sample.depthMargin * 100).toFixed(0)}% of the camera plane at ${Math.round(sample.timeMs)}ms.` });
   }
   const last = report.samples[report.samples.length - 1];
-  if (last.regionBlur > maxEndBlur || last.regionVisible < 0.95)
+  if (!focusTarget && (last.regionBlur > maxEndBlur || last.regionVisible < 0.95))
     issues.push({ code: "ERR_TEMPLATE_FRAMING", path: `${manifest.id}@${aspect}`, message: `The focus region ends ${last.regionVisible < 0.95 ? "out of frame" : `soft (${last.regionBlur.toFixed(2)}px blur)`}.` });
   return issues;
 }

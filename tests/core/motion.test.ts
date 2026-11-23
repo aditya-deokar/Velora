@@ -5,6 +5,7 @@ import {
   MotionTrackSchema,
   type MotionInput,
 } from "../../src/core/motion";
+import { UPDATING, committedFiles, diffRecords, golden, motionRecord, recipeSources, sameTemplateSamples, scaffoldSources } from "./v21-golden";
 
 const surface = { kind: "surface", id: "panel" } as const;
 function track(target: unknown = surface, property = "x", from = 0, to = 100) {
@@ -311,5 +312,132 @@ describe("motion validation boundary", () => {
       issues.some((issue) => issue.path === "tracks.0.keyframes.0.value"),
     ).toBe(true);
     expect(evaluateMotion(motion(), 500).issues).toEqual([]);
+  });
+});
+
+// v2.1 Phase 00 golden: every committed recipe and one scaffold per template x aspect x intensity,
+// at 25 sample times plus loopSeam. Regenerate only with `node scripts/golden.mjs --update`.
+describe("v2.1 motion golden", () => {
+  type Record_ = Record<string, unknown>;
+  const recorded = UPDATING ? undefined : golden<{ recipes: Record_; scaffolds: Record_ }>("motion.json", { recipes: {}, scaffolds: {} });
+  const files = recorded ? Object.keys(recorded.recipes) : committedFiles(/\.scene\.json$/);
+  const actual = {
+    recipes: Object.fromEntries(recipeSources(files).map(source => [source.key, motionRecord(source.definition)])),
+    scaffolds: Object.fromEntries(scaffoldSources().map(source => [source.key, motionRecord(source.definition)])),
+  };
+  const expected = recorded ?? golden("motion.json", actual);
+  it("covers every committed recipe and every template scaffold", () => {
+    expect(Object.keys(expected.recipes).length).toBeGreaterThanOrEqual(20);
+    expect(Object.keys(expected.scaffolds).length).toBeGreaterThanOrEqual(100);
+  });
+  it("evaluates committed recipes byte-identically", () => expect(diffRecords(expected.recipes, actual.recipes)).toEqual([]));
+  it("matches template scaffold samples across supported Node math implementations", () => expect(diffRecords(expected.scaffolds, actual.scaffolds, sameTemplateSamples)).toEqual([]));
+  it("rejects numeric drift and shape changes outside the scaffold rounding tolerance", () => {
+    expect(sameTemplateSamples({ x: [1, 2] }, { x: [1 + 1e-13, 2] })).toBe(true);
+    expect(sameTemplateSamples({ x: [1, 2] }, { x: [1 + 1e-10, 2] })).toBe(false);
+    expect(sameTemplateSamples({ x: [1, 2] }, { x: { 0: 1, 1: 2 } })).toBe(false);
+  });
+});
+
+describe("v2.1 auto-bezier keyframes", () => {
+  const values: [number, number][] = [[0, 0], [1000, 100], [2000, 140], [3000, 400], [4000, 380]];
+  const auto = (easings: (string | undefined)[] = []) => ({ durationMs: 4000, speed: 1, tracks: [{ target: { kind: "camera" }, property: "x",
+    keyframes: values.map(([timeMs, value], i) => ({ timeMs, value, easing: easings[i] ?? "auto" })) }] });
+  const at = (input: unknown, t: number) => evaluateMotion(input, t).camera.x!;
+  it("passes through every keyframe", () => {
+    for (const [timeMs, value] of values) expect(at(auto(), timeMs)).toBeCloseTo(value, 9);
+  });
+  it("is C1 at interior keyframes (no velocity jump)", () => {
+    const h = 1e-3;
+    for (const [timeMs] of values.slice(1, -1)) {
+      const left = (at(auto(), timeMs) - at(auto(), timeMs - h)) / h, right = (at(auto(), timeMs + h) - at(auto(), timeMs)) / h;
+      expect(Math.abs(left - right)).toBeLessThan(1e-3);
+    }
+  });
+  it("never overshoots between keyframes", () => {
+    for (let i = 0; i < values.length - 1; i++)
+      for (let k = 1; k < 50; k++) {
+        const t = values[i][0] + (k / 50) * 1000, v = at(auto(), t);
+        expect(v).toBeGreaterThanOrEqual(Math.min(values[i][1], values[i + 1][1]) - 1e-9);
+        expect(v).toBeLessThanOrEqual(Math.max(values[i][1], values[i + 1][1]) + 1e-9);
+      }
+  });
+  it("matches a smooth track on all-auto segments and leaves eased neighbors unchanged", () => {
+    const smooth = { durationMs: 4000, speed: 1, tracks: [{ target: { kind: "camera" }, property: "x", interpolation: "smooth", keyframes: values.map(([timeMs, value]) => ({ timeMs, value })) }] };
+    for (let t = 0; t <= 4000; t += 125) expect(at(auto(), t)).toBe(at(smooth, t));
+    const mixed = auto(["auto", "linear", "auto", "cinematic"]);
+    expect(at(mixed, 1500)).toBe(120); // the linear segment keeps its own easing
+    expect(at(mixed, 3500)).toBe(at({ durationMs: 4000, speed: 1, tracks: [{ target: { kind: "camera" }, property: "x", keyframes: values.map(([timeMs, value]) => ({ timeMs, value })) }] }, 3500));
+  });
+  it("is valid only on keyframes", () => {
+    expect(MotionTrackSchema.safeParse({ target: { kind: "camera" }, property: "x", interpolation: "smooth", ease: "auto", keyframes: [{ timeMs: 0, value: 0 }] }).success).toBe(false);
+  });
+});
+
+describe("v2.1 compiled evaluator", () => {
+  it("returns identical results with the cache hit and with a fresh object", () => {
+    const input = motion([track(), track({ kind: "channel", id: "c" }, "value", 0, 5)]);
+    for (const t of [0, 250, 500, 900, 1000]) expect(evaluateMotion(input, t)).toEqual(evaluateMotion(structuredClone(input), t));
+  });
+  it("recompiles a cached object whose structure was mutated", () => {
+    const input = motion([track()]) as { tracks: unknown[] };
+    expect(evaluateMotion(input, 500).surfaces.panel.x).toBe(50);
+    input.tracks.push(track(surface, "y", 0, 10));
+    expect(evaluateMotion(input, 500).surfaces.panel.y).toBe(5);
+  });
+  it("returns fresh issue arrays for cached invalid input", () => {
+    const bad = motion([track(surface, "nope")]);
+    const first = evaluateMotion(bad, 0);
+    first.issues.length = 0;
+    expect(evaluateMotion(bad, 0).issues.length).toBeGreaterThan(0);
+  });
+});
+
+describe("v2.1 style and color tracks", () => {
+  const style = (property: string, keyframes: unknown[], extra: object = {}) => ({ target: { kind: "style", id: "card" }, property, keyframes, ...extra });
+  it("writes numeric CSS variables with units and color variables as canonical rgb()", () => {
+    const state = evaluateMotion(motion([
+      style("--radius", [{ timeMs: 0, value: 0, easing: "linear" }, { timeMs: 1000, value: 24 }], { unit: "px" }),
+      style("--accent", [{ timeMs: 0, value: "#ff0000", easing: "linear" }, { timeMs: 1000, value: "#0000ff" }]),
+    ]), 500);
+    expect(state.styles).toEqual({ card: { "--radius": "12px", "--accent": expect.stringMatching(/^rgb\([\d.]+ [\d.]+ [\d.]+ \/ 1\)$/) } });
+    expect(evaluateMotion(motion([style("--accent", [{ timeMs: 0, value: "#ff0000" }])]), 0).styles!.card["--accent"]).toBe("rgb(255 0 0 / 1)");
+  });
+  it("evaluates color channel tracks into colorChannels and keeps numeric channels separate", () => {
+    const state = evaluateMotion(motion([
+      { target: { kind: "channel", id: "badge.fill" }, property: "value", keyframes: [{ timeMs: 0, value: "#000000" }, { timeMs: 1000, value: "#ffffff" }] },
+      track({ kind: "channel", id: "n" }, "value", 0, 10),
+    ]), 1000);
+    expect(state.colorChannels).toEqual({ "badge.fill": "rgb(255 255 255 / 1)" });
+    expect(state.channels).toEqual({ n: 10 });
+  });
+  it("omits styles and colorChannels when no such tracks exist (output unchanged)", () => {
+    const state = evaluateMotion(motion(), 500);
+    expect("styles" in state).toBe(false);
+    expect("colorChannels" in state).toBe(false);
+  });
+  it("rejects invalid names, named colors, smooth color tracks, units on colors and color noise", () => {
+    for (const bad of [
+      style("accent", [{ timeMs: 0, value: 1 }]),
+      style("--accent", [{ timeMs: 0, value: "red" }]),
+      style("--accent", [{ timeMs: 0, value: "#ff0000" }, { timeMs: 1000, value: "#00ff00" }], { interpolation: "smooth" }),
+      style("--accent", [{ timeMs: 0, value: "#ff0000" }], { unit: "px" }),
+      style("--accent", [{ timeMs: 0, value: "#ff0000" }], { noise: { amplitude: 1 } }),
+      style("--accent", [{ timeMs: 0, value: "#ff0000", easing: "auto" }, { timeMs: 1000, value: "#00ff00" }]),
+    ]) expect(MotionSchema.safeParse(motion([bad])).success, JSON.stringify(bad)).toBe(false);
+    expect(MotionSchema.safeParse(motion([style("--size", [{ timeMs: 0, value: 1 }, { timeMs: 1000, value: 2 }], { interpolation: "smooth", unit: "rem" })])).success).toBe(true);
+  });
+  it("rejects a duplicate style property on one surface and measures color loop seams", async () => {
+    expect(MotionSchema.safeParse(motion([style("--a", [{ timeMs: 0, value: 1 }]), style("--a", [{ timeMs: 0, value: 2 }])])).success).toBe(false);
+    const { loopSeam } = await import("../../src/core/motion");
+    expect(loopSeam(motion([style("--a", [{ timeMs: 0, value: "#000" }, { timeMs: 1000, value: "#000" }])]))).toBe(0);
+    expect(loopSeam(motion([style("--a", [{ timeMs: 0, value: "#000" }, { timeMs: 1000, value: "#fff" }])]))).toBeCloseTo(255, 6);
+  });
+  it("validates grade properties on surfaces", () => {
+    expect(MotionTrackSchema.safeParse(track(surface, "brightness", 0, 2)).success).toBe(true);
+    expect(MotionTrackSchema.safeParse(track(surface, "grayscale", 0, 2)).success).toBe(false);
+    expect(MotionTrackSchema.safeParse(track(surface, "hueRotate", -360, 360)).success).toBe(true);
+    expect(MotionTrackSchema.safeParse(track(surface, "skewX", 0, 90)).success).toBe(false);
+    expect(MotionTrackSchema.safeParse(track(surface, "originX", 0, 100)).success).toBe(true);
   });
 });

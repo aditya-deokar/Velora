@@ -11,11 +11,11 @@ import { RESOURCES, motionDuration, type PreviewDefinition, type PreviewDefiniti
  * Shuttle rate (J/K/L) scales how fast that one cursor advances; negative plays backwards.
  */
 export type PreviewTimeline = { durationMs: number; boundaries: number[] };
-export function usePreviewSession(input: PreviewDefinitionInput | undefined, revision: unknown, timeline?: PreviewTimeline) {
+export function usePreviewSession(input: PreviewDefinitionInput | undefined, revision: unknown, timeline?: PreviewTimeline, initialTimeMs = 0) {
   const result = useMemo(() => input === undefined ? null : RESOURCES["present-preview"](input), [input]);
   const [accepted, setAccepted] = useState<PreviewDefinition | null>(() => result?.valid ? result.definition : null);
   const definition = result?.valid ? result.definition : input === undefined ? null : accepted;
-  const [timeMs, setTime] = useState(0);
+  const [timeMs, setTime] = useState(() => Math.max(0, Math.min(timeline?.durationMs ?? (definition?.motion ? motionDuration(definition.motion) : 0), initialTimeMs)));
   const [playing, setPlaying] = useState(false);
   const [rate, setRateState] = useState(1);
   const [renderIssues, setRenderIssues] = useState<SceneIssue[]>([]);

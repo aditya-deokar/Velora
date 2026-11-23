@@ -1,0 +1,11 @@
+{
+  "win32-x64": {
+    "/tests/fixtures/motion.html?shot=dolly&t=0": "9e724182177ed588e7ea9ac87e1096216bac578a8b5055913cd8624984902cb8",
+    "/tests/fixtures/motion.html?shot=dolly&t=500": "220962e497c1fe269b7c2f6b841deab43142d102d7ccaa538d0febb9b7f06c8c",
+    "/tests/fixtures/motion.html?shot=dolly&t=1000": "1d2846d1a404ebcb1f5f276cdd002991061d98bcaa32a7a011018514ff1ba7c4",
+    "/tests/fixtures/motion.html?shot=wipe&t=0": "0961069b8dbce836f5509b38604f74c6c640a9aadeb2f9f6cdc201b91a699bb2",
+    "/tests/fixtures/motion.html?shot=wipe&t=500": "d8da483161c9607dba3c9d1d4d1045743ec0553dc0555654f95ef1281b7ee645",
+    "/tests/fixtures/motion.html?shot=wipe&t=1000": "9c40da7106c998e91cfc9b137d0ffb0c67a847d31c4cb98b3785dc2469615fea",
+    "/tests/fixtures/focus.html?planes": "cbe8e27fc3ceb656aed3917a274f9f37cfc5cb2f5a6889d0820fbbbb898a1609"
+  }
+}

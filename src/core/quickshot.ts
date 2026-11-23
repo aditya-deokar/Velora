@@ -1,6 +1,7 @@
 import { AspectSchema, ASPECT_FRAMES, type Aspect, type ShotDefinition } from "./shots";
 import { compositePreview, type CompositeDefinition } from "./composites";
-import { RouteSchema, findTemplate, resolveTemplateParams, templateDefinition, type ParamValue, type TemplateIssue, type TemplateManifest } from "./templates";
+import { RouteSchema, findTemplate, resolveTemplateParams, templateDefinition, templateDepth, templateSubject, type ParamValue, type TemplateIssue, type TemplateManifest } from "./templates";
+import { DEFAULT_STAGE, stageFromSpec, type Stage } from "./stage";
 
 /** SOURCE OF TRUTH: QUICK_SHOT_PARAMS, readQuickShot, quickShotQuery, quickShotCommands.
  * WHAT: the studio's quick-shot URL contract (velora-quick, velora-route, velora-params as base64url
@@ -11,8 +12,8 @@ import { RouteSchema, findTemplate, resolveTemplateParams, templateDefinition, t
  * callers pass any {get(name)} query (URLSearchParams) and merge quickShotQuery into their URL.
  */
 export const QUICK_SHOT_PARAMS = Object.freeze({ template: "velora-quick", route: "velora-route", params: "velora-params" });
-export type QuickShotState = { template: string; route?: string; aspect: Aspect; overrides: Record<string, string | number> };
-export type QuickShot = QuickShotState & { manifest?: TemplateManifest; params: Record<string, ParamValue>; definition?: ShotDefinition; composite?: CompositeDefinition; issues: TemplateIssue[] };
+export type QuickShotState = { template: string; route?: string; aspect: Aspect; stage?: string; overrides: Record<string, string | number> };
+export type QuickShot = QuickShotState & { manifest?: TemplateManifest; params: Record<string, ParamValue>; definition?: ShotDefinition & { stage: Stage }; composite?: CompositeDefinition; issues: TemplateIssue[] };
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 function utf8(text: string): number[] {
@@ -78,27 +79,32 @@ export function readQuickShot(query: QueryLookup): QuickShot | undefined {
       decoded = value as Record<string, unknown>;
     } catch { issues.push({ code: "ERR_TEMPLATE_PARAM", path: QUICK_SHOT_PARAMS.params, message: "velora-params must be base64url JSON of template params." }); }
   }
-  const { aspect: rawAspect = "16:9", ...rest } = decoded;
+  const { aspect: rawAspect = "16:9", stage: rawStage = DEFAULT_STAGE, ...rest } = decoded;
   const aspectResult = AspectSchema.safeParse(rawAspect);
+  const stage = typeof rawStage === "string" ? stageFromSpec(rawStage) : undefined;
+  if (!stage) issues.push({ code: "ERR_TEMPLATE_PARAM", path: "params.stage", message: "Choose a stage preset or enter WxH@DPR, such as 1512x982@2." });
   const overrides: Record<string, string | number> = {};
   for (const [key, value] of Object.entries(rest))
     if (typeof value === "string" || typeof value === "number") overrides[key] = value;
     else issues.push({ code: "ERR_TEMPLATE_PARAM", path: `params.${key}`, message: `${key} must be a string or number.` });
   const manifest = findTemplate(template);
-  const state: QuickShotState = { template, ...(route !== undefined ? { route } : {}), aspect: aspectResult.success ? aspectResult.data : "16:9", overrides };
+  const state: QuickShotState = { template, ...(route !== undefined ? { route } : {}), aspect: aspectResult.success ? aspectResult.data : "16:9",
+    ...(typeof rawStage === "string" && rawStage !== DEFAULT_STAGE ? { stage: rawStage } : {}), overrides };
   if (!manifest) return { ...state, params: {}, issues: [...issues, { code: "ERR_TEMPLATE_NOT_FOUND", path: QUICK_SHOT_PARAMS.template, message: `No template "${template}".` }] };
   if (!aspectResult.success || !manifest.aspects.includes(state.aspect))
     issues.push({ code: "ERR_TEMPLATE_ASPECT", path: "params.aspect", message: `${manifest.id} supports ${manifest.aspects.join(", ")}.` });
   const resolved = resolveTemplateParams(manifest, overrides);
   issues.push(...resolved.issues);
-  const built = issues.length ? undefined : templateDefinition(manifest, resolved.params, state.aspect);
+  const built = issues.length || !stage ? undefined : templateDefinition(manifest, resolved.params, state.aspect, templateSubject(state.aspect, stage));
+  const depth = templateDepth(manifest);
   // Layered and motion-graphics templates also carry their layout; the definition stays recipe-shaped.
-  return { ...state, manifest, params: resolved.params, ...(built ? { definition: compositePreview(built) } : {}), ...(built && "layout" in built ? { composite: built as CompositeDefinition } : {}), issues };
+  return { ...state, manifest, params: resolved.params, ...(built && stage ? { definition: { ...compositePreview(built), stage, ...(depth ? { depth } : {}) } } : {}),
+    ...(built && "layout" in built ? { composite: built as CompositeDefinition } : {}), issues };
 }
 
 /** The quick-shot query params for a state (absent keys must be removed from the URL). */
 export function quickShotQuery(state: QuickShotState): Record<string, string> {
-  const packed = { ...(state.aspect !== "16:9" ? { aspect: state.aspect } : {}), ...state.overrides };
+  const packed = { ...state.overrides, ...(state.aspect !== "16:9" ? { aspect: state.aspect } : {}), ...(state.stage && state.stage !== DEFAULT_STAGE ? { stage: state.stage } : {}) };
   return {
     [QUICK_SHOT_PARAMS.template]: state.template,
     ...(state.route !== undefined ? { [QUICK_SHOT_PARAMS.route]: state.route } : {}),
@@ -114,7 +120,7 @@ export function quickShotCommands(state: QuickShotState, href: string, options: 
   const sets = Object.entries(state.overrides).map(([key, value]) => ` --set ${quote(`${key}=${value}`)}`).join("");
   const scaffold = `npx velora new scene --template ${state.template} --id ${id}` +
     (state.route !== undefined ? ` --route ${quote(state.route)}` : " --component <path#Export>") +
-    (state.aspect !== "16:9" ? ` --aspect ${state.aspect}` : "") + sets + " --json";
+    (state.aspect !== "16:9" ? ` --aspect ${state.aspect}` : "") + sets + ` --stage ${quote(state.stage || DEFAULT_STAGE)} --json`;
   const exported = `npx velora export --url ${quote(href)} --output ${id}.mp4 --width ${frame.width} --height ${frame.height} --fps ${options.fps ?? 30}`;
   return { scaffold, export: exported };
 }

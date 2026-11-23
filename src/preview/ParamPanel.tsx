@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { quickShotCommands, scaffoldPrompt, type QuickShotState, type TemplateIssue, type TemplateManifest } from "../core";
+import { useId, useState } from "react";
+import { DEFAULT_STAGE, STAGE_PRESETS, quickShotCommands, scaffoldPrompt, type QuickShotState, type TemplateIssue, type TemplateManifest } from "../core";
 
 /** SOURCE OF TRUTH: ParamPanel, quickShotPrompt.
  * WHAT: schema-driven controls for one template's typed params plus aspect and route, and copy
@@ -17,6 +17,7 @@ export function ParamPanel({ manifest, state, issues, href, onChange, routeRequi
 }) {
   const [copied, setCopied] = useState<Copy | "failed" | "">("");
   const [collapsed, setCollapsed] = useState(false);
+  const stageOptions = useId();
   const commands = quickShotCommands(state, href);
   const texts: Record<Copy, string> = { scaffold: commands.scaffold, export: commands.export, prompt: quickShotPrompt(manifest, commands.scaffold) };
   const copy = async (kind: Copy) => {
@@ -39,6 +40,11 @@ export function ParamPanel({ manifest, state, issues, href, onChange, routeRequi
       <select aria-label="Aspect" value={state.aspect} onChange={event => onChange({ ...state, aspect: event.target.value as QuickShotState["aspect"] })}>
         {manifest.aspects.map(aspect => <option key={aspect} value={aspect}>{aspect}</option>)}
       </select></label>
+    <label className="velora-field"><span>App stage</span>
+      <input list={stageOptions} value={state.stage ?? DEFAULT_STAGE} placeholder={DEFAULT_STAGE} spellCheck={false}
+        onChange={event => onChange({ ...state, stage: event.currentTarget.value })}/>
+      <datalist id={stageOptions}>{Object.keys(STAGE_PRESETS).map(name => <option key={name} value={name}/>)}</datalist>
+    </label>
     {(routeRequired || state.route !== undefined) && <label className="velora-field"><span>Route</span>
       <input type="text" aria-label="Route" value={state.route ?? "/"} spellCheck={false}
         onChange={event => onChange({ ...state, route: event.target.value })}/>
