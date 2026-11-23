@@ -68,6 +68,15 @@ jobs:
         run: npx playwright install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
       - run: npm run build
       - run: npm run test:browser
+        id: browser-tests
+      - name: Save failed browser test evidence
+        if: failure() && steps.browser-tests.outcome == 'failure'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: browser-failure-${{ matrix.os }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - run: npm run test:launch
       - run: npm run test:export
       - run: npm run test:installed

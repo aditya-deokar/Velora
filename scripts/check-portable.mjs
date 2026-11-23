@@ -14,7 +14,29 @@ const children=[];let browser;
 const kind=process.argv[2]??'app';
 const host=path.join(scratch,'host');
 async function put(file,text){await mkdir(path.dirname(path.join(host,file)),{recursive:true});await writeFile(path.join(host,file),text)}
-function run(exe,args,cwd=host){return new Promise((resolve,reject)=>{const resolved=npmCmd(exe);const child=spawn(resolved,args,{cwd,env:{...process.env,NEXT_TELEMETRY_DISABLED:'1'},stdio:['ignore','pipe','pipe'],...(resolved!==exe?NPM_SHELL:{})});let output='';child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>output+=d);const timer=setTimeout(()=>child.kill(),110000);child.on('error',reject);child.on('exit',code=>{clearTimeout(timer);code===0?resolve(output):reject(Error(output))})})}
+function run(exe, args, cwd = host) {
+  return new Promise((resolve, reject) => {
+    const resolved = npmCmd(exe);
+    const child = spawn(resolved, args, {cwd, env: {...process.env, NEXT_TELEMETRY_DISABLED: '1'},
+      stdio: ['ignore', 'pipe', 'pipe'], ...(resolved !== exe ? NPM_SHELL : {})});
+    const label = [exe, ...args].join(' ');
+    // Cold framework installs and builds can take longer on Windows runners.
+    const timeout = process.platform === 'win32' ? 240_000 : 110_000;
+    let output = '';
+    child.stdout.on('data', data => { output += data; });
+    child.stderr.on('data', data => { output += data; });
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`${label} timed out after ${timeout / 1000} s\n${output}`));
+    }, timeout);
+    child.once('error', error => { clearTimeout(timer); reject(error); });
+    child.once('close', (code, signal) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(output);
+      else reject(new Error(`${label} exited with ${signal ?? code}\n${output}`));
+    });
+  });
+}
 async function freePort(){const s=createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const port=s.address().port;await new Promise(r=>s.close(r));return port}
 async function server(args){const port=await freePort();const child=spawn(process.execPath,['node_modules/next/dist/bin/next',...args,'-H','127.0.0.1','-p',String(port)],{cwd:host,env:{...process.env,NEXT_TELEMETRY_DISABLED:'1'},stdio:['ignore','pipe','pipe']});children.push(child);let log='';child.stdout.on('data',d=>log+=d);child.stderr.on('data',d=>log+=d);const url='http://127.0.0.1:'+port;for(let i=0;i<150;i++){try{const r=await fetch(url,{signal:AbortSignal.timeout(1000)});if(r.ok)return {url,child}}catch{}if(child.exitCode!==null)throw Error(log);await new Promise(r=>setTimeout(r,100))}throw Error(log)}
 async function editBridge(cli, origin) {

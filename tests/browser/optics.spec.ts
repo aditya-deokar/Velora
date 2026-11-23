@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { CaptureManifestSchema, FOCUS_BANDS, focusBand } from "../../src/core";
+import { CaptureManifestSchema, FOCUS_BANDS, focusBand, type CaptureBridge } from "../../src/core";
 import { openCapture, decodePngDataUrl, sha256Hex } from "../../src/export/services";
 import { parsePng } from "../../src/export/compositor";
 
@@ -52,7 +52,7 @@ async function variance(page: Page, locator: string | Locator) {
   }, data);
 }
 
-test("the 200 mm rack exchanges sharpness and breathes identically in preview and capture", async ({ page, baseURL }) => {
+test("the 200 mm rack exchanges sharpness and breathes identically in preview and capture", async ({ page, baseURL }, testInfo) => {
   test.setTimeout(120_000);
   await page.goto(`${fixture}?rack`);
   await expect(layer(page, 1)).toBeAttached();
@@ -71,17 +71,44 @@ test("the 200 mm rack exchanges sharpness and breathes identically in preview an
   expect(endWidth / startWidth).toBeCloseTo(0.982, 3);
   await expect.poll(() => variance(page, "#optics-chart")).toBeGreaterThan(startChart * 1.35);
   await expect.poll(() => variance(page, "#optics-modal")).toBeLessThan(startModal / 1.35);
+  // Compare painted frames after the depth controller has settled on both pages.
+  await page.waitForFunction(() => typeof (window as Window & { __VELORA_CAPTURE__?: CaptureBridge }).__VELORA_CAPTURE__?.seek === "function");
+  await page.evaluate(async () => {
+    const bridge = (window as unknown as { __VELORA_CAPTURE__: CaptureBridge }).__VELORA_CAPTURE__;
+    await bridge.seek(1000);
+  });
   const clip = (await page.locator("#depth-viewport").boundingBox())!;
-  const expected = parsePng(await page.screenshot({ clip, animations: "disabled" }));
+  const previewPng = await page.screenshot({ clip, animations: "disabled" });
+  const expected = parsePng(previewPng);
   const session = await openCapture({ url: new URL(`${fixture}?rack`, baseURL).href, width, height });
   try {
     const manifest = CaptureManifestSchema.parse(await session.manifest(1000));
     expect(manifest.depth?.[0].focus?.[0].blur).toBeLessThan(0.5);
     const frame = await session.snapshot(1000, manifest);
-    const actual = parsePng(decodePngDataUrl(frame));
+    const capturePng = decodePngDataUrl(frame);
+    const actual = parsePng(capturePng);
     expect([actual.width, actual.height]).toEqual([expected.width, expected.height]);
-    expect(sha256Hex(actual.pixels)).toBe(sha256Hex(expected.pixels));
-    expect(await session.snapshot(1000, manifest)).toBe(frame);
+    const repeatPng = decodePngDataUrl(await session.snapshot(1000, manifest));
+    expect(repeatPng.equals(capturePng), "repeated capture returns the same PNG bytes").toBe(true);
+    if (!actual.pixels.equals(expected.pixels)) {
+      await testInfo.attach("preview", { body: previewPng, contentType: "image/png" });
+      await testInfo.attach("capture", { body: capturePng, contentType: "image/png" });
+      let count = 0, maxDelta = 0;
+      let left = width, top = height, right = 0, bottom = 0;
+      for (let offset = 0; offset < actual.pixels.length; offset += 4) {
+        const delta = Math.max(...[0, 1, 2, 3].map(channel => Math.abs(actual.pixels[offset + channel] - expected.pixels[offset + channel])));
+        if (!delta) continue;
+        const pixel = offset / 4;
+        const x = pixel % width, y = Math.floor(pixel / width);
+        count++;
+        maxDelta = Math.max(maxDelta, delta);
+        left = Math.min(left, x);
+        top = Math.min(top, y);
+        right = Math.max(right, x);
+        bottom = Math.max(bottom, y);
+      }
+      expect(sha256Hex(actual.pixels), `${count} differing pixels in (${left}, ${top})–(${right}, ${bottom}), maximum channel delta ${maxDelta}`).toBe(sha256Hex(expected.pixels));
+    }
   } finally { await session.close(); }
 });
 
