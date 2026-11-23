@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, cp, readFile, readdir, writeFile, rm, mkdir } from 'node:fs/promises';
+import { mkdtemp, cp, readFile, readdir, writeFile, rm, mkdir, realpath } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -15,7 +15,8 @@ import { chromium } from 'playwright';
 const root = fileURLToPath(new URL('../', import.meta.url));
 // The installed directory and import specifier follow the name this package publishes.
 const packageName = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).name;
-const scratch = await mkdtemp(path.join(tmpdir(), 'velora-installed-'));
+// Windows runners may supply a DOS short path in TEMP. Use one spelling for Vite's root and allow list.
+const scratch = await mkdtemp(path.join(await realpath(tmpdir()), 'velora-installed-'));
 const host = path.join(scratch, 'host');
 const registryPackage = process.env.VELORA_REGISTRY_PACKAGE;
 const commandEnv = registryPackage ? {...process.env, npm_config_cache:path.join(scratch,'npm-cache'), npm_config_registry:'https://registry.npmjs.org/'} : process.env;
